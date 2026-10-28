@@ -1,0 +1,99 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:T8T.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1184" d:DesignHeight="700"
+             x:Class="T8T.Views.WebDashboardView"
+             x:DataType="vm:MainViewModel">
+
+    <Grid RowDefinitions="Auto,Auto,*" Margin="24,0,24,24" RowSpacing="12">
+
+        <!-- Thanh công cụ -->
+        <Border Grid.Row="0" Classes="panel" Padding="10">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="8">
+                <Button x:Name="BackButton"
+                        Grid.Column="0"
+                        Classes="chip"
+                        Content="←"
+                        FontSize="18"
+                        IsEnabled="False"
+                        Click="OnBackClick"
+                        AutomationProperties.Name="Quay lại" />
+                <Button x:Name="ForwardButton"
+                        Grid.Column="1"
+                        Classes="chip"
+                        Content="→"
+                        FontSize="18"
+                        IsEnabled="False"
+                        Click="OnForwardClick"
+                        AutomationProperties.Name="Tiến tới" />
+                <Button Grid.Column="2"
+                        Classes="chip"
+                        Content="Tải lại"
+                        Click="OnReloadClick" />
+
+                <Border Grid.Column="3"
+                        Background="{StaticResource BgRaised}"
+                        BorderBrush="{StaticResource LineColor}"
+                        BorderThickness="1"
+                        CornerRadius="10"
+                        MinHeight="44"
+                        Padding="14,0">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                        <TextBlock Classes="mono"
+                                   Text="estrace.checkee.vn"
+                                   FontSize="13"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" />
+                        <StackPanel Grid.Column="1"
+                                    Orientation="Horizontal"
+                                    Spacing="8"
+                                    VerticalAlignment="Center">
+                            <ProgressBar Width="56"
+                                         IsIndeterminate="True"
+                                         IsVisible="{Binding IsWebLoading}"
+                                         VerticalAlignment="Center" />
+                            <TextBlock Classes="label"
+                                       Text="{Binding WebStatusText}"
+                                       IsVisible="{Binding IsWebOk}"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Button Grid.Column="4"
+                        Classes="chip"
+                        Content="Mở trong trình duyệt"
+                        Click="OnOpenExternalClick" />
+            </Grid>
+        </Border>
+
+        <!-- Banner lỗi (đặt ngoài vùng web vì control web gốc không cho vẽ đè lên) -->
+        <Border Grid.Row="1"
+                Background="{StaticResource DangerSoft}"
+                BorderBrush="{StaticResource Danger}"
+                BorderThickness="1"
+                CornerRadius="10"
+                Padding="14,10"
+                IsVisible="{Binding HasWebError}">
+            <TextBlock Text="{Binding WebStatusText}"
+                       Foreground="{StaticResource Danger}"
+                       FontWeight="SemiBold"
+                       TextWrapping="Wrap" />
+        </Border>
+
+        <!-- Vùng hiển thị trang web -->
+        <Border Grid.Row="2"
+                Background="{StaticResource BgPanel}"
+                BorderBrush="{StaticResource LineColor}"
+                BorderThickness="1"
+                CornerRadius="14"
+                ClipToBounds="True">
+            <NativeWebView x:Name="Browser"
+                           Source="{Binding WebSource}"
+                           NavigationStarted="OnNavigationStarted"
+                           NavigationCompleted="OnNavigationCompleted" />
+        </Border>
+    </Grid>
+</UserControl>

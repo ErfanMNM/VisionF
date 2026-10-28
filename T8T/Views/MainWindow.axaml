@@ -1,0 +1,133 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:T8T.ViewModels"
+        xmlns:views="using:T8T.Views"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="800"
+        x:Class="T8T.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="T8T · Bảng điều khiển"
+        Width="1280" Height="800"
+        MinWidth="1024" MinHeight="640"
+        WindowStartupLocation="CenterScreen">
+
+    <Design.DataContext>
+        <!-- Chỉ dùng cho trình xem trước trong IDE; DataContext lúc chạy được gán trong App.axaml.cs -->
+        <vm:MainViewModel />
+    </Design.DataContext>
+
+    <Grid ColumnDefinitions="Auto,*">
+
+        <!-- ===== Sidebar điều hướng ===== -->
+        <Border Grid.Column="0"
+                Background="{StaticResource BgPanel}"
+                BorderBrush="{StaticResource LineColor}"
+                BorderThickness="0,0,1,0"
+                Padding="10,16">
+            <StackPanel Spacing="10" HorizontalAlignment="Center">
+
+                <Border Width="48" Height="48" Margin="0,0,0,14"
+                        CornerRadius="14"
+                        Background="{StaticResource AccentSoft}"
+                        BorderBrush="{StaticResource Accent}"
+                        BorderThickness="1.5"
+                        HorizontalAlignment="Center">
+                    <TextBlock Text="T8T"
+                               FontSize="15"
+                               FontWeight="Black"
+                               Foreground="{StaticResource Accent}"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center" />
+                </Border>
+
+                <Button Classes="nav"
+                        Classes.active="{Binding IsScadaVisible}"
+                        Command="{Binding ShowScadaCommand}"
+                        AutomationProperties.Name="SCADA Monitor">
+                    <StackPanel Spacing="6" HorizontalAlignment="Center">
+                        <Path Classes="icon"
+                              Width="26" Height="26"
+                              Stretch="Uniform"
+                              StrokeThickness="2"
+                              StrokeLineCap="Round"
+                              StrokeJoin="Round"
+                              Data="M3,12 L7,12 L10,4 L14,20 L17,12 L21,12" />
+                        <TextBlock Text="SCADA" HorizontalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+
+                <Button Classes="nav"
+                        Classes.active="{Binding IsWebVisible}"
+                        Command="{Binding ShowWebCommand}"
+                        AutomationProperties.Name="Web Dashboard">
+                    <StackPanel Spacing="6" HorizontalAlignment="Center">
+                        <Path Classes="icon"
+                              Width="26" Height="26"
+                              Stretch="Uniform"
+                              StrokeThickness="2"
+                              StrokeLineCap="Round"
+                              StrokeJoin="Round"
+                              Data="M12,3 A9,9 0 1 0 12,21 A9,9 0 1 0 12,3 M3,12 L21,12 M12,3 C8,7 8,17 12,21 M12,3 C16,7 16,17 12,21" />
+                        <TextBlock Text="WEB" HorizontalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </Border>
+
+        <!-- ===== Khu vực chính ===== -->
+        <Grid Grid.Column="1" RowDefinitions="Auto,*">
+
+            <!-- Thanh tiêu đề -->
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="24,18,24,10">
+                <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                    <TextBlock Text="{Binding PageTitle}"
+                               FontSize="24"
+                               FontWeight="Bold" />
+                    <TextBlock Classes="label" Text="{Binding PageSubtitle}" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            Spacing="12"
+                            VerticalAlignment="Center">
+
+                    <Border Classes="pill sim"
+                            IsVisible="{Binding IsScadaVisible}">
+                        <TextBlock Text="DỮ LIỆU MÔ PHỎNG" />
+                    </Border>
+
+                    <Border Classes="pill alarmOk"
+                            Classes.alarmActive="{Binding HasActiveAlarms}"
+                            Classes.critical="{Binding HasCriticalAlarm}"
+                            IsVisible="{Binding IsScadaVisible}">
+                        <Grid>
+                            <TextBlock Text="Không có cảnh báo"
+                                       IsVisible="{Binding !HasActiveAlarms}" />
+                            <TextBlock Text="{Binding ActiveAlarmCount, StringFormat='{}{0} cảnh báo chưa xử lý'}"
+                                       IsVisible="{Binding HasActiveAlarms}" />
+                        </Grid>
+                    </Border>
+
+                    <StackPanel Spacing="0" HorizontalAlignment="Right">
+                        <TextBlock Classes="mono"
+                                   Text="{Binding ClockText}"
+                                   FontSize="22"
+                                   FontWeight="Bold"
+                                   HorizontalAlignment="Right" />
+                        <TextBlock Classes="label"
+                                   Text="{Binding DateText}"
+                                   HorizontalAlignment="Right" />
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+
+            <!-- Nội dung: hai màn hình chia sẻ cùng DataContext -->
+            <Grid Grid.Row="1">
+                <views:ScadaView IsVisible="{Binding IsScadaVisible}" />
+                <views:WebDashboardView IsVisible="{Binding IsWebVisible}" />
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>

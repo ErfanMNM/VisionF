@@ -1,0 +1,192 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:T8T.ViewModels"
+             xmlns:models="using:T8T.Models"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1184" d:DesignHeight="700"
+             x:Class="T8T.Views.ScadaView"
+             x:DataType="vm:MainViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="Arc.oee">
+            <Setter Property="Stroke" Value="{StaticResource Accent}" />
+        </Style>
+        <Style Selector="Arc.oee.bad">
+            <Setter Property="Stroke" Value="{StaticResource Warn}" />
+        </Style>
+    </UserControl.Styles>
+
+    <!-- Lưới cố định theo chiều cao cửa sổ: màn SCADA không dùng cuộn dọc. -->
+    <Grid Margin="20,0,20,12" RowDefinitions="Auto,Auto,*" RowSpacing="10">
+        <!-- KPI -->
+        <ItemsControl Grid.Row="0" ItemsSource="{Binding Kpis}" Margin="-4,0">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate><UniformGrid Rows="1" /></ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:KpiViewModel">
+                    <Border Classes="panel" Margin="4,0" Padding="12,8">
+                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                            <TextBlock Classes="label" Text="{Binding Title}" />
+                            <TextBlock Grid.Row="1" Classes="kpiValue" FontSize="26" Text="{Binding Value}" />
+                            <TextBlock Grid.Row="1" Grid.Column="1" Classes="unit" Text="{Binding Unit}" VerticalAlignment="Bottom" Margin="0,0,0,4" />
+                            <TextBlock Grid.Column="1" Classes="delta" Classes.good="{Binding IsDeltaGood}" Text="{Binding DeltaText}" FontSize="10" VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- Máy trên dây chuyền -->
+        <Border Grid.Row="1" Classes="panel" Padding="12,10">
+            <Grid RowDefinitions="Auto,Auto" RowSpacing="8">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Classes="sectionTitle" Text="DÂY CHUYỀN SẢN XUẤT" />
+                    <TextBlock Grid.Column="1" Classes="label" Text="{Binding MachineSummaryText}" />
+                </Grid>
+                <ItemsControl Grid.Row="1" ItemsSource="{Binding Machines}" Margin="-4,0">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><UniformGrid Rows="1" /></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:MachineViewModel">
+                            <Border Classes="machine" Classes.warning="{Binding IsWarning}" Classes.fault="{Binding IsFault}" Classes.idle="{Binding IsIdle}" Margin="4,0" Padding="10,8">
+                                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="5">
+                                    <TextBlock Classes="label mono" Text="{Binding Code}" VerticalAlignment="Center" />
+                                    <Border Grid.Column="1" Classes="badge" Classes.running="{Binding IsRunning}" Classes.warning="{Binding IsWarning}" Classes.fault="{Binding IsFault}">
+                                        <TextBlock Text="{Binding StateText}" />
+                                    </Border>
+                                    <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding Name}" FontSize="15" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
+                                    <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="12">
+                                        <StackPanel Spacing="1">
+                                            <TextBlock Classes="label" Text="TỐC ĐỘ" FontSize="10" />
+                                            <TextBlock Classes="reading" FontSize="12" Text="{Binding SpeedText}" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                        <StackPanel Spacing="1">
+                                            <TextBlock Classes="label" Text="NHIỆT ĐỘ" FontSize="10" />
+                                            <TextBlock Classes="reading" FontSize="12" Text="{Binding TemperatureText}" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                    <Grid Grid.Row="3" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" RowSpacing="3">
+                                        <TextBlock Classes="label" Text="Tải máy" FontSize="10" />
+                                        <TextBlock Grid.Column="1" Classes="label mono" Text="{Binding LoadText}" FontSize="10" />
+                                        <ProgressBar Grid.Row="1" Grid.ColumnSpan="2" Classes="load" Classes.warning="{Binding IsWarning}" Classes.fault="{Binding IsFault}" Classes.idle="{Binding IsIdle}" Minimum="0" Maximum="100" Value="{Binding Load}" />
+                                    </Grid>
+                                    <Button Grid.Row="4" Grid.ColumnSpan="2" Classes="chip small" Classes.confirm="{Binding IsConfirmingStop}" MinHeight="38" Content="{Binding ActionText}" Command="{Binding ToggleCommand}" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </Grid>
+        </Border>
+
+        <!-- Phân tích, OEE và cảnh báo -->
+        <Grid Grid.Row="2" ColumnDefinitions="*,340" ColumnSpacing="10">
+            <Grid Grid.Column="0" RowDefinitions="*,Auto" RowSpacing="10">
+                <!-- Biểu đồ sản lượng -->
+                <Border Grid.Row="0" Classes="panel" Padding="12,10">
+                    <Grid RowDefinitions="Auto,*" RowSpacing="6">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Spacing="2" VerticalAlignment="Center">
+                                <TextBlock Classes="sectionTitle" Text="{Binding ChartTitle}" />
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <Border Width="14" Height="2" Background="{StaticResource Warn}" VerticalAlignment="Center" />
+                                    <TextBlock Classes="label" Text="{Binding ChartTargetText}" FontSize="11" />
+                                </StackPanel>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                                <Button Classes="chip small" Classes.active="{Binding IsShiftRange}" Command="{Binding SetRangeCommand}" CommandParameter="{x:Static models:TimeRange.Shift}" Content="8 giờ" MinHeight="38" />
+                                <Button Classes="chip small" Classes.active="{Binding IsDayRange}" Command="{Binding SetRangeCommand}" CommandParameter="{x:Static models:TimeRange.Day}" Content="24 giờ" MinHeight="38" />
+                                <Button Classes="chip small" Classes.active="{Binding IsWeekRange}" Command="{Binding SetRangeCommand}" CommandParameter="{x:Static models:TimeRange.Week}" Content="7 ngày" MinHeight="38" />
+                            </StackPanel>
+                        </Grid>
+                        <Grid Grid.Row="1" Height="{Binding ChartAreaHeight}">
+                            <ItemsControl ItemsSource="{Binding ChartBars}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate><UniformGrid Rows="1" /></ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:ChartBarViewModel">
+                                        <Grid RowDefinitions="*,18" Margin="3,0">
+                                            <StackPanel VerticalAlignment="Bottom" Spacing="2">
+                                                <TextBlock Classes="label mono" FontSize="10" HorizontalAlignment="Center" Text="{Binding ValueText}" />
+                                                <Border Classes="bar" Classes.below="{Binding IsBelowTarget}" Classes.live="{Binding IsLive}" Height="{Binding Height}" />
+                                            </StackPanel>
+                                            <TextBlock Grid.Row="1" Classes="label" FontSize="10" HorizontalAlignment="Center" VerticalAlignment="Bottom" Text="{Binding Label}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <Border Height="1" VerticalAlignment="Bottom" Margin="{Binding TargetLineMargin}" Background="{StaticResource Warn}" Opacity="0.8" IsHitTestVisible="False" />
+                        </Grid>
+                    </Grid>
+                </Border>
+
+                <!-- OEE -->
+                <Border Grid.Row="1" Classes="panel" Padding="12,8">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="20">
+                        <Grid Width="96" Height="96">
+                            <Ellipse Stroke="{StaticResource LineColor}" StrokeThickness="10" />
+                            <Arc Classes="oee" Classes.bad="{Binding !IsOeeGood}" StrokeThickness="10" StrokeLineCap="Round" StartAngle="-90" SweepAngle="{Binding OeeSweep}" />
+                            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="0">
+                                <TextBlock Classes="kpiValue" FontSize="22" HorizontalAlignment="Center" Text="{Binding OeeText}" />
+                                <TextBlock Classes="label" FontSize="10" HorizontalAlignment="Center" Text="% OEE" />
+                            </StackPanel>
+                        </Grid>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="8">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Classes="label" Text="Tính sẵn sàng" FontSize="11" />
+                                <TextBlock Grid.Column="1" Classes="reading" FontSize="11" Text="{Binding AvailabilityText}" />
+                                <ProgressBar Grid.Row="1" Grid.ColumnSpan="2" Classes="metric" Maximum="100" Value="{Binding Availability}" />
+                            </Grid>
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Classes="label" Text="Hiệu năng" FontSize="11" />
+                                <TextBlock Grid.Column="1" Classes="reading" FontSize="11" Text="{Binding PerformanceText}" />
+                                <ProgressBar Grid.Row="1" Grid.ColumnSpan="2" Classes="metric" Maximum="100" Value="{Binding Performance}" />
+                            </Grid>
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Classes="label" Text="Chất lượng" FontSize="11" />
+                                <TextBlock Grid.Column="1" Classes="reading" FontSize="11" Text="{Binding QualityText}" />
+                                <ProgressBar Grid.Row="1" Grid.ColumnSpan="2" Classes="metric" Maximum="100" Value="{Binding Quality}" />
+                            </Grid>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- Cảnh báo, giới hạn 4 dòng để không tạo cuộn dọc -->
+            <Border Grid.Column="1" Classes="panel" Padding="12,10">
+                <Grid RowDefinitions="Auto,*" RowSpacing="8">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Spacing="1" VerticalAlignment="Center">
+                            <TextBlock Classes="sectionTitle" Text="CẢNH BÁO &amp; SỰ KIỆN" FontSize="13" />
+                            <TextBlock Classes="label" Text="{Binding ActiveAlarmCount, StringFormat='{}{0} chưa xử lý'}" FontSize="11" />
+                        </StackPanel>
+                        <Button Grid.Column="1" Classes="chip small" MinHeight="38" Padding="8,0" FontSize="10" Content="Xác nhận tất cả" Command="{Binding AcknowledgeAllCommand}" />
+                    </Grid>
+                    <ItemsControl Grid.Row="1" ItemsSource="{Binding Alarms}" VerticalAlignment="Top">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate><UniformGrid Rows="4" /></ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:AlarmViewModel">
+                                <Border Classes="alarm" Classes.acked="{Binding IsAcknowledged}" Margin="0,2" Padding="7,5">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="7">
+                                        <Border Classes="stripe" Classes.warning="{Binding IsWarning}" Classes.critical="{Binding IsCritical}" />
+                                        <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Message}" FontSize="11" FontWeight="SemiBold" TextWrapping="Wrap" MaxLines="2" />
+                                            <TextBlock Classes="label mono" FontSize="9" Text="{Binding MetaText}" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                        <Button Grid.Column="2" Classes="chip small" MinHeight="36" Padding="7,0" FontSize="10" VerticalAlignment="Center" Content="Xác nhận" Command="{Binding AcknowledgeCommand}" IsVisible="{Binding !IsAcknowledged}" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>
