@@ -361,3 +361,9 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# License: khong commit private key / license that
+*.key
+license.lic
+publish/
+keys-*/
+

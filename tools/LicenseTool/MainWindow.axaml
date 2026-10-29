@@ -1,0 +1,174 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="920" d:DesignHeight="700"
+        x:Class="LicenseTool.MainWindow"
+        x:DataType="local:MainViewModel"
+        xmlns:local="using:LicenseTool"
+        Title="LicenseTool · Cấp phép DemoQR (nội bộ)"
+        Width="920" Height="700"
+        MinWidth="820" MinHeight="620"
+        WindowStartupLocation="CenterScreen">
+
+  <Grid RowDefinitions="Auto,*,Auto" Margin="24,18,24,16">
+
+    <!-- ═══ Tiêu đề ═══ -->
+    <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,14" ColumnSpacing="14">
+      <Border Width="52" Height="52" CornerRadius="14"
+              Background="{StaticResource AccentSoft}"
+              BorderBrush="{StaticResource Accent}" BorderThickness="1.5">
+        <TextBlock Text="🔑" FontSize="24"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+      </Border>
+      <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+        <TextBlock Text="Cấp phép DemoQR" FontSize="22" FontWeight="Bold" />
+        <TextBlock Classes="label" Text="Công cụ nội bộ — dùng để tạo file license.lic cho từng máy khách." />
+      </StackPanel>
+      <Border Grid.Column="2" Classes="badge bad" VerticalAlignment="Center" Margin="0,6,0,0">
+        <TextBlock Text="⚠ KHÔNG GIAO CHO KHÁCH" />
+      </Border>
+    </Grid>
+
+    <TabControl Grid.Row="1">
+      <!-- ═══ Tab 1: Cấp license ═══ -->
+      <TabItem Header="📝  Cấp license">
+        <ScrollViewer>
+          <StackPanel Spacing="12" Margin="0,10">
+            <Border Classes="panel">
+              <StackPanel Spacing="10">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <Border Classes="step"><TextBlock Classes="stepNum" Text="1" /></Border>
+                  <TextBlock Classes="sectionTitle" VerticalAlignment="Center" Text="Khóa riêng (giữ kín tuyệt đối)" />
+                </StackPanel>
+                <Border Classes="notice">
+                  <TextBlock Text="🔒 Private key chỉ nằm trên máy của bạn. Tuyệt đối không commit git, không gửi Zalo/Email, không copy cho khách." />
+                </Border>
+                <TextBlock Classes="label" Text="{Binding KeyFingerprint, StringFormat='Đang dùng: {0}'}" />
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <Button Classes="btn" Content="📂  Chọn private.key…"
+                          Command="{Binding PickPrivateKeyCommand}" />
+                  <Button Classes="btn small" Content="✨  Tạo cặp key mới…"
+                          Command="{Binding GenerateKeysCommand}" />
+                </StackPanel>
+              </StackPanel>
+            </Border>
+
+            <Border Classes="panel">
+              <StackPanel Spacing="10">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <Border Classes="step"><TextBlock Classes="stepNum" Text="2" /></Border>
+                  <TextBlock Classes="sectionTitle" VerticalAlignment="Center" Text="Thông tin máy khách" />
+                </StackPanel>
+                <TextBlock Classes="label" Text="Mã máy (HWID) — khách chạy DemoQR.exe sẽ thấy mã này, gửi cho bạn. Nhập dạng nhóm hay liền đều được." />
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+                  <TextBox Grid.Column="0" Classes="mono" Text="{Binding HwidRaw}"
+                           PlaceholderText="Ví dụ: 1D6B-D107-BBC2-75D4-515B-A4FB-E035-10ED" />
+                  <Button Grid.Column="1" Classes="btn small" Content="📋 Dán"
+                          Command="{Binding PasteHwidCommand}" />
+                  <Button Grid.Column="2" Classes="btn small" Content="⧉ Copy"
+                          Command="{Binding CopyHwidCommand}" />
+                </Grid>
+                <Grid ColumnDefinitions="2*,*" ColumnSpacing="12">
+                  <StackPanel Grid.Column="0" Spacing="5">
+                    <TextBlock Classes="label" Text="Tên khách hàng / công trình" />
+                    <TextBox Text="{Binding Customer}" PlaceholderText="Ví dụ: NhàMáy-A · Line 1" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="1" Spacing="5">
+                    <TextBlock Classes="label" Text="Hiệu lực (ngày)" />
+                    <NumericUpDown Value="{Binding DaysValid}" Minimum="1" Maximum="3650" />
+                  </StackPanel>
+                </Grid>
+              </StackPanel>
+            </Border>
+
+            <Border Classes="panel">
+              <StackPanel Spacing="10">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <Border Classes="step"><TextBlock Classes="stepNum" Text="3" /></Border>
+                  <TextBlock Classes="sectionTitle" VerticalAlignment="Center" Text="Xuất file license" />
+                </StackPanel>
+                <TextBlock Classes="label" Text="Đường dẫn file license.lic sẽ ghi (gửi file này cho khách, bảo họ chép cạnh file .exe)." />
+                <TextBox Classes="mono" Text="{Binding LicenseOutPath}" />
+                <Button Classes="btn primary" Content="✅  Cấp license"
+                        Command="{Binding IssueLicenseCommand}"
+                        IsEnabled="{Binding !Busy}" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <!-- ═══ Tab 2: Kiểm tra ═══ -->
+      <TabItem Header="🔍  Kiểm tra">
+        <StackPanel Spacing="12" Margin="0,10">
+          <Border Classes="panel">
+            <StackPanel Spacing="10">
+              <TextBlock Classes="sectionTitle" Text="Kiểm tra file license.lic" />
+              <TextBlock Classes="label" Text="Chọn file để xem còn hạn không, có khóa đúng máy không." />
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                <TextBox Grid.Column="0" Classes="mono" Text="{Binding VerifyPath}"
+                         PlaceholderText="Đường dẫn file license.lic…" />
+                <Button Grid.Column="1" Classes="btn small" Content="📂  Chọn file…"
+                        Command="{Binding PickVerifyFileCommand}" />
+              </Grid>
+              <Button Classes="btn" Content="🔍  Kiểm tra ngay" Command="{Binding VerifyCommand}" />
+            </StackPanel>
+          </Border>
+
+          <Border Classes="panel">
+            <StackPanel Spacing="8">
+              <TextBlock Classes="sectionTitle" Text="🖥️  Mã máy này (để tự test)" />
+              <SelectableTextBlock Classes="mono" FontSize="16" FontWeight="Bold"
+                                   Foreground="{StaticResource AccentDark}"
+                                   Text="{Binding ThisMachineHwid}" />
+              <TextBlock Classes="label" Text="Muốn tự cấp license cho chính máy này: copy mã trên, sang tab “Cấp license” dán vào ô HWID." />
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </TabItem>
+
+      <!-- ═══ Tab 3: Hướng dẫn ═══ -->
+      <TabItem Header="📖  Hướng dẫn">
+        <ScrollViewer>
+          <StackPanel Spacing="12" Margin="0,10">
+            <Border Classes="panel">
+              <StackPanel Spacing="8">
+                <TextBlock Classes="sectionTitle" Text="🔄  Quy trình cấp phép" />
+                <Separator Background="{StaticResource LineColor}" Margin="0,2" />
+                <TextBlock TextWrapping="Wrap" Text="①  Khách chạy DemoQR.exe trên máy của họ — app báo thiếu license và hiện mã máy (HWID)." />
+                <TextBlock TextWrapping="Wrap" Text="②  Khách gửi HWID cho bạn (đọc qua điện thoại hoặc chụp màn hình)." />
+                <TextBlock TextWrapping="Wrap" Text="③  Bạn mở tab “Cấp license”: nạp private key → dán HWID → nhập tên khách + số ngày → bấm Cấp license." />
+                <TextBlock TextWrapping="Wrap" Text="④  Gửi file license.lic cho khách, dặn họ chép cạnh file DemoQR.exe rồi chạy lại." />
+              </StackPanel>
+            </Border>
+            <Border Classes="panel">
+              <StackPanel Spacing="8">
+                <TextBlock Classes="sectionTitle" Text="🛡️  Bảo mật khóa" />
+                <Separator Background="{StaticResource LineColor}" Margin="0,2" />
+                <TextBlock TextWrapping="Wrap" Text="•  Chỉ giữ private.key trên máy của bạn — không commit git, không copy cho khách." />
+                <TextBlock TextWrapping="Wrap" Text="•  Nếu lộ private.key: tạo cặp key mới → thay public key trong code → build lại app → cấp lại license cho khách." />
+                <TextBlock Classes="label" Text="Public key nằm trong ClassLibraryMT/Licensing/LicenseValidator.cs — đổi key là phải build lại DemoQR." />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+    </TabControl>
+
+    <!-- ═══ Thanh trạng thái ═══ -->
+    <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Margin="0,14,0,0">
+      <Border Classes="badge" Classes.ok="{Binding StatusOk}" Classes.bad="{Binding !StatusOk}"
+              VerticalAlignment="Center">
+        <Grid>
+          <TextBlock Text="✓ SẴN SÀNG" IsVisible="{Binding StatusOk}" />
+          <TextBlock Text="✕ CẦN XEM LẠI" IsVisible="{Binding !StatusOk}" />
+        </Grid>
+      </Border>
+      <TextBlock Grid.Column="1" VerticalAlignment="Center" TextWrapping="Wrap"
+                 Text="{Binding StatusMessage}" />
+      <Button Grid.Column="2" Classes="btn small" Content="⧉ Copy thông báo"
+              Command="{Binding CopyStatusCommand}" />
+    </Grid>
+  </Grid>
+</Window>

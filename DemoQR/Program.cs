@@ -1,39 +1,106 @@
 ﻿using System.Net;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading.Channels;
 using ClassLibraryMT.Communications.CodeReaderProtocol;
+using ClassLibraryMT.Licensing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace QRDemoCodeBackend;
 
 internal class Program
 {
-    private static async Task Main(string[] args)
+    private static async Task<int> Main(string[] args)
     {
         Console.OutputEncoding = Encoding.UTF8;
         Console.InputEncoding = Encoding.UTF8;
 
+        if (args.Any(a => a.Equals("--show-hwid", StringComparison.OrdinalIgnoreCase)))
+        {
+            Console.WriteLine("HWID (gui ma nay cho nha cung cap de lay file license.lic):");
+            Console.WriteLine("  " + HardwareId.GetGrouped());
+            return 0;
+        }
+
+        // ---- Check license truoc khi chay service ----
+        var licPath = LicenseArg(args) ?? LicenseValidator.DefaultLicensePath;
+        var lic = LicenseValidator.Validate(licPath);
+        if (!lic.Ok)
+        {
+            Console.WriteLine("GIAY PHEP KHONG HOP LE: " + lic.Message);
+            Console.WriteLine("Ma may (HWID) cua may nay:");
+            Console.WriteLine("  " + HardwareId.GetGrouped());
+            Console.WriteLine("Chep file license.lic vao thu muc chua file .exe roi chay lai,");
+            Console.WriteLine("hoac chay: DemoQR.exe --license <duong-dan-license.lic>");
+            try
+            {
+                Console.Write("Nhan phim bat ky de thoat...");
+                Console.ReadKey(true);
+                Console.WriteLine();
+            }
+            catch { }
+            return 3;
+        }
+
+        Console.WriteLine($"License OK (het han {lic.Payload!.ExpiresUtc:yyyy-MM-dd}, con {lic.DaysLeft} ngay).");
+        if (lic.DaysLeft <= 30)
+            Console.WriteLine("CANH BAO: license sap het han, lien he nha cung cap de gia han.");
+
         var builder = Host.CreateApplicationBuilder(args);
 
-        builder.Services.Configure<CheckeeOptions>(builder.Configuration.GetSection("Checkee"));
-        builder.Services.AddHttpClient<CheckeeClient>();
+        // Doc cau hinh thu cong (tuong thich Native AOT, khong dung reflection binding).
+        var cfg = builder.Configuration;
+        var camera = new CameraOptions
+        {
+            Ip = cfg.GetValue<string>("Camera:Ip") ?? "127.0.0.1",
+            Port = cfg.GetValue<int?>("Camera:Port") ?? 9000,
+        };
+        var checkee = new CheckeeOptions
+        {
+            BaseUrl = cfg.GetValue<string>("Checkee:BaseUrl") ?? "https://beta-api-eco.checkee.vn",
+            ClientId = cfg.GetValue<string>("Checkee:ClientId") ?? "",
+            ApiKey = cfg.GetValue<string>("Checkee:ApiKey") ?? "",
+            BatchCode = cfg.GetValue<string>("Checkee:BatchCode") ?? "",
+            SerialType = cfg.GetValue<string>("Checkee:SerialType") ?? "RANDOM",
+            DuplicateWindowSeconds = cfg.GetValue<int?>("Checkee:DuplicateWindowSeconds") ?? 30,
+        };
 
-        builder.Services.Configure<CameraOptions>(builder.Configuration.GetSection("Camera"));
+        builder.Services.AddSingleton(camera);
+        builder.Services.AddSingleton(checkee);
         builder.Services.AddSingleton(sp =>
         {
-            var cam = sp.GetRequiredService<IOptions<CameraOptions>>().Value;
+            var cam = sp.GetRequiredService<CameraOptions>();
             return new Reader(cam.Ip, cam.Port);
         });
-        builder.Services.AddHostedService<CameraRDWorker>();
+        builder.Services.AddSingleton(sp =>
+        {
+            var opt = sp.GetRequiredService<CheckeeOptions>();
+            var log = sp.GetRequiredService<ILogger<CheckeeClient>>();
+            var http = new HttpClient
+            {
+                BaseAddress = new Uri(opt.BaseUrl.TrimEnd('/') + "/"),
+                Timeout = TimeSpan.FromSeconds(20),
+            };
+            return new CheckeeClient(http, opt, log);
+        });
+        builder.Services.AddSingleton<CameraRDWorker>();
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<CameraRDWorker>());
 
         using var host = builder.Build();
         await host.RunAsync();
+        return 0;
+    }
+
+    private static string? LicenseArg(string[] args)
+    {
+        for (var i = 0; i < args.Length; i++)
+            if (args[i].Equals("--license", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+                return args[i + 1];
+        return null;
     }
 }
 
@@ -57,33 +124,33 @@ internal sealed class CheckeeOptions
 // ---------------------------------------------------------------- Model
 internal sealed class ApiResponse<T>
 {
-    [JsonPropertyName("code")] public int Code { get; set; }
-    [JsonPropertyName("status")] public bool Status { get; set; }
-    [JsonPropertyName("message")] public string? Message { get; set; }
-    [JsonPropertyName("data")] public T? Data { get; set; }
+    [System.Text.Json.Serialization.JsonPropertyName("code")] public int Code { get; set; }
+    [System.Text.Json.Serialization.JsonPropertyName("status")] public bool Status { get; set; }
+    [System.Text.Json.Serialization.JsonPropertyName("message")] public string? Message { get; set; }
+    [System.Text.Json.Serialization.JsonPropertyName("data")] public T? Data { get; set; }
 }
 
 internal sealed class TokenData
 {
-    [JsonPropertyName("name")] public string? Name { get; set; }
-    [JsonPropertyName("token")] public string Token { get; set; } = ""; // "accessToken=<JWT>"
+    [System.Text.Json.Serialization.JsonPropertyName("name")] public string? Name { get; set; }
+    [System.Text.Json.Serialization.JsonPropertyName("token")] public string Token { get; set; } = ""; // "accessToken=<JWT>"
 }
 
 internal sealed class ActiveData
 {
-    [JsonPropertyName("name")] public string? Name { get; set; }
-    [JsonPropertyName("GTIN")] public string? Gtin { get; set; }
-    [JsonPropertyName("batch")] public string? Batch { get; set; }
-    [JsonPropertyName("quantityInBatch")] public int QuantityInBatch { get; set; }
-    [JsonPropertyName("activeSerials")] public int ActiveSerials { get; set; }
+    [System.Text.Json.Serialization.JsonPropertyName("name")] public string? Name { get; set; }
+    [System.Text.Json.Serialization.JsonPropertyName("GTIN")] public string? Gtin { get; set; }
+    [System.Text.Json.Serialization.JsonPropertyName("batch")] public string? Batch { get; set; }
+    [System.Text.Json.Serialization.JsonPropertyName("quantityInBatch")] public int QuantityInBatch { get; set; }
+    [System.Text.Json.Serialization.JsonPropertyName("activeSerials")] public int ActiveSerials { get; set; }
 }
 
 internal sealed class ActiveRequest
 {
-    [JsonPropertyName("GTIN")] public string Gtin { get; set; } = "";
-    [JsonPropertyName("batchCode")] public string BatchCode { get; set; } = "";
-    [JsonPropertyName("type")] public string Type { get; set; } = "";
-    [JsonPropertyName("serialNumbers")] public string[] SerialNumbers { get; set; } = [];
+    [System.Text.Json.Serialization.JsonPropertyName("GTIN")] public string Gtin { get; set; } = "";
+    [System.Text.Json.Serialization.JsonPropertyName("batchCode")] public string BatchCode { get; set; } = "";
+    [System.Text.Json.Serialization.JsonPropertyName("type")] public string Type { get; set; } = "";
+    [System.Text.Json.Serialization.JsonPropertyName("serialNumbers")] public string[] SerialNumbers { get; set; } = [];
 }
 
 internal sealed record ActivateResult(bool Success, string Message, ActiveData? Data);
@@ -97,13 +164,11 @@ internal sealed class CheckeeClient
     private readonly SemaphoreSlim _tokenLock = new(1, 1);
     private string? _token;
 
-    public CheckeeClient(HttpClient http, IOptions<CheckeeOptions> opt, ILogger<CheckeeClient> logger)
+    public CheckeeClient(HttpClient http, CheckeeOptions opt, ILogger<CheckeeClient> logger)
     {
         _http = http;
-        _opt = opt.Value;
+        _opt = opt;
         _logger = logger;
-        _http.BaseAddress = new Uri(_opt.BaseUrl.TrimEnd('/') + "/");
-        _http.Timeout = TimeSpan.FromSeconds(20);
     }
 
     private async Task<string> GetTokenAsync(bool forceRefresh, CancellationToken ct)
@@ -125,7 +190,7 @@ internal sealed class CheckeeClient
             ApiResponse<TokenData>? parsed = null;
             if (body.TrimStart().StartsWith('{'))
             {
-                try { parsed = JsonSerializer.Deserialize<ApiResponse<TokenData>>(body); } catch { }
+                try { parsed = JsonSerializer.Deserialize(body, AppJsonContext.Default.ApiResponseTokenData); } catch { }
             }
 
             if (parsed is not { Status: true, Data: not null })
@@ -146,7 +211,7 @@ internal sealed class CheckeeClient
         }
     }
 
-    public async Task<ActivateResult> ActivateAsync(string gtin, string serialNumber, CancellationToken ct)
+    public async Task<ActivateAsyncResult> ActivateAsync(string gtin, string serialNumber, CancellationToken ct)
     {
         var payload = new ActiveRequest
         {
@@ -155,7 +220,7 @@ internal sealed class CheckeeClient
             Type = _opt.SerialType,
             SerialNumbers = [serialNumber]
         };
-        var json = JsonSerializer.Serialize(payload);
+        var json = JsonSerializer.Serialize(payload, AppJsonContext.Default.ActiveRequest);
 
         // Thử tối đa 2 lần: lần 2 sau khi làm mới token nếu bị 401
         for (var attempt = 0; attempt < 2; attempt++)
@@ -179,28 +244,31 @@ internal sealed class CheckeeClient
             }
 
             ApiResponse<ActiveData>? parsed = null;
-            try { parsed = JsonSerializer.Deserialize<ApiResponse<ActiveData>>(body); } catch { /* body không phải JSON */ }
+            try { parsed = JsonSerializer.Deserialize(body, AppJsonContext.Default.ApiResponseActiveData); } catch { /* body không phải JSON */ }
 
             if (res.IsSuccessStatusCode && parsed is { Status: true })
-                return new ActivateResult(true, parsed.Message ?? "OK", parsed.Data);
+                return new ActivateAsyncResult(true, parsed.Message ?? "OK", parsed.Data);
 
-            return new ActivateResult(false, parsed?.Message ?? $"HTTP {(int)res.StatusCode}: {body}", null);
+            return new ActivateAsyncResult(false, parsed?.Message ?? $"HTTP {(int)res.StatusCode}: {body}", null);
         }
 
-        return new ActivateResult(false, "Xác thực thất bại sau khi làm mới token", null);
+        return new ActivateAsyncResult(false, "Xác thực thất bại sau khi làm mới token", null);
     }
 }
 
-// ---------------------------------------------------------------- Parser nội dung QR
-internal static class QrParser
+// Ten goc ActivateResult trung voi record ben duoi nen doi ten tai day de tranh nham lan.
+internal sealed record ActivateAsyncResult(bool Success, string Message, ActiveData? Data);
+
+// ---------------------------------------------------------------- Parser nội dung QR (source-generated regex, tuong thich AOT)
+internal static partial class QrParser
 {
     // Link TXNG: https://.../01/{gtin}/21/{serialNumber}
-    private static readonly Regex DigitalLink =
-        new(@"/01/(?<gtin>\d{8,14})/21/(?<serial>[^/?#\s]+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    [GeneratedRegex(@"/01/(?<gtin>\d{8,14})/21/(?<serial>[^/?#\s]+)", RegexOptions.IgnoreCase)]
+    private static partial Regex DigitalLink();
 
     // GS1 dạng có ngoặc: (01)08934567890123(21)ABC123
-    private static readonly Regex Gs1Paren =
-        new(@"\(01\)(?<gtin>\d{8,14})\(21\)(?<serial>[^\(\s]+)", RegexOptions.Compiled);
+    [GeneratedRegex(@"\(01\)(?<gtin>\d{8,14})\(21\)(?<serial>[^\(\s]+)")]
+    private static partial Regex Gs1Paren();
 
     public static bool TryParse(string raw, out string gtin, out string serial)
     {
@@ -208,8 +276,8 @@ internal static class QrParser
         if (string.IsNullOrWhiteSpace(raw)) return false;
 
         var text = raw.Trim();
-        var m = DigitalLink.Match(text);
-        if (!m.Success) m = Gs1Paren.Match(text);
+        var m = DigitalLink().Match(text);
+        if (!m.Success) m = Gs1Paren().Match(text);
         if (!m.Success) return false;
 
         gtin = m.Groups["gtin"].Value;
@@ -232,12 +300,12 @@ internal sealed class CameraRDWorker : BackgroundService
 
     private readonly Dictionary<string, DateTime> _recent = new();
 
-    public CameraRDWorker(Reader camera, CheckeeClient checkee, IOptions<CheckeeOptions> opt,
+    public CameraRDWorker(Reader camera, CheckeeClient checkee, CheckeeOptions opt,
         ILogger<CameraRDWorker> logger)
     {
         _camera = camera;
         _checkee = checkee;
-        _opt = opt.Value;
+        _opt = opt;
         _logger = logger;
     }
 
