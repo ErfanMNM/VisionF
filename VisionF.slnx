@@ -1,3 +1,5 @@
 <Solution>
+  <Project Path="ClassLibraryMT/ClassLibraryMT.csproj" />
+  <Project Path="DemoQR/DemoQR.csproj" Id="95b2641b-ae38-48d4-891c-9ed4539149b1" />
   <Project Path="T8T/T8T.csproj" />
 </Solution>
