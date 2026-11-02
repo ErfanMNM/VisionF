@@ -4,21 +4,19 @@ using System.Text.Json;
 
 namespace ClassLibraryMT.Licensing;
 
+// Ket qua kiem tra license.
 public sealed record LicenseCheck(bool Ok, string Message, LicensePayload? Payload)
 {
     public int DaysLeft => Payload is null
         ? 0
         : Math.Max(0, (int)Math.Ceiling((Payload.ExpiresUtc - DateTime.UtcNow).TotalDays));
+
+    public bool Expired => Payload is not null && Payload.ExpiresUtc <= DateTime.UtcNow;
 }
 
 // Kiem tra license trong app (chi giu PUBLIC key trong app, PRIVATE key giu kin).
 public static class LicenseValidator
 {
-    // Public key RSA-2048 (SPKI DER base64). Thay bang key that khi dua vao san xuat.
-    // Cap phat sinh cap key that: chay LicenseTool mot lan o may chu, roi thay chuoi nay.
-    private const string PublicKeyBase64 =
-        "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwEuTChqbYttTI7TYdrOpyGpGHz/r0Dd15YOj/rRH/y6mQ+6jDp7BaYA9E/Cjh6LoOF6bRXmcFQ/6vITt3ytH5hJwtIq2ABvhvqNCo0cibsHuceopVnLB7KwN8VI/Nesa/JBSAe05oFdm8o6vxI/GJ1rGGxpSoxNY9aB/NUg01wMwKg7ZL+PODpOFXH8w5jF/v87jmbbIINYKHDZdJbDMzLMEBLQ7D9noZbzQ0DehW5cgoc84WPROOR89IiiG6lBKV5yz7b1hsK7WFm8k86A4VC/w+suFHTIqJQjgMiReV1Q3iVePxO9UKdCl87sEWYZn/G5v0I4epZPJvggozQ3J7QIDAQAB";
-
     private const string ProductName = "DemoQR";
 
     public static string DefaultLicensePath =>
@@ -57,80 +55,50 @@ public static class LicenseValidator
             return new LicenseCheck(false, "File license.lic loi dinh dang.", null);
         }
 
+        // Doc payload truoc de biet key nao da ky (payload da duoc ky nen an toan khi doc).
+        LicensePayload? payload;
+        try
+        {
+            payload = JsonSerializer.Deserialize(Encoding.UTF8.GetString(data), LicenseJsonContext.Default.LicensePayload);
+        }
+        catch
+        {
+            return new LicenseCheck(false, "Noi dung license loi.", null);
+        }
+
+        if (payload is null)
+            return new LicenseCheck(false, "Noi dung license loi.", null);
+
+        // Chon public key theo key id (ho tro xoay vong key).
+        var publicKey = LicenseKeys.Find(payload.KeyId);
+        if (publicKey is null)
+            return new LicenseCheck(false,
+                $"Key ky khong con trong app (kid={payload.KeyId}). Hay cap lai license hoac update app.", null);
+
         try
         {
             using var rsa = RSA.Create();
-            rsa.ImportSubjectPublicKeyInfo(Convert.FromBase64String(PublicKeyBase64), out _);
+            rsa.ImportSubjectPublicKeyInfo(Convert.FromBase64String(publicKey), out _);
             if (!rsa.VerifyData(data, sig, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1))
-                return new LicenseCheck(false, "Chu ky license khong hop le (file gia/khong dung cap key).", null);
+                return new LicenseCheck(false, "Chu ky license khong hop le (file gia/hoac dung cap key).", null);
         }
         catch
         {
             return new LicenseCheck(false, "Chu ky license khong hop le.", null);
         }
 
-        LicensePayload? p;
-        try
-        {
-            p = JsonSerializer.Deserialize(Encoding.UTF8.GetString(data), LicenseJsonContext.Default.LicensePayload);
-        }
-        catch
-        {
-            return new LicenseCheck(false, "Noi dung license loi.", null);
-        }
-
-        if (p is null)
-            return new LicenseCheck(false, "Noi dung license loi.", null);
-        if (!string.Equals(p.Product, ProductName, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(payload.Product, ProductName, StringComparison.OrdinalIgnoreCase))
             return new LicenseCheck(false, "License khong dung san pham.", null);
-        if (!string.Equals(HardwareId.Normalize(p.Hwid), HardwareId.Get(), StringComparison.Ordinal))
+
+        if (!string.Equals(HardwareId.Normalize(payload.Hwid), HardwareId.Get(), StringComparison.Ordinal))
             return new LicenseCheck(false, "License khong dung cho may nay.", null);
 
         var now = DateTime.UtcNow;
-        if (now < p.IssuedUtc.AddDays(-1))
+        if (now < payload.IssuedUtc.AddDays(-1))
             return new LicenseCheck(false, "Dong ho he thong khong hop le (bi chinh nguoc).", null);
-        if (now > p.ExpiresUtc)
-            return new LicenseCheck(false, $"License het han tu {p.ExpiresUtc:yyyy-MM-dd}.", null);
+        if (now > payload.ExpiresUtc)
+            return new LicenseCheck(false, $"License het han tu {payload.ExpiresUtc:yyyy-MM-dd}.", null);
 
-        return new LicenseCheck(true, "OK", p);
-    }
-}
-
-// Dung trong LicenseTool (may chu cua ban) de ky license. KHONG goi tu app.
-public static class LicenseSigner
-{
-    public static string Create(
-        string privateKeyBase64, string hwidRaw, string customer, int daysValid, string product = "DemoQR")
-    {
-        var hwid = HardwareId.Normalize(hwidRaw);
-        if (hwid.Length != 32)
-            throw new ArgumentException("HWID phai la 32 ky tu hex (dang XXXX-XXXX-... van duoc).", nameof(hwidRaw));
-        if (daysValid <= 0)
-            throw new ArgumentException("So ngay hieu luc phai > 0.", nameof(daysValid));
-
-        var now = DateTime.UtcNow;
-        var payload = new LicensePayload
-        {
-            Hwid = hwid,
-            Customer = customer,
-            IssuedUtc = now,
-            ExpiresUtc = now.AddDays(daysValid),
-            Product = product
-        };
-
-        var json = JsonSerializer.Serialize(payload, LicenseJsonContext.Default.LicensePayload);
-        var data = Encoding.UTF8.GetBytes(json);
-
-        using var rsa = RSA.Create();
-        rsa.ImportPkcs8PrivateKey(Convert.FromBase64String(privateKeyBase64), out _);
-        var sig = rsa.SignData(data, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-
-        var file = new LicenseFile
-        {
-            Version = 1,
-            Data = Convert.ToBase64String(data),
-            Signature = Convert.ToBase64String(sig)
-        };
-        return JsonSerializer.Serialize(file, LicenseJsonContext.Default.LicenseFile);
+        return new LicenseCheck(true, "OK", payload);
     }
 }

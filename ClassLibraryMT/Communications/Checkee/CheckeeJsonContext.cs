@@ -1,9 +1,10 @@
 using System.Text.Json.Serialization;
-using QRDemoCodeBackend;
+
+namespace ClassLibraryMT.Communications.Checkee;
 
 [JsonSerializable(typeof(ApiResponse<TokenData>))]
 [JsonSerializable(typeof(ApiResponse<ActiveData>))]
 [JsonSerializable(typeof(ActiveRequest))]
-internal sealed partial class AppJsonContext : JsonSerializerContext
+public sealed partial class CheckeeJsonContext : JsonSerializerContext
 {
 }

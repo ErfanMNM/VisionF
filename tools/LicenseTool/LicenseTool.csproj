@@ -22,4 +22,10 @@
     <ProjectReference Include="..\..\ClassLibraryMT\ClassLibraryMT.csproj" />
   </ItemGroup>
 
+  <!-- Copy private.key sang thu muc chay de tool tu dong nap key.
+       Thu muc "keys/" da duoc .gitignore loai bo nen KHONG bao gio commit. -->
+  <ItemGroup>
+    <None Include="keys\**" CopyToOutputDirectory="PreserveNewest" LinkBase="keys" />
+  </ItemGroup>
+
 </Project>

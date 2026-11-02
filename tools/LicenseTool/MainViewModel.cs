@@ -8,6 +8,10 @@ namespace LicenseTool;
 
 public sealed partial class MainViewModel : ObservableObject
 {
+    // Thu muc mac dinh luu private key (KHONG commit git).
+    private const string DefaultKeyDir = "keys";
+    private const string PrivateKeyFileName = "private.key";
+
     private string _privateKeyText = "";
 
     [ObservableProperty] private string hwidRaw = "";
@@ -15,16 +19,50 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private int daysValid = 365;
     [ObservableProperty] private string licenseOutPath = "license.lic";
     [ObservableProperty] private string verifyPath = "";
-    [ObservableProperty] private string statusMessage = "Sẵn sàng. Hãy nạp private key để bắt đầu cấp phép.";
+    [ObservableProperty] private string statusMessage = "Sẵn sàng.";
     [ObservableProperty] private bool statusOk = true;
     [ObservableProperty] private bool busy;
 
     public string ThisMachineHwid => HardwareId.GetGrouped();
 
+    // Key id cua private key dang dung (tu tinh ra tu public key).
+    public string KeyId => string.IsNullOrEmpty(_privateKeyText)
+        ? "—"
+        : ComputeKeyId(_privateKeyText);
+
     public string KeyFingerprint =>
         string.IsNullOrEmpty(_privateKeyText)
             ? "Chưa nạp private key"
             : Fingerprint(_privateKeyText);
+
+    // Private key co khop voi public key dang nhung trong app khong?
+    public bool KeyMatchesApp => string.IsNullOrEmpty(_privateKeyText)
+        ? false
+        : ComputeKeyId(_privateKeyText) == LicenseKeys.CurrentKeyId;
+
+    public MainViewModel()
+    {
+        // Tu dong nap private key neu co sanh trong thu muc "keys".
+        TryLoadDefaultKey();
+    }
+
+    private void TryLoadDefaultKey()
+    {
+        try
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, DefaultKeyDir, PrivateKeyFileName);
+            if (!File.Exists(path)) return;
+            _privateKeyText = File.ReadAllText(path, Encoding.UTF8).Trim();
+            OnPropertyChanged(nameof(KeyFingerprint));
+            OnPropertyChanged(nameof(KeyId));
+            OnPropertyChanged(nameof(KeyMatchesApp));
+            SetStatus($"Đã tự động nạp private key ({KeyId}).", true);
+        }
+        catch (Exception ex)
+        {
+            SetStatus("Không tự nạp được private key: " + ex.Message, false);
+        }
+    }
 
     private static string Fingerprint(string base64)
     {
@@ -38,6 +76,21 @@ public sealed partial class MainViewModel : ObservableObject
         catch
         {
             return "Private key lỗi định dạng";
+        }
+    }
+
+    private static string ComputeKeyId(string base64)
+    {
+        try
+        {
+            using var rsa = RSA.Create();
+            rsa.ImportPkcs8PrivateKey(Convert.FromBase64String(base64.Trim()), out _);
+            var pub = rsa.ExportSubjectPublicKeyInfo();
+            return LicenseKeys.ComputeKeyId(Convert.ToBase64String(pub));
+        }
+        catch
+        {
+            return "LỖI";
         }
     }
 
@@ -55,7 +108,12 @@ public sealed partial class MainViewModel : ObservableObject
         {
             _privateKeyText = (await File.ReadAllTextAsync(path, Encoding.UTF8)).Trim();
             OnPropertyChanged(nameof(KeyFingerprint));
-            SetStatus($"Đã nạp private key: {Path.GetFileName(path)}", true);
+            OnPropertyChanged(nameof(KeyId));
+            OnPropertyChanged(nameof(KeyMatchesApp));
+            var warn = KeyMatchesApp
+                ? ""
+                : $" LƯU Ý: key này ({KeyId}) KHÔNG khớp key đang dùng trong app ({LicenseKeys.CurrentKeyId}) — license cấp sẽ không được app chấp nhận.";
+            SetStatus($"Đã nạp private key: {Path.GetFileName(path)}{warn}", KeyMatchesApp);
         }
         catch (Exception ex)
         {
@@ -73,15 +131,23 @@ public sealed partial class MainViewModel : ObservableObject
             Directory.CreateDirectory(dir);
             using (var rsa = RSA.Create(2048))
             {
-                await File.WriteAllTextAsync(Path.Combine(dir, "public.key"),
-                    Convert.ToBase64String(rsa.ExportSubjectPublicKeyInfo()));
-                await File.WriteAllTextAsync(Path.Combine(dir, "private.key"),
-                    Convert.ToBase64String(rsa.ExportPkcs8PrivateKey()));
+                var pub = Convert.ToBase64String(rsa.ExportSubjectPublicKeyInfo());
+                var priv = Convert.ToBase64String(rsa.ExportPkcs8PrivateKey());
+                var utf8NoBom = new UTF8Encoding(false);
+                await File.WriteAllTextAsync(Path.Combine(dir, "public.key"), pub, utf8NoBom);
+                await File.WriteAllTextAsync(Path.Combine(dir, PrivateKeyFileName), priv, utf8NoBom);
+                var kid = LicenseKeys.ComputeKeyId(pub);
+
+                await ClipboardHelper.SetTextAsync(pub);
+                await LoadPrivateKeyFromFile(Path.Combine(dir, PrivateKeyFileName));
+
+                SetStatus(
+                    $"Đã tạo cặp key mới (kid={kid}) tại {dir}.\n" +
+                    $"Public key đã copy vào clipboard — dán vào LicenseKeys.CurrentPublicKey trong " +
+                    $"ClassLibraryMT/Licensing/LicenseKeys.cs rồi build lại app.\n" +
+                    $"License đã cấp bằng key cũ vẫn chạy nếu bạn giữ cả hai key trong LicenseKeys.All.",
+                    true);
             }
-            var pub = (await File.ReadAllTextAsync(Path.Combine(dir, "public.key"))).Trim();
-            await ClipboardHelper.SetTextAsync(pub);
-            await LoadPrivateKeyFromFile(Path.Combine(dir, "private.key"));
-            SetStatus($"Đã tạo cặp key tại {dir}. Public key đã copy vào clipboard — dán vào code rồi build lại app.", true);
         }
         catch (Exception ex)
         {
@@ -112,6 +178,14 @@ public sealed partial class MainViewModel : ObservableObject
         SetStatus("Đã copy HWID.", true);
     }
 
+    // Dung HWID cua chinh may nay (de cap license de test nhanh).
+    [RelayCommand]
+    private void UseThisMachine()
+    {
+        HwidRaw = ThisMachineHwid;
+        SetStatus("Đã điền HWID của máy này.", true);
+    }
+
     [RelayCommand]
     private async Task IssueLicense()
     {
@@ -136,7 +210,7 @@ public sealed partial class MainViewModel : ObservableObject
             var outPath = string.IsNullOrWhiteSpace(LicenseOutPath) ? "license.lic" : LicenseOutPath;
             var lic = LicenseSigner.Create(_privateKeyText, HwidRaw, Customer.Trim(), DaysValid);
             await File.WriteAllTextAsync(outPath, lic, new UTF8Encoding(false));
-            SetStatus($"Đã cấp license ({new FileInfo(outPath).Length} bytes): {outPath}", true);
+            SetStatus($"Đã cấp license (kid={KeyId}, {new FileInfo(outPath).Length} bytes): {outPath}", true);
         }
         catch (Exception ex)
         {
@@ -167,7 +241,10 @@ public sealed partial class MainViewModel : ObservableObject
         }
         var c = LicenseValidator.Validate(VerifyPath);
         if (c.Ok && c.Payload is not null)
-            SetStatus($"HỢP LỆ — Khách hàng: {c.Payload.Customer} · Hết hạn: {c.Payload.ExpiresUtc:dd/MM/yyyy} (còn {c.DaysLeft} ngày) · Khóa máy: {c.Payload.Hwid}", true);
+            SetStatus(
+                $"HỢP LỆ — Khách hàng: {c.Payload.Customer} · Hết hạn: {c.Payload.ExpiresUtc:dd/MM/yyyy} " +
+                $"(còn {c.DaysLeft} ngày) · Key: {c.Payload.KeyId} · Máy: {c.Payload.Hwid}",
+                true);
         else
             SetStatus("KHÔNG HỢP LỆ: " + c.Message, false);
     }

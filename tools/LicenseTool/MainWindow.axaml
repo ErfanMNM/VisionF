@@ -45,6 +45,9 @@
                   <TextBlock Text="🔒 Private key chỉ nằm trên máy của bạn. Tuyệt đối không commit git, không gửi Zalo/Email, không copy cho khách." />
                 </Border>
                 <TextBlock Classes="label" Text="{Binding KeyFingerprint, StringFormat='Đang dùng: {0}'}" />
+                <Border Classes="notice" IsVisible="{Binding !KeyMatchesApp}">
+                  <TextBlock Text="{Binding KeyId, StringFormat='⚠ Key đang nạp ({0}) KHÔNG khớp public key trong app — license cấp ra sẽ bị từ chối. Hãy nạp đúng private.key hoặc sửa LicenseKeys.cs rồi build lại.'}" />
+                </Border>
                 <StackPanel Orientation="Horizontal" Spacing="10">
                   <Button Classes="btn" Content="📂  Chọn private.key…"
                           Command="{Binding PickPrivateKeyCommand}" />
@@ -61,13 +64,15 @@
                   <TextBlock Classes="sectionTitle" VerticalAlignment="Center" Text="Thông tin máy khách" />
                 </StackPanel>
                 <TextBlock Classes="label" Text="Mã máy (HWID) — khách chạy DemoQR.exe sẽ thấy mã này, gửi cho bạn. Nhập dạng nhóm hay liền đều được." />
-                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+                <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="10">
                   <TextBox Grid.Column="0" Classes="mono" Text="{Binding HwidRaw}"
                            PlaceholderText="Ví dụ: 1D6B-D107-BBC2-75D4-515B-A4FB-E035-10ED" />
                   <Button Grid.Column="1" Classes="btn small" Content="📋 Dán"
                           Command="{Binding PasteHwidCommand}" />
                   <Button Grid.Column="2" Classes="btn small" Content="⧉ Copy"
                           Command="{Binding CopyHwidCommand}" />
+                  <Button Grid.Column="3" Classes="btn small" Content="🖥 Máy này"
+                          Command="{Binding UseThisMachineCommand}" />
                 </Grid>
                 <Grid ColumnDefinitions="2*,*" ColumnSpacing="12">
                   <StackPanel Grid.Column="0" Spacing="5">
@@ -144,11 +149,14 @@
             </Border>
             <Border Classes="panel">
               <StackPanel Spacing="8">
-                <TextBlock Classes="sectionTitle" Text="🛡️  Bảo mật khóa" />
+                <TextBlock Classes="sectionTitle" Text="🛡️  Bảo mật và xoay vòng khóa" />
                 <Separator Background="{StaticResource LineColor}" Margin="0,2" />
                 <TextBlock TextWrapping="Wrap" Text="•  Chỉ giữ private.key trên máy của bạn — không commit git, không copy cho khách." />
-                <TextBlock TextWrapping="Wrap" Text="•  Nếu lộ private.key: tạo cặp key mới → thay public key trong code → build lại app → cấp lại license cho khách." />
-                <TextBlock Classes="label" Text="Public key nằm trong ClassLibraryMT/Licensing/LicenseValidator.cs — đổi key là phải build lại DemoQR." />
+                <TextBlock TextWrapping="Wrap" Text="•  Public key nằm trong ClassLibraryMT/Licensing/LicenseKeys.cs — đổi key là phải build lại DemoQR." />
+                <TextBlock TextWrapping="Wrap" Text="•  Mỗi license ghi kèm kid (8 ký tự hex) của key đã ký. App dùng kid để tra đúng public key." />
+                <TextBlock TextWrapping="Wrap" Text="•  Nhiều key có thể cùng tồn tại: LicenseKeys.All giữ các key theo kid. License cũ vẫn chạy." />
+                <TextBlock TextWrapping="Wrap" Text="•  Nếu lộ private.key: bấm “Tạo cặp key mới” → dán public key mới vào LicenseKeys.cs → build lại app → cấp lại license cho khách." />
+                <TextBlock TextWrapping="Wrap" Text="•  Sau khi mọi license cũ hết hạn, có thể bỏ key cũ khỏi LicenseKeys.All để app nhẹ hơn." />
               </StackPanel>
             </Border>
           </StackPanel>

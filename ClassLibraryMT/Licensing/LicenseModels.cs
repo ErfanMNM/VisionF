@@ -10,6 +10,8 @@ public sealed class LicensePayload
     [JsonPropertyName("issued")] public DateTime IssuedUtc { get; set; }
     [JsonPropertyName("expires")] public DateTime ExpiresUtc { get; set; }
     [JsonPropertyName("product")] public string Product { get; set; } = "DemoQR";
+    // Id cua public key da dung de ky (8 ky tu hex). De app biet key nao da cap.
+    [JsonPropertyName("kid")] public string KeyId { get; set; } = "";
 }
 
 // File license.lic: {"v":1,"data":"<base64 json payload>","sig":"<base64 chu ky RSA>"}
@@ -18,10 +20,4 @@ public sealed class LicenseFile
     [JsonPropertyName("v")] public int Version { get; set; }
     [JsonPropertyName("data")] public string Data { get; set; } = "";
     [JsonPropertyName("sig")] public string Signature { get; set; } = "";
-}
-
-[JsonSerializable(typeof(LicensePayload))]
-[JsonSerializable(typeof(LicenseFile))]
-public sealed partial class LicenseJsonContext : JsonSerializerContext
-{
 }

@@ -367,3 +367,7 @@ license.lic
 publish/
 keys-*/
 
+# Cau hinh rieng cho may dev (co ClientId/ApiKey that) - khong commit
+appsettings.Development.json
+appsettings.Local.json
+
