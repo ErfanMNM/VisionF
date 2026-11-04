@@ -7,13 +7,13 @@ todos:
     status: completed
   - id: plc-fins-core
     content: Viết FINS frame codec + UDP transport đồng bộ + map end code
-    status: in_progress
+    status: completed
   - id: plc-client
     content: Viết class OmronPlc sync Read/Write full kiểu + PlcResult có ProcessTime
-    status: pending
+    status: completed
   - id: plc-verify
     content: Build kiểm tra AOT warning + test với fake UDP responder
-    status: pending
+    status: completed
 isProject: false
 ---
 
