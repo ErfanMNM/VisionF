@@ -9,6 +9,19 @@
     <RootNamespace>TanTienQR</RootNamespace>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <!-- ===== Native AOT publish (don 1 file exe, khong can cai .NET runtime) =====
+         Publish lenh:
+           dotnet publish TanTienQR\TanTienQR.csproj -c Release -r win-x64
+         Hoac dung profile: TanTienQR\Properties\PublishProfiles\win-x64.pubxml
+         (dotnet publish TanTienQR -c Release -p:PublishProfile=win-x64) -->
+    <PublishAot>true</PublishAot>
+    <IsAotCompatible>true</IsAotCompatible>
+    <!-- KHONG bat InvariantGlobalization: app hien thi ngay tieng Viet (vi-VN),
+         bat len se roi ve tieng Anh. Native AOT van dong goi ICU day du. -->
+    <!-- Symbol rieng cho debug crash, khong nhung vao exe -->
+    <StripSymbols>true</StripSymbols>
+    <DebugType>none</DebugType>
   </PropertyGroup>
 
   <ItemGroup>
