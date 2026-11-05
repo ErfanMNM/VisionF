@@ -292,6 +292,9 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     private async Task ShowLicenseWindow()
     {
+        // Đóng popup nhanh trước khi mở cửa sổ quản lý (tránh chồng 2 lớp).
+        IsLicensePanelOpen = false;
+
         var owner = _window;
 
         // Owner phải đã hiển thị mới mở được dialog. Nếu cửa sổ chính chưa

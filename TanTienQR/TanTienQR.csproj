@@ -39,7 +39,9 @@
   <!-- Chi dung o moi truong Development: cau hinh mau cho debug.
        KHONG dua vao ban phat hanh cho khach (Release). -->
   <ItemGroup Condition="'$(Configuration)' == 'Debug'">
-    <None Include="appsettings.Development.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="appsettings.Development.json"
+          Condition="Exists('$(MSBuildThisFileDirectory)appsettings.Development.json')"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

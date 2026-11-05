@@ -162,6 +162,105 @@
             <Setter Property="Stroke" Value="{StaticResource Accent}" />
         </Style>
 
+        <!-- ===== Segmented tab (header): nút rộng cố định, track bo tròn ===== -->
+        <Style Selector="Button.segtab">
+            <Setter Property="Width" Value="140" />
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="999" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.segtab /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="999" />
+        </Style>
+        <Style Selector="Button.segtab:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource BgPanel}" />
+        </Style>
+        <Style Selector="Button.segtab:pointerover TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        </Style>
+        <Style Selector="Button.segtab.active /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource AccentSoft}" />
+        </Style>
+        <Style Selector="Button.segtab.active TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Accent}" />
+        </Style>
+        <Style Selector="Button.segtab Path.icon">
+            <Setter Property="Stroke" Value="{StaticResource TextMuted}" />
+            <Setter Property="Fill" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.segtab.active Path.icon">
+            <Setter Property="Stroke" Value="{StaticResource Accent}" />
+        </Style>
+
+        <!-- ===== Nút hamburger + hàng trong menu cửa sổ (custom chrome, popup tự vẽ) ===== -->
+        <Style Selector="Button.windowmenu">
+            <Setter Property="Width" Value="34" />
+            <Setter Property="Height" Value="34" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="17" />
+            <Setter Property="Background" Value="{StaticResource BgRaised}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineColor}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.windowmenu Path">
+            <Setter Property="Stroke" Value="{StaticResource TextPrimary}" />
+            <Setter Property="Fill" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.windowmenu /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource BgRaised}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineColor}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="17" />
+        </Style>
+        <Style Selector="Button.windowmenu:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource BgPanel}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+        </Style>
+        <Style Selector="Button.windowmenu:pointerover Path">
+            <Setter Property="Stroke" Value="{StaticResource TextPrimary}" />
+        </Style>
+        <Style Selector="Button.menubtn">
+            <Setter Property="MinHeight" Value="38" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="9" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.menubtn /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="9" />
+            <Setter Property="Padding" Value="12,0" />
+        </Style>
+        <Style Selector="Button.menubtn:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource BgRaised}" />
+        </Style>
+        <Style Selector="Button.menubtn.danger TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Danger}" />
+        </Style>
+
         <!-- ===== Chip / nut thao tac ===== -->
         <Style Selector="Button.chip">
             <Setter Property="MinHeight" Value="44" />
