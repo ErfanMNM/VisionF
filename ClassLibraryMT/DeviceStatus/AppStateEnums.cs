@@ -36,9 +36,7 @@ public enum CameraStatus
     Reconnecting = 3,
 }
 
-/// <summary>
-/// Trạng thái kết nối PLC (theo mẫu dự án TApp).
-/// </summary>
+    /// <summary>Trạng thái PLC (theo mẫu dự án TApp).</summary>
 public enum PLCStatus
 {
     /// <summary>Đã kết nối (lần ghi gần nhất thành công).</summary>
@@ -46,4 +44,7 @@ public enum PLCStatus
 
     /// <summary>Mất kết nối (lần ghi gần nhất thất bại).</summary>
     Disconnect = 1,
+
+    /// <summary>Đang thử kết nối lại (sau khi mất kết nối).</summary>
+    Reconnecting = 2,
 }

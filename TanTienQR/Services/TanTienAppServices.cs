@@ -17,6 +17,7 @@ public static class TanTienAppServices
 {
     public const string CameraSectionName = "Camera";
     public const string PlcSectionName = "Plc";
+    public const string WebSectionName = "Web";
 
     public static IServiceCollection AddTanTienServices(
         this IServiceCollection services, IConfiguration configuration)
@@ -85,8 +86,22 @@ public static class TanTienAppServices
         // ---- Kênh kết quả quét mã (worker -> UI) ----
         services.AddSingleton<ScanFeed>();
 
+        // ---- Web Checkee nhúng (tab Sản xuất) ----
+        services.AddOptions<WebOptions>()
+            .Configure<IConfiguration>((o, cfg) =>
+            {
+                o.Url = ConfigReader.GetString(cfg, $"{WebSectionName}:Url", o.Url);
+                o.Enabled = ConfigReader.GetBool(cfg, $"{WebSectionName}:Enabled", o.Enabled);
+            })
+            .Validate(o => !string.IsNullOrWhiteSpace(o.Url), "Web:Url khong duoc de trong.")
+            .ValidateOnStart();
+
         // ---- Quản lý license ----
         services.AddSingleton<LicenseManager>();
+
+        // ---- Đọc/ghi file cấu hình (tab Cấu hình) ----
+        services.AddSingleton<ConfigStore>();
+        services.AddSingleton<ConfigEditorViewModel>();
 
         // ---- Worker chạy nền ----
         services.AddSingleton<CameraSignalWorker>();

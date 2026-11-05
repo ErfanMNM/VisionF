@@ -1,0 +1,225 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:TanTienQR.ViewModels"
+             xmlns:d="http://schemas.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1040" d:DesignHeight="700"
+             x:Class="TanTienQR.Views.ConfigView"
+             x:DataType="vm:MainViewModel">
+
+    <Grid RowDefinitions="Auto,*,Auto" Margin="18,6,18,18" RowSpacing="12">
+
+        <!-- Tiêu đề + cảnh báo -->
+        <StackPanel Grid.Row="0" Spacing="6">
+            <TextBlock Text="Cấu hình ứng dụng"
+                       FontSize="21"
+                       FontWeight="Bold"
+                       Foreground="{StaticResource TextPrimary}" />
+            <TextBlock Classes="label"
+                       FontSize="12"
+                       Text="Tham số camera, PLC và web. Thay đổi IP/Port có hiệu lực sau khi khởi động lại ứng dụng." />
+
+            <Border Background="{StaticResource WarnSoft}"
+                    BorderBrush="{StaticResource Warn}"
+                    BorderThickness="1"
+                    CornerRadius="10"
+                    Padding="12,8"
+                    IsVisible="{Binding ConfigEditor.HasDevelopmentOverride}">
+                <TextBlock Foreground="{StaticResource Warn}"
+                           FontSize="11"
+                           FontWeight="SemiBold"
+                           TextWrapping="Wrap"
+                           Text="appsettings.Development.json đang tồn tại trong thư mục ứng dụng và sẽ ghi đè các giá trị trong appsettings.json khi app khởi động." />
+            </Border>
+        </StackPanel>
+
+        <!-- Các nhóm cấu hình -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="12" RowSpacing="12">
+
+                <!-- ===== Camera ===== -->
+                <Border Grid.Row="0" Grid.Column="0" Classes="panel" Padding="14,12">
+                    <StackPanel Spacing="10">
+                        <TextBlock Classes="sectionTitle" Text="CAMERA · ĐẦU ĐỌC MÃ" />
+
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="IP đầu đọc" />
+                            <TextBox Grid.Column="1" Text="{Binding ConfigEditor.CameraIp}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Port" />
+                            <NumericUpDown Grid.Column="1"
+                                           Minimum="1"
+                                           Maximum="65535"
+                                           Value="{Binding ConfigEditor.CameraPort}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Cửa sổ trùng mã (giây)" />
+                            <NumericUpDown Grid.Column="1"
+                                           Minimum="1"
+                                           Maximum="3600"
+                                           Value="{Binding ConfigEditor.CameraDuplicateWindowSeconds}" />
+                        </Grid>
+
+                        <TextBlock Classes="label" FontSize="10" TextWrapping="Wrap"
+                                   Text="Mã quét trùng trong khoảng thời gian này sẽ được coi là trùng và gửi Fail (D12 = 0)." />
+                    </StackPanel>
+                </Border>
+
+                <!-- ===== PLC ===== -->
+                <Border Grid.Row="0" Grid.Column="1" Classes="panel" Padding="14,12">
+                    <StackPanel Spacing="10">
+                        <TextBlock Classes="sectionTitle" Text="PLC · OMERON FINS/UDP" />
+
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="IP PLC" />
+                            <TextBox Grid.Column="1" Text="{Binding ConfigEditor.PlcIp}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Port FINS" />
+                            <NumericUpDown Grid.Column="1"
+                                           Minimum="1"
+                                           Maximum="65535"
+                                           Value="{Binding ConfigEditor.PlcPort}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Remote node (DA1)" />
+                            <NumericUpDown Grid.Column="1"
+                                           Minimum="0"
+                                           Maximum="255"
+                                           Value="{Binding ConfigEditor.PlcRemoteNode}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Local node (SA1)" />
+                            <NumericUpDown Grid.Column="1"
+                                           Minimum="0"
+                                           Maximum="255"
+                                           Value="{Binding ConfigEditor.PlcLocalNode}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Timeout (ms)" />
+                            <NumericUpDown Grid.Column="1"
+                                           Minimum="1"
+                                           Maximum="60000"
+                                           Value="{Binding ConfigEditor.PlcTimeoutMs}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Số lần thử lại" />
+                            <NumericUpDown Grid.Column="1"
+                                           Minimum="0"
+                                           Maximum="10"
+                                           Value="{Binding ConfigEditor.PlcRetries}" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- ===== Địa chỉ vùng D ===== -->
+                <Border Grid.Row="1" Grid.Column="0" Classes="panel" Padding="14,12">
+                    <StackPanel Spacing="10">
+                        <TextBlock Classes="sectionTitle" Text="VÙNG NHỚ D · TÍN HIỆU" />
+
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Kết quả (1/0)" />
+                            <TextBox Grid.Column="1" Text="{Binding ConfigEditor.ResultAddress}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Ready (1/0)" />
+                            <TextBox Grid.Column="1" Text="{Binding ConfigEditor.ReadyAddress}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Chu kỳ heartbeat (ms)" />
+                            <NumericUpDown Grid.Column="1"
+                                           Minimum="100"
+                                           Maximum="60000"
+                                           Value="{Binding ConfigEditor.RefreshIntervalMs}" />
+                        </Grid>
+
+                        <Border Classes="device" Padding="10">
+                            <StackPanel Spacing="3">
+                                <TextBlock Classes="label" FontSize="10" Text="Ý NGHĨA" />
+                                <TextBlock FontSize="11" TextWrapping="Wrap"
+                                           Foreground="{StaticResource TextMuted}"
+                                           Text="D12 = 1 khi đọc mã hợp lệ, D12 = 0 khi NoRead / FAIL / sai định dạng / trùng mã. D16 = 1 mỗi chu kỳ khi camera + PLC + license đều sẵn sàng." />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Border>
+
+                <!-- ===== Web + License ===== -->
+                <Border Grid.Row="1" Grid.Column="1" Classes="panel" Padding="14,12">
+                    <StackPanel Spacing="10">
+                        <TextBlock Classes="sectionTitle" Text="WEB · CHECKEE" />
+
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="URL trang" />
+                            <TextBox Grid.Column="1" Text="{Binding ConfigEditor.WebUrl}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Cho phép mở web" />
+                            <CheckBox Grid.Column="1"
+                                      IsChecked="{Binding ConfigEditor.WebEnabled}"
+                                      Content="Bật tab Sản xuất" />
+                        </Grid>
+
+                        <Border Classes="device" Padding="10">
+                            <StackPanel Spacing="3">
+                                <TextBlock Classes="label" FontSize="10" Text="LICENSE" />
+                                <TextBlock FontSize="12" FontWeight="SemiBold" Text="{Binding LicenseStatusText}" />
+                                <TextBlock FontSize="11"
+                                           Foreground="{StaticResource TextMuted}"
+                                           Text="{Binding LicenseCustomerText}" />
+                                <TextBlock FontSize="11"
+                                           Foreground="{StaticResource TextMuted}"
+                                           Text="{Binding LicenseDaysLeftText}" />
+                                <Button Classes="chip small"
+                                        HorizontalAlignment="Stretch"
+                                        Margin="0,6,0,0"
+                                        FontSize="11"
+                                        Content="Quản lý license..."
+                                        Command="{Binding ShowLicenseWindowCommand}" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </ScrollViewer>
+
+        <!-- Thanh thao tác -->
+        <Border Grid.Row="2" Classes="panel" Padding="12,10">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <StackPanel Spacing="2" VerticalAlignment="Center">
+                    <TextBlock FontSize="11"
+                               TextWrapping="Wrap"
+                               Foreground="{StaticResource TextMuted}"
+                               Text="Cấu hình được lưu vào appsettings.json trong thư mục ứng dụng." />
+                    <TextBlock FontSize="11"
+                               FontWeight="SemiBold"
+                               TextWrapping="Wrap"
+                               Foreground="{StaticResource Ok}"
+                               IsVisible="{Binding ConfigEditor.HasMessage}"
+                               Text="{Binding ConfigEditor.ConfigMessageText}" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Button Classes="chip"
+                            Content="Hoàn tác"
+                            Command="{Binding ConfigEditor.ResetCommand}" />
+                    <Button Classes="chip"
+                            FontWeight="Bold"
+                            Content="Lưu cấu hình"
+                            Command="{Binding ConfigEditor.SaveCommand}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

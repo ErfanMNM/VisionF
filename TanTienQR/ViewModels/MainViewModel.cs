@@ -1,10 +1,13 @@
 using System.Globalization;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using ClassLibraryMT.DeviceStatus;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Options;
 using TanTienQR.Services;
 using TanTienQR.Views;
 
@@ -24,16 +27,34 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
 
     private readonly ScanFeed _feed;
     private readonly LicenseManager _license;
+    private readonly ConfigEditorViewModel _configEditor;
     private readonly CancellationTokenSource _cts = new();
 
     private DispatcherTimer? _pollTimer;
     private Task? _feedTask;
     private Window? _window;
 
-    public MainViewModel(ScanFeed feed, LicenseManager license)
+    /// <summary>Đánh dấu đã dispose — chặn Dispose() chạy 2 lần.</summary>
+    private bool _disposed;
+
+    public MainViewModel(
+        ScanFeed feed,
+        LicenseManager license,
+        IOptions<WebOptions> webOptions,
+        ConfigEditorViewModel configEditor)
     {
         _feed = feed;
         _license = license;
+        _configEditor = configEditor;
+
+        // URL web lấy từ cấu hình; nếu cấu hình sai thì dùng URL mặc định.
+        var web = webOptions.Value;
+        IsWebEnabled = web.Enabled;
+
+        var url = web.Url;
+        WebUrl = string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url, UriKind.Absolute, out _)
+            ? DefaultWebUrl
+            : url.Trim();
     }
 
     private static CultureInfo CreateViCulture()
@@ -86,6 +107,8 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsCameraConnected))]
     [NotifyPropertyChangedFor(nameof(CameraLedClass))]
+    [NotifyPropertyChangedFor(nameof(CameraCardClass))]
+    [NotifyPropertyChangedFor(nameof(IsCameraBlinking))]
     public partial string CameraStatusText { get; set; } = "Chưa kết nối";
 
     /// <summary>True khi camera đang kết nối.</summary>
@@ -99,17 +122,49 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         _ => "off",
     };
 
+    /// <summary>
+    /// Class cho card thiết bị camera: viền + nền theo trạng thái.
+    /// Khi đang kết nối lại thì thêm "blink" để LED và viền chớp nhấp nháy.
+    /// </summary>
+    public string CameraCardClass => CameraStatusText switch
+    {
+        "Đã kết nối" => "ok",
+        "Đang kết nối lại" => "warn blink",
+        _ => "fault",
+    };
+
+    /// <summary>True khi camera đang kết nối lại (LED chớp).</summary>
+    public bool IsCameraBlinking => CameraStatusText == "Đang kết nối lại";
+
     /// <summary>Trạng thái PLC.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsPlcConnected))]
     [NotifyPropertyChangedFor(nameof(PlcLedClass))]
+    [NotifyPropertyChangedFor(nameof(PlcCardClass))]
+    [NotifyPropertyChangedFor(nameof(IsPlcBlinking))]
     public partial string PlcStatusText { get; set; } = "Chưa kết nối";
 
     /// <summary>True khi PLC kết nối được.</summary>
     public bool IsPlcConnected => PlcStatusText == "Đã kết nối";
 
-    /// <summary>Class cho LED PLC (on / off).</summary>
-    public string PlcLedClass => PlcStatusText == "Đã kết nối" ? "on" : "off";
+    /// <summary>Class cho LED PLC (on / off / warn).</summary>
+    public string PlcLedClass => PlcStatusText switch
+    {
+        "Đã kết nối" => "on",
+        "Đang kết nối lại" => "warn",
+        _ => "off",
+    };
+
+    /// <summary>Class cho card thiết bị PLC: viền + nền theo trạng thái.</summary>
+    public string PlcCardClass => PlcStatusText switch
+    {
+        "Đã kết nối" => "ok",
+        "Đang kết nối lại" => "warn blink",
+        _ => "fault",
+    };
+
+    /// <summary>True khi PLC đang kết nối lại (LED chớp).</summary>
+    public bool IsPlcBlinking => PlcStatusText == "Đang kết nối lại";
 
     // ---------- Đồng hồ ----------
 
@@ -146,6 +201,11 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     public partial string LastScanTimeText { get; set; } = "—";
 
     // ---------- License ----------
+
+    /// <summary>
+    /// Trình chỉnh sửa cấu hình (tab Cấu hình).
+    /// </summary>
+    public ConfigEditorViewModel ConfigEditor => _configEditor;
 
     /// <summary>Trạng thái license: "Hợp lệ" / "Không hợp lệ" / "Sắp hết hạn".</summary>
     [ObservableProperty]
@@ -197,22 +257,64 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     public partial string HwidText { get; set; } = "—";
 
     /// <summary>
+    /// True khi hộp thoại license đang mở (ẩn sau dấu "?" ở góc màn hình).
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsLicensePanelOpen { get; set; }
+
+    /// <summary>Mở/đóng hộp thoại license nhanh trên sidebar.</summary>
+    [RelayCommand]
+    private void ToggleLicensePanel() => IsLicensePanelOpen = !IsLicensePanelOpen;
+
+    /// <summary>
+    /// Tắt ứng dụng: đóng cửa sổ chính (hoặc cả ứng dụng nếu không có cửa sổ).
+    /// </summary>
+    [RelayCommand]
+    private void ShutdownApp()
+    {
+        var window = _window;
+        if (window is not null)
+        {
+            window.Close();
+            return;
+        }
+
+        // Dự phòng: không có cửa sổ tham chiếu -> yêu cầu cả ứng dụng dừng.
+        if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            desktop.Shutdown();
+        }
+    }
+
+    /// <summary>
     /// Mở hộp thoại quản lý license.
     /// </summary>
     [RelayCommand]
-    private void ShowLicenseWindow()
+    private async Task ShowLicenseWindow()
     {
         var owner = _window;
-        if (owner is null) return;
+
+        // Owner phải đã hiển thị mới mở được dialog. Nếu cửa sổ chính chưa
+        // sẵn sàng (ví dụ gọi từ trình xem trước trong IDE) thì bỏ qua.
+        if (owner is null || !owner.IsVisible)
+            return;
 
         var dialog = new LicenseWindow
         {
             DataContext = this,
         };
 
-        // LicenseWindow cần owner để CanResize/CanResize theo parent; bắt buộc
-        // ShowDialog để nó luôn nằm trên cửa sổ chính.
-        owner.ShowDialog(dialog);
+        try
+        {
+            // ShowDialog là hàm của DIALOG, tham số là cửa sổ cha.
+            // Gọi owner.ShowDialog(dialog) sẽ sai chiều và làm app crash.
+            await dialog.ShowDialog(owner);
+        }
+        catch (InvalidOperationException ex)
+        {
+            // Owner có thể vừa đóng trong lúc đang mở -> không làm crash app.
+            LicenseMessageText = "Không mở được hộp thoại license: " + ex.Message;
+        }
     }
 
     /// <summary>
@@ -338,7 +440,12 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         if (CameraStatusText != camera)
             CameraStatusText = camera;
 
-        var plc = GlobalVariables.PLCStatus == PLCStatus.Connected ? "Đã kết nối" : "Chưa kết nối";
+        var plc = GlobalVariables.PLCStatus switch
+        {
+            PLCStatus.Connected => "Đã kết nối",
+            PLCStatus.Reconnecting => "Đang kết nối lại",
+            _ => "Chưa kết nối",
+        };
         if (PlcStatusText != plc)
             PlcStatusText = plc;
     }
@@ -377,14 +484,45 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         DateText = now.ToString("dddd, dd/MM/yyyy", ViCulture);
     }
 
+    /// <summary>
+    /// Dọn tài nguyên (timer, kênh dữ liệu, cancellation token).
+    ///
+    /// Hàm này có thể được gọi 2 lần: một lần từ
+    /// <c>MainWindow.OnClosed</c>, một lần từ DI scope khi host dispose.
+    /// Vì vậy phải idempotent — nếu không sẽ ném
+    /// <see cref="ObjectDisposedException"/> khi <c>_cts.Cancel()</c> chạy
+    /// trên token source đã dispose.
+    /// </summary>
     public void Dispose()
     {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+
         _pollTimer?.Stop();
         _pollTimer = null;
 
-        _cts.Cancel();
+        try
+        {
+            _cts.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Đã dispose rồi — bỏ qua.
+        }
+
         _feed.Complete();
-        _cts.Dispose();
+
+        try
+        {
+            _cts.Dispose();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Đã dispose rồi — bỏ qua.
+        }
+
         GC.SuppressFinalize(this);
     }
 }

@@ -45,6 +45,10 @@ public static class AppStateManager
             if (GlobalVariables.PLCStatus == status) return;
 
             GlobalVariables.PLCStatus = status;
+
+            // Chỉ báo lỗi "không giao tiếp được" khi thực sự mất kết nối.
+            // Trạng thái Reconnecting (đang thử lại) chưa phải lỗi cuối cùng
+            // nên không ghi vào danh sách lỗi.
             if (status == PLCStatus.Disconnect)
                 AddErrorCore(AppErrorCode.PlcUnreachable, "Khong giao tiep duoc voi PLC.");
             else

@@ -27,6 +27,10 @@
             <SolidColorBrush x:Key="DangerSoft">#FCE8E6</SolidColorBrush>
             <SolidColorBrush x:Key="Idle">#708494</SolidColorBrush>
             <SolidColorBrush x:Key="IdleSoft">#E7EDF1</SolidColorBrush>
+            <SolidColorBrush x:Key="LineDanger">#F5C6C2</SolidColorBrush>
+            <SolidColorBrush x:Key="LineWarn">#F5D9A8</SolidColorBrush>
+            <SolidColorBrush x:Key="LineOk">#A8E0BE</SolidColorBrush>
+            <SolidColorBrush x:Key="LineAccent">#8FDDCB</SolidColorBrush>
 
             <FontFamily x:Key="UiFont">Google Sans, Segoe UI, Inter</FontFamily>
             <FontFamily x:Key="MonoFont">Roboto Mono, Cascadia Mono, Consolas</FontFamily>
@@ -124,6 +128,40 @@
             <Setter Property="Foreground" Value="{StaticResource Accent}" />
         </Style>
 
+        <!-- ===== Thanh tab ===== -->
+        <Style Selector="Button.tab">
+            <Setter Property="Padding" Value="16,9" />
+            <Setter Property="CornerRadius" Value="9" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
+        </Style>
+        <Style Selector="Button.tab /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.tab:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource BgRaised}" />
+        </Style>
+        <Style Selector="Button.tab:pointerover TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        </Style>
+        <Style Selector="Button.tab.active /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource AccentSoft}" />
+        </Style>
+        <Style Selector="Button.tab.active TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Accent}" />
+        </Style>
+        <Style Selector="Button.tab Path.icon">
+            <Setter Property="Stroke" Value="{StaticResource TextMuted}" />
+            <Setter Property="Fill" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.tab.active Path.icon">
+            <Setter Property="Stroke" Value="{StaticResource Accent}" />
+        </Style>
+
         <!-- ===== Chip / nut thao tac ===== -->
         <Style Selector="Button.chip">
             <Setter Property="MinHeight" Value="44" />
@@ -147,11 +185,13 @@
             <Setter Property="Background" Value="{StaticResource AccentSoft}" />
         </Style>
 
-        <!-- ===== Badge trang thai ===== -->
+        <!-- ===== Badge trang thai (co vien theo trang thai) ===== -->
         <Style Selector="Border.badge">
-            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="Padding" Value="10,4" />
             <Setter Property="CornerRadius" Value="8" />
             <Setter Property="Background" Value="{StaticResource IdleSoft}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineColor}" />
+            <Setter Property="BorderThickness" Value="1.5" />
         </Style>
         <Style Selector="Border.badge TextBlock">
             <Setter Property="FontSize" Value="10" />
@@ -160,18 +200,21 @@
         </Style>
         <Style Selector="Border.badge.running">
             <Setter Property="Background" Value="{StaticResource OkSoft}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineOk}" />
         </Style>
         <Style Selector="Border.badge.running TextBlock">
             <Setter Property="Foreground" Value="{StaticResource Ok}" />
         </Style>
         <Style Selector="Border.badge.warning">
             <Setter Property="Background" Value="{StaticResource WarnSoft}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineWarn}" />
         </Style>
         <Style Selector="Border.badge.warning TextBlock">
             <Setter Property="Foreground" Value="{StaticResource Warn}" />
         </Style>
         <Style Selector="Border.badge.fault">
             <Setter Property="Background" Value="{StaticResource DangerSoft}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineDanger}" />
         </Style>
         <Style Selector="Border.badge.fault TextBlock">
             <Setter Property="Foreground" Value="{StaticResource Danger}" />
@@ -186,11 +229,42 @@
             <Setter Property="Padding" Value="9" />
         </Style>
 
+        <!-- Card thiet bi: vien theo trang thai ket noi -->
+        <Style Selector="Border.deviceCard">
+            <Setter Property="Background" Value="{StaticResource BgPanel}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineColor}" />
+            <Setter Property="BorderThickness" Value="1.5" />
+            <Setter Property="CornerRadius" Value="11" />
+            <Setter Property="Padding" Value="12" />
+        </Style>
+        <Style Selector="Border.deviceCard.ok">
+            <Setter Property="BorderBrush" Value="{StaticResource LineOk}" />
+            <Setter Property="Background" Value="{StaticResource OkSoft}" />
+        </Style>
+        <Style Selector="Border.deviceCard.fault">
+            <Setter Property="BorderBrush" Value="{StaticResource LineDanger}" />
+            <Setter Property="Background" Value="{StaticResource DangerSoft}" />
+        </Style>
+        <Style Selector="Border.deviceCard.warn">
+            <Setter Property="BorderBrush" Value="{StaticResource LineWarn}" />
+            <Setter Property="Background" Value="{StaticResource WarnSoft}" />
+        </Style>
+        <Style Selector="Border.deviceCard TextBlock.deviceTitle">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        </Style>
+        <Style Selector="Border.deviceCard TextBlock.deviceStatus">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
+        </Style>
+
         <!-- ===== LED trang thai ===== -->
         <Style Selector="Ellipse.led">
-            <Setter Property="Width" Value="10" />
-            <Setter Property="Height" Value="10" />
+            <Setter Property="Width" Value="11" />
+            <Setter Property="Height" Value="11" />
             <Setter Property="Fill" Value="{StaticResource Idle}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
         <Style Selector="Ellipse.led.on">
             <Setter Property="Fill" Value="{StaticResource Ok}" />
@@ -200,6 +274,84 @@
         </Style>
         <Style Selector="Ellipse.led.warn">
             <Setter Property="Fill" Value="{StaticResource Warn}" />
+        </Style>
+
+        <!-- Halos LED: vong sang mo quanh LED de tach biet khi mat ket noi -->
+        <Style Selector="Ellipse.ledHalo">
+            <Setter Property="Width" Value="11" />
+            <Setter Property="Height" Value="11" />
+            <Setter Property="Fill" Value="{StaticResource Danger}" />
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Ellipse.ledHalo.warn">
+            <Setter Property="Fill" Value="{StaticResource Warn}" />
+        </Style>
+
+        <!-- LED chop chop khi mat ket noi (reconnecting) -->
+        <Style Selector="Ellipse.led.blink">
+            <Style.Animations>
+                <Animation Duration="0:0:0.55">
+                    <KeyFrame Cue="0%">
+                        <Setter Property="Opacity" Value="1" />
+                    </KeyFrame>
+                    <KeyFrame Cue="50%">
+                        <Setter Property="Opacity" Value="0.15" />
+                    </KeyFrame>
+                    <KeyFrame Cue="100%">
+                        <Setter Property="Opacity" Value="1" />
+                    </KeyFrame>
+                </Animation>
+            </Style.Animations>
+        </Style>
+
+        <!-- Halo chop chop khi mat ket noi -->
+        <Style Selector="Ellipse.ledHalo.blink">
+            <Style.Animations>
+                <Animation Duration="0:0:1.1">
+                    <KeyFrame Cue="0%">
+                        <Setter Property="Opacity" Value="0.55" />
+                    </KeyFrame>
+                    <KeyFrame Cue="50%">
+                        <Setter Property="Opacity" Value="0" />
+                    </KeyFrame>
+                    <KeyFrame Cue="100%">
+                        <Setter Property="Opacity" Value="0.55" />
+                    </KeyFrame>
+                </Animation>
+            </Style.Animations>
+        </Style>
+
+        <!-- Vien card chop chop khi mat ket noi -->
+        <Style Selector="Border.deviceCard.blink">
+            <Style.Animations>
+                <Animation Duration="0:0:1.1">
+                    <KeyFrame Cue="0%">
+                        <Setter Property="BorderBrush" Value="{StaticResource Danger}" />
+                    </KeyFrame>
+                    <KeyFrame Cue="50%">
+                        <Setter Property="BorderBrush" Value="{StaticResource LineColor}" />
+                    </KeyFrame>
+                    <KeyFrame Cue="100%">
+                        <Setter Property="BorderBrush" Value="{StaticResource Danger}" />
+                    </KeyFrame>
+                </Animation>
+            </Style.Animations>
+        </Style>
+        <Style Selector="Border.deviceCard.warn.blink">
+            <Style.Animations>
+                <Animation Duration="0:0:1.1">
+                    <KeyFrame Cue="0%">
+                        <Setter Property="BorderBrush" Value="{StaticResource Warn}" />
+                    </KeyFrame>
+                    <KeyFrame Cue="50%">
+                        <Setter Property="BorderBrush" Value="{StaticResource LineColor}" />
+                    </KeyFrame>
+                    <KeyFrame Cue="100%">
+                        <Setter Property="BorderBrush" Value="{StaticResource Warn}" />
+                    </KeyFrame>
+                </Animation>
+            </Style.Animations>
         </Style>
 
         <!-- ===== Su kien ===== -->

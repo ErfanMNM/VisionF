@@ -76,8 +76,21 @@ internal sealed class PlcWriter
 
             // Trạng thái kết nối PLC suy ra từ kết quả lần ghi gần nhất
             // (giống cách WK_Update của dự án TApp hoạt động).
-            AppStateManager.SetPlcStatus(
-                result.IsSuccess ? PLCStatus.Connected : PLCStatus.Disconnect);
+            //
+            // Khi ghi thất bại nhưng trước đó vẫn đang kết nối -> chuyển sang
+            // "Reconnecting" để UI hiện LED chớp nhấp nháy thay vì đỏ đặc.
+            if (result.IsSuccess)
+            {
+                AppStateManager.SetPlcStatus(PLCStatus.Connected);
+            }
+            else if (GlobalVariables.PLCStatus == PLCStatus.Connected)
+            {
+                AppStateManager.SetPlcStatus(PLCStatus.Reconnecting);
+            }
+            else
+            {
+                AppStateManager.SetPlcStatus(PLCStatus.Disconnect);
+            }
 
             return result;
         }

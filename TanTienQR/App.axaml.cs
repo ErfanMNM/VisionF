@@ -45,6 +45,9 @@ public partial class App : Application
             // để app chuyển sang trạng thái Ready (D16 = 1).
             _host.Services.GetRequiredService<LicenseManager>().Load();
 
+            // Nạp cấu hình vào form của tab Cấu hình.
+            _host.Services.GetRequiredService<ConfigEditorViewModel>().Load();
+
             desktop.MainWindow = new MainWindow
             {
                 DataContext = _host.Services.GetRequiredService<MainViewModel>(),

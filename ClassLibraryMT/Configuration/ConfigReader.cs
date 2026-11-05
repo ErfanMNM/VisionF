@@ -22,4 +22,14 @@ public static class ConfigReader
         var value = config[key];
         return int.TryParse(value, out var parsed) ? parsed : fallback;
     }
+
+    // Lay bool, tra ve fallback neu thieu hoac khong parse duoc.
+    //
+    // JSON bool ("true"/"false") khi doc qua IConfiguration se ra chuoi
+    // "True"/"False", nen phai dung bool.TryParse chu khong dung GetInt.
+    public static bool GetBool(IConfiguration config, string key, bool fallback)
+    {
+        var value = config[key];
+        return bool.TryParse(value, out var parsed) ? parsed : fallback;
+    }
 }

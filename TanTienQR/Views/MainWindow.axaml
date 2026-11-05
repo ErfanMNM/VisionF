@@ -1,15 +1,19 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:TanTienQR.ViewModels"
+        xmlns:views="using:TanTienQR.Views"
         xmlns:d="http://schemas.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="800"
         x:Class="TanTienQR.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Icon="/Assets/tantien-logo.png"
-        Title="TanTienQR · Bảng điều khiển quét mã"
-        Width="1280" Height="800"
+        Title="TanTienQR · Quét mã - PLC Omron"
+        Width="1360" Height="820"
         MinWidth="1100" MinHeight="700"
+        CanResize="True"
+        CanMinimize="False"
+        CanMaximize="True"
         WindowStartupLocation="CenterScreen">
 
     <Design.DataContext>
@@ -17,261 +21,311 @@
         <vm:MainViewModel />
     </Design.DataContext>
 
-    <Grid ColumnDefinitions="240,*">
+    <Grid RowDefinitions="Auto,*">
 
-        <!-- ===== Sidebar ===== -->
-        <Border Grid.Column="0"
+        <!-- ===== Thanh trên cùng: logo + tab + trạng thái ===== -->
+        <Border Grid.Row="0"
                 Background="{StaticResource BgPanel}"
                 BorderBrush="{StaticResource LineColor}"
-                BorderThickness="0,0,1,0"
-                Padding="16,18">
-            <Grid RowDefinitions="Auto,Auto,Auto,*" RowSpacing="18">
+                BorderThickness="0,0,0,1"
+                Padding="16,10">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="18">
 
                 <!-- Logo -->
-                <StackPanel Grid.Row="0" Spacing="10" HorizontalAlignment="Center">
-                    <Border Width="62" Height="62"
-                            CornerRadius="18"
-                            Background="{StaticResource Accent}"
-                            HorizontalAlignment="Center">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                    <Border Width="36" Height="36"
+                            CornerRadius="11"
+                            Background="{StaticResource Accent}">
                         <TextBlock Text="TT"
-                                   FontSize="22"
+                                   FontSize="14"
                                    FontWeight="Black"
                                    Foreground="White"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center" />
                     </Border>
-                    <TextBlock Text="TanTienQR"
-                               FontSize="15"
-                               FontWeight="Bold"
-                               Foreground="{StaticResource TextPrimary}"
-                               HorizontalAlignment="Center" />
-                    <TextBlock Text="Quét mã · PLC"
-                               Classes="label"
-                               FontSize="11"
-                               HorizontalAlignment="Center" />
-                </StackPanel>
-
-                <!-- Trạng thái app -->
-                <Border Grid.Row="1" Classes="device" Padding="12">
-                    <StackPanel Spacing="8">
-                        <TextBlock Classes="label" FontSize="10" Text="TRẠNG THÁI ỨNG DỤNG" />
-                        <Border Classes="badge"
-                                Classes.running="{Binding IsReady}"
-                                HorizontalAlignment="Left"
-                                Padding="10,4">
-                            <TextBlock Text="{Binding AppStateText}" />
-                        </Border>
-                        <TextBlock Text="{Binding AppStateDetail}"
-                                   FontSize="11"
-                                   Foreground="{StaticResource TextMuted}"
-                                   TextWrapping="Wrap"
-                                   MaxLines="3" />
+                    <StackPanel VerticalAlignment="Center" Spacing="0">
+                        <TextBlock Text="TanTienQR"
+                                   FontSize="14"
+                                   FontWeight="Bold"
+                                   Foreground="{StaticResource TextPrimary}" />
+                        <TextBlock Text="Quét mã · PLC"
+                                   Classes="label"
+                                   FontSize="10" />
                     </StackPanel>
-                </Border>
-
-                <!-- Thiết bị -->
-                <StackPanel Grid.Row="2" Spacing="8">
-                    <TextBlock Classes="label" FontSize="10" Text="THIẾT BỊ" Margin="2,0,0,0" />
-
-                    <Border Classes="device" Padding="12">
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
-                            <Ellipse Classes="led" Classes.on="{Binding IsCameraConnected}" Classes.off="{Binding !IsCameraConnected}" />
-                            <StackPanel Grid.Column="1" Spacing="2">
-                                <TextBlock Text="Camera RD" FontSize="12" FontWeight="SemiBold" />
-                                <TextBlock Text="{Binding CameraStatusText}" FontSize="11" Foreground="{StaticResource TextMuted}" />
-                            </StackPanel>
-                        </Grid>
-                    </Border>
-
-                    <Border Classes="device" Padding="12">
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
-                            <Ellipse Classes="led" Classes.on="{Binding IsPlcConnected}" Classes.off="{Binding !IsPlcConnected}" />
-                            <StackPanel Grid.Column="1" Spacing="2">
-                                <TextBlock Text="PLC Omron" FontSize="12" FontWeight="SemiBold" />
-                                <TextBlock Text="{Binding PlcStatusText}" FontSize="11" Foreground="{StaticResource TextMuted}" />
-                            </StackPanel>
-                        </Grid>
-                    </Border>
                 </StackPanel>
 
-                <!-- License: nút mở hộp thoại quản lý -->
-                <Border Grid.Row="3" Classes="device" Padding="12">
-                    <StackPanel Spacing="8">
-                        <Grid ColumnDefinitions="*,Auto">
-                            <TextBlock Classes="label" FontSize="10" Text="LICENSE" />
-                            <Border Grid.Column="1" Classes="badge"
+                <!-- Thanh tab -->
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            Spacing="6"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center">
+                    <Button Classes="tab"
+                            Classes.active="{Binding IsInfoVisible}"
+                            Command="{Binding ShowInfoTabCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Classes="icon"
+                                  Width="16" Height="16"
+                                  Stretch="Uniform"
+                                  StrokeThickness="2"
+                                  StrokeLineCap="Round"
+                                  StrokeJoin="Round"
+                                  Data="M4,4 L12,4 L12,11 L4,11 Z M16,4 L20,4 L20,11 L16,11 Z M4,15 L12,15 L12,19 L4,19 Z M16,15 L20,15 L20,19 L16,19 Z" />
+                            <TextBlock Text="Thông tin" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button Classes="tab"
+                            Classes.active="{Binding IsProductionVisible}"
+                            Command="{Binding ShowProductionTabCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Classes="icon"
+                                  Width="16" Height="16"
+                                  Stretch="Uniform"
+                                  StrokeThickness="2"
+                                  StrokeLineCap="Round"
+                                  StrokeJoin="Round"
+                                  Data="M3,12 A9,9 0 1 0 3,4 M3,12 L12,12 M12,3 C8,7 8,17 12,21" />
+                            <TextBlock Text="Sản xuất" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button Classes="tab"
+                            Classes.active="{Binding IsConfigVisible}"
+                            Command="{Binding ShowConfigTabCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Classes="icon"
+                                  Width="16" Height="16"
+                                  Stretch="Uniform"
+                                  StrokeThickness="2"
+                                  StrokeLineCap="Round"
+                                  StrokeJoin="Round"
+                                  Data="M4,7 L8,7 M10,7 L20,7 M4,17 L12,17 M16,17 L20,17 M8,4 L8,10 M16,14 L16,20" />
+                            <TextBlock Text="Cấu hình" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+
+                <!-- Trạng thái + đồng hồ -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="{Binding PageTitle}"
+                                   FontSize="15"
+                                   FontWeight="Bold"
+                                   Foreground="{StaticResource TextPrimary}"
+                                   HorizontalAlignment="Right" />
+                        <TextBlock Classes="label" FontSize="10" Text="{Binding PageSubtitle}" />
+                    </StackPanel>
+
+                    <Border Classes="pill" Classes.ok="{Binding IsReady}" Classes.warn="{Binding !IsReady}">
+                        <TextBlock Text="{Binding AppStateText}" />
+                    </Border>
+
+                    <StackPanel Spacing="0">
+                        <TextBlock Classes="mono"
+                                   Text="{Binding ClockText}"
+                                   FontSize="18"
+                                   FontWeight="Bold"
+                                   HorizontalAlignment="Right" />
+                        <TextBlock Classes="label" FontSize="10" Text="{Binding DateText}" />
+                    </StackPanel>
+
+                    <!-- Nút ? mở nhanh thông tin license -->
+                    <Button Width="34" Height="34"
+                            CornerRadius="17"
+                            Background="{StaticResource BgRaised}"
+                            BorderBrush="{StaticResource LineColor}"
+                            BorderThickness="1"
+                            Foreground="{StaticResource TextMuted}"
+                            FontSize="15"
+                            FontWeight="Bold"
+                            Content="?"
+                            VerticalAlignment="Center"
+                            ToolTip.Tip="Thông tin license"
+                            IsVisible="{Binding !IsLicensePanelOpen}"
+                            Command="{Binding ToggleLicensePanelCommand}" />
+
+                    <!-- Nút tắt ứng dụng -->
+                    <Button Width="34" Height="34"
+                            CornerRadius="17"
+                            Background="{StaticResource DangerSoft}"
+                            BorderBrush="{StaticResource LineDanger}"
+                            BorderThickness="1"
+                            Foreground="{StaticResource Danger}"
+                            FontSize="15"
+                            FontWeight="Bold"
+                            Content="✕"
+                            VerticalAlignment="Center"
+                            ToolTip.Tip="Tắt ứng dụng"
+                            Command="{Binding ShutdownAppCommand}" />
+                </StackPanel>
+
+                <!-- Hộp thoại license thu gọn (popup) -->
+                <Panel Grid.Column="2"
+                       HorizontalAlignment="Right"
+                       VerticalAlignment="Top"
+                       Margin="0,52,60,0"
+                       Width="250"
+                       IsVisible="{Binding IsLicensePanelOpen}"
+                       ZIndex="11">
+                    <Border Padding="14"
+                            CornerRadius="12"
+                            Background="{StaticResource BgPanel}"
+                            BorderBrush="{StaticResource LineColor}"
+                            BorderThickness="1"
+                            BoxShadow="0 8 24 0 #22000000">
+                        <StackPanel Spacing="10">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Text="LICENSE"
+                                           FontSize="11"
+                                           FontWeight="Bold"
+                                           Foreground="{StaticResource TextPrimary}"
+                                           VerticalAlignment="Center" />
+                                <Button Grid.Column="1"
+                                        Classes="chip small"
+                                        MinHeight="26"
+                                        Padding="10,0"
+                                        FontSize="11"
+                                        Content="✕"
+                                        Command="{Binding ToggleLicensePanelCommand}" />
+                            </Grid>
+
+                            <Border Classes="badge"
+                                    HorizontalAlignment="Left"
                                     Classes.running="{Binding IsLicenseRunning}"
                                     Classes.warning="{Binding IsLicenseWarning}"
                                     Classes.fault="{Binding IsLicenseFault}">
                                 <TextBlock Text="{Binding LicenseStatusText}" />
                             </Border>
-                        </Grid>
 
-                        <TextBlock Text="{Binding LicenseDaysLeftText}"
-                                   FontSize="11"
-                                   Foreground="{StaticResource TextMuted}" />
+                            <TextBlock FontSize="11"
+                                       Foreground="{StaticResource TextMuted}"
+                                       Text="{Binding LicenseCustomerText}" />
 
-                        <Button Classes="chip small"
-                                HorizontalAlignment="Stretch"
-                                FontSize="11"
-                                Content="Quản lý license..."
-                                Command="{Binding ShowLicenseWindowCommand}" />
-                    </StackPanel>
-                </Border>
+                            <TextBlock FontSize="11"
+                                       Foreground="{StaticResource TextMuted}"
+                                       Text="{Binding LicenseDaysLeftText}" />
 
-                <!-- Đồng hồ -->
-                <StackPanel Grid.Row="4" VerticalAlignment="Bottom" Spacing="4">
-                    <TextBlock Text="{Binding ClockText}"
-                               Classes="mono"
-                               FontSize="30"
-                               FontWeight="Bold"
-                               Foreground="{StaticResource Accent}" />
-                    <TextBlock Text="{Binding DateText}"
-                               Classes="label"
-                               FontSize="11" />
-                </StackPanel>
+                            <Button Classes="chip small"
+                                    HorizontalAlignment="Stretch"
+                                    FontSize="11"
+                                    Content="Quản lý license..."
+                                    Command="{Binding ShowLicenseWindowCommand}" />
+                        </StackPanel>
+                    </Border>
+                </Panel>
             </Grid>
         </Border>
 
-        <!-- ===== Khu vực chính ===== -->
-        <Grid Grid.Column="1" RowDefinitions="Auto,Auto,*" Margin="18,18,18,18" RowSpacing="14">
+        <!-- ===== Nội dung: sidebar + vùng tab ===== -->
+        <Grid Grid.Row="1" ColumnDefinitions="240,*">
 
-            <!-- Tiêu đề -->
-            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                <StackPanel Spacing="3">
-                    <TextBlock Text="Bảng điều khiển quét mã"
-                               FontSize="21"
-                               FontWeight="Bold"
-                               Foreground="{StaticResource TextPrimary}" />
-                    <TextBlock Text="Nhận tín hiệu camera và gửi kết quả xuống PLC Omron (D12 = kết quả, D16 = Ready)"
-                               Classes="label"
-                               FontSize="12" />
-                </StackPanel>
+            <!-- ===== Sidebar ===== -->
+            <Border Grid.Column="0"
+                    Background="{StaticResource BgPanel}"
+                    BorderBrush="{StaticResource LineColor}"
+                    BorderThickness="0,0,1,0"
+                    Padding="16,18">
+                <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="18">
 
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <Border Classes="pill" Classes.ok="{Binding IsReady}" Classes.warn="{Binding !IsReady}">
-                        <TextBlock Text="{Binding AppStateText}" />
-                    </Border>
-                    <Border Classes="pill" Classes.ok="{Binding IsPlcConnected}" Classes.danger="{Binding !IsPlcConnected}">
-                        <TextBlock Text="{Binding PlcStatusText}" />
-                    </Border>
-                </StackPanel>
-            </Grid>
-
-            <!-- KPI -->
-            <Grid Grid.Row="1" ColumnDefinitions="*,*,*,*" ColumnSpacing="12">
-                <Border Grid.Column="0" Classes="kpi">
-                    <StackPanel Spacing="3">
-                        <TextBlock Classes="label" FontSize="11" Text="TỔNG SỐ LẦN QUÉT" />
-                        <TextBlock Classes="kpiValue" Text="{Binding TotalScans}" />
-                    </StackPanel>
-                </Border>
-
-                <Border Grid.Column="1" Classes="kpi">
-                    <StackPanel Spacing="3">
-                        <TextBlock Classes="label" FontSize="11" Text="PASS" />
-                        <TextBlock Classes="kpiValue" Foreground="{StaticResource Ok}" Text="{Binding PassCount}" />
-                    </StackPanel>
-                </Border>
-
-                <Border Grid.Column="2" Classes="kpi">
-                    <StackPanel Spacing="3">
-                        <TextBlock Classes="label" FontSize="11" Text="FAIL" />
-                        <TextBlock Classes="kpiValue" Foreground="{StaticResource Danger}" Text="{Binding FailCount}" />
-                    </StackPanel>
-                </Border>
-
-                <Border Grid.Column="3" Classes="kpi">
-                    <StackPanel Spacing="3">
-                        <TextBlock Classes="label" FontSize="11" Text="TỶ LỆ ĐẠT" />
-                        <StackPanel Orientation="Horizontal" Spacing="4">
-                            <TextBlock Classes="kpiValue" Text="{Binding PassRate}" />
-                            <TextBlock Classes="unit" VerticalAlignment="Bottom" Margin="0,0,0,6" Text="%" />
+                    <!-- Trạng thái app -->
+                    <Border Grid.Row="0" Classes="device" Padding="12">
+                        <StackPanel Spacing="8">
+                            <TextBlock Classes="label" FontSize="10" Text="TRẠNG THÁI ỨNG DỤNG" />
+                            <Border Classes="badge"
+                                    Classes.running="{Binding IsReady}"
+                                    HorizontalAlignment="Left">
+                                <TextBlock Text="{Binding AppStateText}" />
+                            </Border>
+                            <TextBlock Text="{Binding AppStateDetail}"
+                                       FontSize="11"
+                                       Foreground="{StaticResource TextMuted}"
+                                       TextWrapping="Wrap"
+                                       MaxLines="3" />
                         </StackPanel>
-                    </StackPanel>
-                </Border>
-            </Grid>
+                    </Border>
 
-            <!-- Bảng quét + sự kiện -->
-            <Grid Grid.Row="2" ColumnDefinitions="*,330" ColumnSpacing="12">
+                    <!-- Thiết bị -->
+                    <StackPanel Grid.Row="1" Spacing="8">
+                        <TextBlock Classes="label" FontSize="10" Text="THIẾT BỊ" Margin="2,0,0,0" />
 
-                <!-- Bảng mã quét -->
-                <Border Grid.Column="0" Classes="panel" Padding="14,12">
-                    <Grid RowDefinitions="Auto,*" RowSpacing="10">
-                        <Grid ColumnDefinitions="*,Auto">
-                            <StackPanel Orientation="Horizontal" Spacing="14">
-                                <TextBlock Classes="sectionTitle" Text="LỊCH SỬ MÃ QUÉT" />
-                                <TextBlock Classes="label" VerticalAlignment="Center" Text="{Binding TotalScans, StringFormat='Tổng: {0}'}" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                                <TextBlock Classes="label" VerticalAlignment="Center" Text="Mã cuối:" />
-                                <TextBlock Classes="reading" Text="{Binding LastScanText}" MaxWidth="240" TextTrimming="CharacterEllipsis" />
-                                <TextBlock Classes="label mono" VerticalAlignment="Center" Text="{Binding LastScanTimeText}" />
-                            </StackPanel>
-                        </Grid>
-
-                        <Grid Grid.Row="1" RowDefinitions="Auto,*" RowSpacing="6">
-                            <!-- Header -->
-                            <Grid Grid.Row="0" ColumnDefinitions="80,*,140,110,90" ColumnSpacing="8"
-                                  Margin="4,0,4,0">
-                                <TextBlock Classes="label" FontSize="10" Text="GIỜ" />
-                                <TextBlock Grid.Column="1" Classes="label" FontSize="10" Text="MÃ / SERIAL" />
-                                <TextBlock Grid.Column="2" Classes="label" FontSize="10" Text="GTIN" />
-                                <TextBlock Grid.Column="3" Classes="label" FontSize="10" Text="KẾT QUẢ" />
-                                <TextBlock Grid.Column="4" Classes="label" FontSize="10" Text="GỬI PLC" />
+                        <!-- Camera: viền + LED chớp khi mất kết nối -->
+                        <Border Classes="deviceCard {Binding CameraCardClass}">
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                                <Grid Width="11" Height="11">
+                                    <Ellipse Classes="ledHalo"
+                                             Classes.warn="{Binding !IsCameraConnected}"
+                                             Classes.blink="{Binding IsCameraBlinking}" />
+                                    <Ellipse Classes="led"
+                                             Classes.on="{Binding IsCameraConnected}"
+                                             Classes.warn="{Binding !IsCameraConnected}"
+                                             Classes.blink="{Binding IsCameraBlinking}" />
+                                </Grid>
+                                <StackPanel Grid.Column="1" Spacing="2">
+                                    <TextBlock Classes="deviceTitle" Text="Camera RD" />
+                                    <TextBlock Classes="deviceStatus" Text="{Binding CameraStatusText}" />
+                                </StackPanel>
                             </Grid>
+                        </Border>
 
-                            <!-- Dữ liệu -->
-                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                                <ItemsControl ItemsSource="{Binding Scans}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate x:DataType="vm:ScanRowViewModel">
-                                            <Border Classes="event" Margin="0,1" Padding="10,7">
-                                                <Grid ColumnDefinitions="80,*,140,110,90" ColumnSpacing="8">
-                                                    <TextBlock Classes="mono" FontSize="11" VerticalAlignment="Center" Text="{Binding TimeText}" />
-                                                    <TextBlock Grid.Column="1" Classes="mono" FontSize="12" FontWeight="SemiBold"
-                                                               VerticalAlignment="Center" Text="{Binding CodeText}"
-                                                               TextTrimming="CharacterEllipsis" />
-                                                    <TextBlock Grid.Column="2" Classes="mono" FontSize="11"
-                                                               VerticalAlignment="Center" Text="{Binding GtinText}"
-                                                               TextTrimming="CharacterEllipsis" />
-                                                    <Border Grid.Column="3" Classes="badge" Classes.running="{Binding IsPass}" Classes.warning="{Binding IsNoRead}" Classes.fault="{Binding IsInvalid}">
-                                                        <TextBlock Text="{Binding OutcomeText}" />
-                                                    </Border>
-                                                    <TextBlock Grid.Column="4" Classes="label" FontSize="11" VerticalAlignment="Center" Text="{Binding PlcText}" />
-                                                </Grid>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </ScrollViewer>
-                        </Grid>
-                    </Grid>
-                </Border>
+                        <!-- PLC: viền + LED chớp khi mất kết nối -->
+                        <Border Classes="deviceCard {Binding PlcCardClass}">
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                                <Grid Width="11" Height="11">
+                                    <Ellipse Classes="ledHalo"
+                                             Classes.warn="{Binding !IsPlcConnected}"
+                                             Classes.blink="{Binding IsPlcBlinking}" />
+                                    <Ellipse Classes="led"
+                                             Classes.on="{Binding IsPlcConnected}"
+                                             Classes.warn="{Binding !IsPlcConnected}"
+                                             Classes.blink="{Binding IsPlcBlinking}" />
+                                </Grid>
+                                <StackPanel Grid.Column="1" Spacing="2">
+                                    <TextBlock Classes="deviceTitle" Text="PLC Omron" />
+                                    <TextBlock Classes="deviceStatus" Text="{Binding PlcStatusText}" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
 
-                <!-- Sự kiện gần đây -->
-                <Border Grid.Column="1" Classes="panel" Padding="14,12">
-                    <Grid RowDefinitions="Auto,*" RowSpacing="10">
-                        <TextBlock Classes="sectionTitle" Text="SỰ KIỆN GẦN ĐÂY" />
-                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                            <ItemsControl ItemsSource="{Binding Events}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:ScanEvent">
-                                        <Border Classes="event" Margin="0,2" Padding="9,7">
-                                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
-                                                <Border Classes="stripe" Classes.warning="{Binding IsWarning}" Classes.critical="{Binding IsCritical}" />
-                                                <TextBlock Grid.Column="1" FontSize="11" TextWrapping="Wrap" MaxLines="2"
-                                                           VerticalAlignment="Center" Text="{Binding Message}" />
-                                                <TextBlock Grid.Column="2" Classes="label mono" FontSize="10"
-                                                           VerticalAlignment="Center" Text="{Binding TimeText}" />
-                                            </Grid>
-                                        </Border>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </ScrollViewer>
-                    </Grid>
-                </Border>
+                    <!-- Lối vào nhanh các tab -->
+                    <StackPanel Grid.Row="2" Spacing="8" VerticalAlignment="Top">
+                        <TextBlock Classes="label" FontSize="10" Text="MỤC LỤC" Margin="2,0,0,0" />
+
+                        <Button Classes="chip"
+                                HorizontalAlignment="Stretch"
+                                FontSize="12"
+                                HorizontalContentAlignment="Left"
+                                Content="Thông tin"
+                                Command="{Binding ShowInfoTabCommand}" />
+                        <Button Classes="chip"
+                                HorizontalAlignment="Stretch"
+                                FontSize="12"
+                                HorizontalContentAlignment="Left"
+                                Content="Sản xuất"
+                                Command="{Binding ShowProductionTabCommand}" />
+                        <Button Classes="chip"
+                                HorizontalAlignment="Stretch"
+                                FontSize="12"
+                                HorizontalContentAlignment="Left"
+                                Content="Cấu hình"
+                                Command="{Binding ShowConfigTabCommand}" />
+                    </StackPanel>
+
+                    <!-- Gợi ý: license quản lý qua nút "?" trên thanh trên cùng -->
+                    <TextBlock Grid.Row="3"
+                               Classes="label"
+                               FontSize="10"
+                               TextWrapping="Wrap"
+                               Text="Nhấn dấu ? ở góc trên bên phải để xem thông tin license." />
+                </Grid>
+            </Border>
+
+            <!-- ===== Vùng nội dung tab ===== -->
+            <Grid Grid.Column="1">
+                <views:InfoView IsVisible="{Binding IsInfoVisible}" />
+                <views:ProductionView IsVisible="{Binding IsProductionVisible}" />
+                <views:ConfigView IsVisible="{Binding IsConfigVisible}" />
             </Grid>
         </Grid>
     </Grid>
