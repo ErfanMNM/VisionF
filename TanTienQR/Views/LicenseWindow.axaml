@@ -1,0 +1,105 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:TanTienQR.ViewModels"
+        xmlns:d="http://schemas.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="480" d:DesignHeight="560"
+        x:Class="TanTienQR.Views.LicenseWindow"
+        x:DataType="vm:MainViewModel"
+        Title="Quản lý license"
+        Width="480" Height="560"
+        MinWidth="420" MinHeight="480"
+        CanResize="True"
+        WindowStartupLocation="CenterOwner">
+
+    <Design.DataContext>
+        <vm:MainViewModel />
+    </Design.DataContext>
+
+    <Grid RowDefinitions="Auto,Auto,*" Margin="20">
+
+        <!-- Tiêu đề -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,16">
+            <StackPanel Spacing="3">
+                <TextBlock Text="Quản lý license"
+                           FontSize="19" FontWeight="Bold"
+                           Foreground="{StaticResource TextPrimary}" />
+                <TextBlock Text="Sản phẩm: TanTienQR"
+                           Classes="label" FontSize="12" />
+            </StackPanel>
+            <Border Grid.Column="1" Classes="badge"
+                    Classes.running="{Binding IsLicenseRunning}"
+                    Classes.warning="{Binding IsLicenseWarning}"
+                    Classes.fault="{Binding IsLicenseFault}"
+                    VerticalAlignment="Center">
+                <TextBlock Text="{Binding LicenseStatusText}" />
+            </Border>
+        </Grid>
+
+        <!-- Thông tin license -->
+        <Border Grid.Row="1" Classes="device" Padding="14" Margin="0,0,0,14">
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="7">
+                <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
+                    <TextBlock Classes="label" FontSize="11" Text="KHÁCH HÀNG" />
+                    <TextBlock Grid.Column="1" FontSize="13" FontWeight="SemiBold"
+                               Text="{Binding LicenseCustomerText}" />
+                </Grid>
+                <Grid Grid.Row="1" ColumnDefinitions="130,*" ColumnSpacing="12">
+                    <TextBlock Classes="label" FontSize="11" Text="HẾT HẠN" />
+                    <TextBlock Grid.Column="1" Classes="mono" FontSize="13"
+                               Text="{Binding LicenseExpiryText}" />
+                </Grid>
+                <Grid Grid.Row="2" ColumnDefinitions="130,*" ColumnSpacing="12">
+                    <TextBlock Classes="label" FontSize="11" Text="THỜI GIAN CÒN LẠI" />
+                    <TextBlock Grid.Column="1" FontSize="13" FontWeight="SemiBold"
+                               Text="{Binding LicenseDaysLeftText}" />
+                </Grid>
+                <Grid Grid.Row="3" ColumnDefinitions="130,*" ColumnSpacing="12">
+                    <TextBlock Classes="label" FontSize="11" Text="MÃ MÁY (HWID)" />
+                    <TextBlock Grid.Column="1" Classes="mono" FontSize="11"
+                               Foreground="{StaticResource TextMuted}"
+                               TextWrapping="Wrap"
+                               Text="{Binding HwidText}" />
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- Nội dung: thông báo + nút -->
+        <Grid Grid.Row="2" RowDefinitions="Auto,Auto,*" RowSpacing="14">
+
+            <Border Grid.Row="0" Classes="device" Padding="12"
+                    Background="{StaticResource DangerSoft}"
+                    BorderBrush="{StaticResource Danger}"
+                    IsVisible="{Binding !IsLicenseValid}">
+                <TextBlock Text="{Binding LicenseMessageText}"
+                           FontSize="12"
+                           Foreground="{StaticResource Danger}"
+                           TextWrapping="Wrap" />
+            </Border>
+
+            <StackPanel Grid.Row="1" Spacing="8">
+                <Button Classes="chip"
+                        HorizontalAlignment="Stretch"
+                        FontSize="13"
+                        Content="Nhập license từ file .lic..."
+                        Command="{Binding ImportLicenseCommand}" />
+                <Button Classes="chip"
+                        HorizontalAlignment="Stretch"
+                        FontSize="13"
+                        Content="Hủy license hiện tại"
+                        IsVisible="{Binding IsLicenseValid}"
+                        Command="{Binding RevokeLicenseCommand}" />
+                <Button Classes="chip"
+                        HorizontalAlignment="Stretch"
+                        FontSize="13"
+                        Content="Đóng"
+                        Click="OnCloseClick" />
+            </StackPanel>
+
+            <TextBlock Grid.Row="2" Classes="label" FontSize="10"
+                       VerticalAlignment="Bottom"
+                       TextWrapping="Wrap"
+                       Text="Gửi mã máy (HWID) cho nhà cung cấp để được cấp file license.lic, sau đó bấm &quot;Nhập license&quot; để chọn file đó." />
+        </Grid>
+    </Grid>
+</Window>

@@ -1,31 +1,31 @@
 ---
 name: PLC result and heartbeat to DemoQR
-overview: Nối DemoQR với PLC Omron theo đúng pattern dự án TApp: ghi kết quả Pass/Fail xuống D12 (1/0), ghi trạng thái Ready xuống D16 mỗi vòng (0/1) để đồng thời làm cơ chế phát hiện kết nối PLC, và xây AppState theo mẫu TApp (e_AppState, CameraStatus, PLCStatus) làm trạng thái toàn app.
+overview: "Nối DemoQR với PLC Omron theo đúng pattern dự án TApp: ghi kết quả Pass/Fail xuống D12 (1/0), ghi trạng thái Ready xuống D16 mỗi vòng (0/1) để đồng thời làm cơ chế phát hiện kết nối PLC, và xây AppState theo mẫu TApp (e_AppState, CameraStatus, PLCStatus) làm trạng thái toàn app."
 todos:
   - id: app-state
-    content: Tạo ClassLibraryMT/DeviceStatus/: e_AppState, CameraStatus, PLCStatus, GlobalVariables, AppError
-    status: pending
+    content: "Tạo ClassLibraryMT/DeviceStatus/: e_AppState, CameraStatus, PLCStatus, GlobalVariables, AppError"
+    status: completed
   - id: plc-config
     content: Tạo PlcOptions.cs + PlcServiceCollectionExtensions.cs (bind tay AOT-safe, validate, singleton OmronPlc)
-    status: pending
+    status: completed
   - id: plc-writer
     content: Tạo PlcWriter.cs — wrapper serialize ghi D12 (pass/fail) và D16 (ready), cập nhật PLCStatus
-    status: pending
+    status: completed
   - id: plc-heartbeat
     content: Tạo PlcHeartbeatService.cs — ghi D16 mỗi 1s với giá trị Ready hiện tại, cập nhật PLCStatus
-    status: pending
+    status: completed
   - id: worker-plc
-    content: Sửa CameraRDWorker: NoRead/FAIL → D12=0, kết quả Checkee → D12=1/0, cập nhật CameraStatus
-    status: pending
+    content: "Sửa CameraRDWorker: NoRead/FAIL → D12=0, kết quả Checkee → D12=1/0, cập nhật CameraStatus"
+    status: completed
   - id: wire-di
-    content: Sửa AppServices + Program: đăng ký AddPlc, validate PlcOptions, set AppState
-    status: pending
+    content: "Sửa AppServices + Program: đăng ký AddPlc, validate PlcOptions, set AppState"
+    status: completed
   - id: config-files
     content: Thêm mục Plc vào appsettings.json + appsettings.Development.json
-    status: pending
+    status: completed
   - id: verify
-    content: "Verify: build Debug/Release, publish AOT DemoQR sạch, smoke test heartbeat"
-    status: pending
+    content: ""
+    status: completed
 isProject: false
 ---
 

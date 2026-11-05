@@ -16,6 +16,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     [ObservableProperty] private string hwidRaw = "";
     [ObservableProperty] private string customer = "";
+    [ObservableProperty] private string product = "DemoQR";
     [ObservableProperty] private int daysValid = 365;
     [ObservableProperty] private string licenseOutPath = "license.lic";
     [ObservableProperty] private string verifyPath = "";
@@ -208,9 +209,10 @@ public sealed partial class MainViewModel : ObservableObject
         try
         {
             var outPath = string.IsNullOrWhiteSpace(LicenseOutPath) ? "license.lic" : LicenseOutPath;
-            var lic = LicenseSigner.Create(_privateKeyText, HwidRaw, Customer.Trim(), DaysValid);
+            var productName = string.IsNullOrWhiteSpace(Product) ? "DemoQR" : Product.Trim();
+            var lic = LicenseSigner.Create(_privateKeyText, HwidRaw, Customer.Trim(), DaysValid, productName);
             await File.WriteAllTextAsync(outPath, lic, new UTF8Encoding(false));
-            SetStatus($"Đã cấp license (kid={KeyId}, {new FileInfo(outPath).Length} bytes): {outPath}", true);
+            SetStatus($"Đã cấp license (product={productName}, kid={KeyId}, {new FileInfo(outPath).Length} bytes): {outPath}", true);
         }
         catch (Exception ex)
         {
@@ -239,10 +241,12 @@ public sealed partial class MainViewModel : ObservableObject
             SetStatus("Hãy chọn file license.lic cần kiểm tra.", false);
             return;
         }
-        var c = LicenseValidator.Validate(VerifyPath);
+        var productName = string.IsNullOrWhiteSpace(Product) ? "DemoQR" : Product.Trim();
+        var c = LicenseValidator.Validate(VerifyPath, productName);
         if (c.Ok && c.Payload is not null)
             SetStatus(
-                $"HỢP LỆ — Khách hàng: {c.Payload.Customer} · Hết hạn: {c.Payload.ExpiresUtc:dd/MM/yyyy} " +
+                $"HỢP LỆ — Sản phẩm: {c.Payload.Product} · Khách hàng: {c.Payload.Customer} · " +
+                $"Hết hạn: {c.Payload.ExpiresUtc:dd/MM/yyyy} " +
                 $"(còn {c.DaysLeft} ngày) · Key: {c.Payload.KeyId} · Máy: {c.Payload.Hwid}",
                 true);
         else

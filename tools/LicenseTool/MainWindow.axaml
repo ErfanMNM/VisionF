@@ -74,12 +74,16 @@
                   <Button Grid.Column="3" Classes="btn small" Content="🖥 Máy này"
                           Command="{Binding UseThisMachineCommand}" />
                 </Grid>
-                <Grid ColumnDefinitions="2*,*" ColumnSpacing="12">
+                <Grid ColumnDefinitions="2*,*,*" ColumnSpacing="12">
                   <StackPanel Grid.Column="0" Spacing="5">
                     <TextBlock Classes="label" Text="Tên khách hàng / công trình" />
                     <TextBox Text="{Binding Customer}" PlaceholderText="Ví dụ: NhàMáy-A · Line 1" />
                   </StackPanel>
                   <StackPanel Grid.Column="1" Spacing="5">
+                    <TextBlock Classes="label" Text="Sản phẩm" />
+                    <TextBox Text="{Binding Product}" PlaceholderText="DemoQR hoặc TanTienQR" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="2" Spacing="5">
                     <TextBlock Classes="label" Text="Hiệu lực (ngày)" />
                     <NumericUpDown Value="{Binding DaysValid}" Minimum="1" Maximum="3650" />
                   </StackPanel>

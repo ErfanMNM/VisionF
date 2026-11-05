@@ -17,12 +17,10 @@ public sealed record LicenseCheck(bool Ok, string Message, LicensePayload? Paylo
 // Kiem tra license trong app (chi giu PUBLIC key trong app, PRIVATE key giu kin).
 public static class LicenseValidator
 {
-    private const string ProductName = "DemoQR";
-
     public static string DefaultLicensePath =>
         Path.Combine(AppContext.BaseDirectory, "license.lic");
 
-    public static LicenseCheck Validate(string? licenseFilePath = null)
+    public static LicenseCheck Validate(string? licenseFilePath = null, string product = "DemoQR")
     {
         var path = licenseFilePath ?? DefaultLicensePath;
 
@@ -87,7 +85,7 @@ public static class LicenseValidator
             return new LicenseCheck(false, "Chu ky license khong hop le.", null);
         }
 
-        if (!string.Equals(payload.Product, ProductName, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(payload.Product, product, StringComparison.OrdinalIgnoreCase))
             return new LicenseCheck(false, "License khong dung san pham.", null);
 
         if (!string.Equals(HardwareId.Normalize(payload.Hwid), HardwareId.Get(), StringComparison.Ordinal))
