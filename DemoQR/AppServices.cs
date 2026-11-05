@@ -37,9 +37,15 @@ internal static class AppServices
         // Checkee: options + HttpClient + client (tu AddCheckee).
         services.AddCheckee(configuration);
 
+        // PLC Omron: options + OmronPlc (singleton) + PlcWriter.
+        services.AddPlc(configuration);
+
         // Worker chay nền.
         services.AddSingleton<CameraRDWorker>();
         services.AddHostedService(sp => sp.GetRequiredService<CameraRDWorker>());
+
+        // Heartbeat PLC: ghi trang thai Ready xuong D16 moi chu ky.
+        services.AddHostedService<PlcHeartbeatService>();
 
         return services;
     }

@@ -1,5 +1,6 @@
 ﻿using System.Text;
 using ClassLibraryMT.Communications.Checkee;
+using ClassLibraryMT.DeviceStatus;
 using ClassLibraryMT.Licensing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -54,6 +55,7 @@ internal class Program
         {
             _ = services.GetRequiredService<IOptions<CameraOptions>>().Value;
             _ = services.GetRequiredService<IOptions<CheckeeOptions>>().Value;
+            _ = services.GetRequiredService<IOptions<PlcOptions>>().Value;
             return true;
         }
         catch (OptionsValidationException ex)
@@ -79,6 +81,9 @@ internal class Program
             Console.WriteLine($"License OK (het han {lic.Payload!.ExpiresUtc:yyyy-MM-dd}, con {lic.DaysLeft} ngay).");
             if (lic.DaysLeft <= 30)
                 Console.WriteLine("CANH BAO: license sap het han, lien he nha cung cap de gia han.");
+
+            // AppState: license hop le -> app co the Ready (neu camera + PLC da ket noi).
+            AppStateManager.SetLicenseValid(true);
             return true;
         }
 
