@@ -37,17 +37,47 @@ public sealed class WebConfig
     [JsonPropertyName("Enabled")] public bool Enabled { get; set; } = true;
 }
 
+/// <summary>Cấu hình ghi log SQLite (mục "Logging:Sqlite").</summary>
+public sealed class SqliteLoggingConfig
+{
+    [JsonPropertyName("Path")] public string Path { get; set; } = "logs/app.db";
+    [JsonPropertyName("MinLevel")] public string MinLevel { get; set; } = "Information";
+    [JsonPropertyName("RetentionDays")] public int RetentionDays { get; set; } = 30;
+    [JsonPropertyName("EnableUserActions")] public bool EnableUserActions { get; set; } = true;
+    [JsonPropertyName("BatchSize")] public int BatchSize { get; set; } = 100;
+    [JsonPropertyName("FlushIntervalMs")] public int FlushIntervalMs { get; set; } = 1000;
+    [JsonPropertyName("PruneIntervalMs")] public int PruneIntervalMs { get; set; } = 3_600_000;
+}
+
+/// <summary>Cấu hình trang Lịch sử (mục "Logging:History").</summary>
+public sealed class LoggingHistoryConfig
+{
+    [JsonPropertyName("Enabled")] public bool Enabled { get; set; } = true;
+    [JsonPropertyName("PageSize")] public int PageSize { get; set; } = 200;
+}
+
+/// <summary>Cấu hình ghi log (mục "Logging").</summary>
+public sealed class LoggingConfig
+{
+    [JsonPropertyName("Sqlite")] public SqliteLoggingConfig Sqlite { get; set; } = new();
+    [JsonPropertyName("History")] public LoggingHistoryConfig History { get; set; } = new();
+}
+
 /// <summary>
 /// Toàn bộ nội dung file appsettings.json.
 ///
-/// Các thuộc tính được đặt tên "Camera", "Plc", "Web" để khớp đúng key
-/// trong file JSON (không dùng camelCase mặc định của System.Text.Json).
+/// Các thuộc tính được đặt tên "Camera", "Plc", "Web", "Logging" để khớp đúng
+/// key trong file JSON (không dùng camelCase mặc định của System.Text.Json).
+///
+/// Phần "Logging" được giữ nguyên khi lưu cấu hình từ UI — nếu không có nó,
+/// thao tác lưu cấu hình sẽ xoá mất thiết lập ghi log.
 /// </summary>
 public sealed class AppConfigSnapshot
 {
     [JsonPropertyName("Camera")] public CameraConfig Camera { get; set; } = new();
     [JsonPropertyName("Plc")] public PlcConfig Plc { get; set; } = new();
     [JsonPropertyName("Web")] public WebConfig Web { get; set; } = new();
+    [JsonPropertyName("Logging")] public LoggingConfig Logging { get; set; } = new();
 }
 
 // ---------------------------------------------------------------- JsonContext
@@ -57,6 +87,9 @@ public sealed class AppConfigSnapshot
     WriteIndented = true,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(AppConfigSnapshot))]
+[JsonSerializable(typeof(LoggingConfig))]
+[JsonSerializable(typeof(SqliteLoggingConfig))]
+[JsonSerializable(typeof(LoggingHistoryConfig))]
 public sealed partial class AppConfigJsonContext : JsonSerializerContext
 {
 }

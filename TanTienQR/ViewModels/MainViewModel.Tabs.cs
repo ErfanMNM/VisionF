@@ -1,3 +1,4 @@
+using ClassLibraryMT.Logging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using TanTienQR.Models;
@@ -24,6 +25,7 @@ internal partial class MainViewModel
     [NotifyPropertyChangedFor(nameof(IsInfoVisible))]
     [NotifyPropertyChangedFor(nameof(IsProductionVisible))]
     [NotifyPropertyChangedFor(nameof(IsConfigVisible))]
+    [NotifyPropertyChangedFor(nameof(IsHistoryVisible))]
     [NotifyPropertyChangedFor(nameof(PageTitle))]
     [NotifyPropertyChangedFor(nameof(PageSubtitle))]
     public partial AppSection CurrentSection { get; set; } = AppSection.Info;
@@ -37,11 +39,15 @@ internal partial class MainViewModel
     /// <summary>True khi đang ở tab Cấu hình.</summary>
     public bool IsConfigVisible => CurrentSection == AppSection.Configuration;
 
+    /// <summary>True khi đang ở tab Lịch sử (mục nhà phát triển).</summary>
+    public bool IsHistoryVisible => CurrentSection == AppSection.History;
+
     /// <summary>Tiêu đề trên thanh header, đổi theo tab.</summary>
     public string PageTitle => CurrentSection switch
     {
         AppSection.Production => "Sản xuất",
         AppSection.Configuration => "Cấu hình",
+        AppSection.History => "Lịch sử thao tác",
         _ => "Thông tin",
     };
 
@@ -50,6 +56,7 @@ internal partial class MainViewModel
     {
         AppSection.Production => "Theo dõi sản xuất trên hệ thống Checkee",
         AppSection.Configuration => "Tham số camera, PLC và web — áp dụng sau khi khởi động lại",
+        AppSection.History => "Nhật ký thao tác của người dùng — dành cho nhà phát triển",
         _ => "Nhận tín hiệu camera và gửi kết quả xuống PLC Omron (D12 = kết quả, D16 = Ready)",
     };
 
@@ -57,13 +64,13 @@ internal partial class MainViewModel
 
     /// <summary>Chuyển sang tab Thông tin.</summary>
     [RelayCommand]
-    private void ShowInfoTab() => CurrentSection = AppSection.Info;
+    private void ShowInfoTab() => SwitchTo(AppSection.Info, "Thông tin");
 
     /// <summary>Chuyển sang tab Sản xuất (nạp web nếu chưa nạp).</summary>
     [RelayCommand]
     private void ShowProductionTab()
     {
-        CurrentSection = AppSection.Production;
+        SwitchTo(AppSection.Production, "Sản xuất");
 
         if (!IsWebEnabled)
         {
@@ -90,10 +97,34 @@ internal partial class MainViewModel
     [RelayCommand]
     private void ShowConfigTab()
     {
-        CurrentSection = AppSection.Configuration;
+        SwitchTo(AppSection.Configuration, "Cấu hình");
 
         // Nạp lại giá trị từ file để không có thay đổi chưa lưu bị bỏ sót.
         ConfigEditor?.Load();
+    }
+
+    /// <summary>Chuyển sang tab Lịch sử (mục nhà phát triển).</summary>
+    [RelayCommand]
+    private void ShowHistoryTab()
+    {
+        SwitchTo(AppSection.History, "Lịch sử");
+        HistoryView?.LoadCommand.Execute(null);
+    }
+
+    /// <summary>
+    /// Chuyển tab và ghi lại thao tác của người dùng.
+    /// </summary>
+    /// <param name="section">Tab đích.</param>
+    /// <param name="label">Tên tab hiển thị.</param>
+    private void SwitchTo(AppSection section, string label)
+    {
+        var changed = CurrentSection != section;
+        CurrentSection = section;
+
+        if (changed)
+        {
+            _actionLog.Log("Tab.Switch", "Tab", label, UserActionResults.Success);
+        }
     }
 
     // ---------- WebView ----------

@@ -1,6 +1,7 @@
 using ClassLibraryMT.Communications.CodeReaderProtocol;
 using ClassLibraryMT.Communications.Plc;
 using ClassLibraryMT.Configuration;
+using ClassLibraryMT.Logging;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -22,6 +23,11 @@ public static class TanTienAppServices
     public static IServiceCollection AddTanTienServices(
         this IServiceCollection services, IConfiguration configuration)
     {
+        // ---- Log SQLite (log kỹ thuật + thao tác người dùng) ----
+        // Đăng ký TRƯỚC các worker để mọi ILogger<T> của worker đều được
+        // ghi xuống SQLite ngay từ đầu.
+        services.AddSqliteLogging(configuration);
+
         // ---- Camera: bind cấu hình thủ công (tương thích Native AOT) ----
         services.AddOptions<CameraOptions>()
             .Configure<IConfiguration>((o, cfg) =>
@@ -112,6 +118,7 @@ public static class TanTienAppServices
 
         // ---- ViewModel ----
         services.AddSingleton<MainViewModel>();
+        services.AddSingleton<HistoryViewModel>();
 
         return services;
     }

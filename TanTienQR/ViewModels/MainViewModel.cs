@@ -5,6 +5,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using ClassLibraryMT.DeviceStatus;
+using ClassLibraryMT.Logging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Options;
@@ -28,6 +29,8 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     private readonly ScanFeed _feed;
     private readonly LicenseManager _license;
     private readonly ConfigEditorViewModel _configEditor;
+    private readonly HistoryViewModel _historyView;
+    private readonly IUserActionLogger _actionLog;
     private readonly CancellationTokenSource _cts = new();
 
     private DispatcherTimer? _pollTimer;
@@ -41,11 +44,15 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         ScanFeed feed,
         LicenseManager license,
         IOptions<WebOptions> webOptions,
-        ConfigEditorViewModel configEditor)
+        ConfigEditorViewModel configEditor,
+        HistoryViewModel historyView,
+        IUserActionLogger actionLog)
     {
         _feed = feed;
         _license = license;
         _configEditor = configEditor;
+        _historyView = historyView;
+        _actionLog = actionLog;
 
         // URL web lấy từ cấu hình; nếu cấu hình sai thì dùng URL mặc định.
         var web = webOptions.Value;
@@ -207,6 +214,11 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     /// </summary>
     public ConfigEditorViewModel ConfigEditor => _configEditor;
 
+    /// <summary>
+    /// Trang lịch sử thao tác (tab Lịch sử, mục nhà phát triển).
+    /// </summary>
+    public HistoryViewModel HistoryView => _historyView;
+
     /// <summary>Trạng thái license: "Hợp lệ" / "Không hợp lệ" / "Sắp hết hạn".</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsLicenseValid))]
@@ -312,11 +324,19 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
             // ShowDialog là hàm của DIALOG, tham số là cửa sổ cha.
             // Gọi owner.ShowDialog(dialog) sẽ sai chiều và làm app crash.
             await dialog.ShowDialog(owner);
+
+            _actionLog.Log("License.Open", "License", "Mo hop thoai quan ly license", UserActionResults.Success);
         }
         catch (InvalidOperationException ex)
         {
             // Owner có thể vừa đóng trong lúc đang mở -> không làm crash app.
             LicenseMessageText = "Không mở được hộp thoại license: " + ex.Message;
+
+            _actionLog.Log(
+                "License.Open",
+                "License",
+                $"Loi khi mo hop thoai: {ex.Message}",
+                UserActionResults.Failed);
         }
     }
 
@@ -341,7 +361,10 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         });
 
         if (files.Count == 0)
+        {
+            _actionLog.Log("License.Import", "License", "Nguoi dung huy chon file", UserActionResults.Cancelled);
             return;
+        }
 
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
@@ -349,11 +372,22 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
             if (source is null)
             {
                 LicenseMessageText = "Không đọc được đường dẫn file đã chọn.";
+                _actionLog.Log(
+                    "License.Import",
+                    "License",
+                    "Khong doc duoc duong dan file da chon",
+                    UserActionResults.Failed);
                 return;
             }
 
-            _license.Import(source);
+            var result = _license.Import(source);
             RefreshLicenseInfo();
+
+            _actionLog.Log(
+                "License.Import",
+                "License",
+                $"Nhap file {Path.GetFileName(source)}",
+                result ? UserActionResults.Success : UserActionResults.Failed);
         });
     }
 
@@ -365,6 +399,8 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     {
         _license.Revoke();
         RefreshLicenseInfo();
+
+        _actionLog.Log("License.Revoke", "License", "Huy license hien tai", UserActionResults.Success);
     }
 
     /// <summary>
@@ -374,6 +410,12 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     public void Start(Window? window = null)
     {
         _window = window;
+
+        // Trang Lịch sử cần cửa sổ chính để mở hộp thoại lưu file xuất.
+        if (window is not null)
+        {
+            _historyView.Attach(window);
+        }
 
         if (_pollTimer != null) return;
 

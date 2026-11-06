@@ -16,4 +16,9 @@ public enum AppSection
 
     /// <summary>Cấu hình: tham số runtime của camera, PLC và web.</summary>
     Configuration = 2,
+
+    /// <summary>
+    /// Lịch sử: nhật ký thao tác người dùng (mục nhà phát triển).
+    /// </summary>
+    History = 3,
 }

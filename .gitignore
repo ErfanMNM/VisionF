@@ -367,6 +367,12 @@ license.lic
 publish/
 keys-*/
 
+# Database SQLite (log runtime) - khong commit
+*.db
+*.db-shm
+*.db-wal
+logs/
+
 # Cau hinh rieng cho may dev (co ClientId/ApiKey that) - khong commit
 appsettings.Development.json
 appsettings.Local.json

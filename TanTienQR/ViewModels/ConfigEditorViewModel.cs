@@ -1,3 +1,4 @@
+using ClassLibraryMT.Logging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Configuration;
@@ -20,11 +21,16 @@ internal partial class ConfigEditorViewModel : ViewModelBase
 {
     private readonly ConfigStore _store;
     private readonly IConfiguration _configuration;
+    private readonly IUserActionLogger _actionLog;
 
-    public ConfigEditorViewModel(ConfigStore store, IConfiguration configuration)
+    public ConfigEditorViewModel(
+        ConfigStore store,
+        IConfiguration configuration,
+        IUserActionLogger actionLog)
     {
         _store = store;
         _configuration = configuration;
+        _actionLog = actionLog;
     }
 
     // ---------- Camera ----------
@@ -128,6 +134,8 @@ internal partial class ConfigEditorViewModel : ViewModelBase
     {
         Load();
         ConfigMessageText = "Đã hoàn tác thay đổi chưa lưu.";
+
+        _actionLog.Log("Config.Reset", "Config", "Hoan tac thay doi chua luu", UserActionResults.Success);
     }
 
     /// <summary>
@@ -245,11 +253,18 @@ internal partial class ConfigEditorViewModel : ViewModelBase
         if (!_store.Save(snapshot))
         {
             ConfigMessageText = "Không ghi được file cấu hình. Kiểm tra quyền truy cập thư mục ứng dụng.";
+            _actionLog.Log(
+                "Config.Save",
+                "Config",
+                "Khong ghi duoc file cau hinh",
+                UserActionResults.Failed);
             return;
         }
 
         ConfigMessageText = HasDevelopmentOverride
             ? "Đã lưu cấu hình. Lưu ý: appsettings.Development.json đang tồn tại và sẽ ghi đè các giá trị này khi app khởi động."
             : "Đã lưu cấu hình. Thay đổi IP/Port sẽ có hiệu lực sau khi khởi động lại ứng dụng.";
+
+        _actionLog.Log("Config.Save", "Config", "Luu cau hinh", UserActionResults.Success);
     }
 }

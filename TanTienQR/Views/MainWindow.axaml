@@ -117,6 +117,22 @@
                                 <TextBlock Text="Cấu hình" />
                             </StackPanel>
                         </Button>
+
+                        <Button Classes="segtab"
+                                Classes.active="{Binding IsHistoryVisible}"
+                                Command="{Binding ShowHistoryTabCommand}">
+                            <StackPanel Orientation="Horizontal" Spacing="8"
+                                        HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Path Classes="icon"
+                                      Width="15" Height="15"
+                                      Stretch="Uniform"
+                                      StrokeThickness="2"
+                                      StrokeLineCap="Round"
+                                      StrokeJoin="Round"
+                                      Data="M4,5 L4,19 L7,19 L7,5 Z M9,5 L9,19 L12,19 L12,5 Z M14,5 L14,19 L17,19 L17,5 Z M20,9 L20,19 L20,19" />
+                                <TextBlock Text="Lịch sử" />
+                            </StackPanel>
+                        </Button>
                     </StackPanel>
                 </Border>
 
@@ -472,6 +488,25 @@
                                 HorizontalContentAlignment="Left"
                                 Content="Cấu hình"
                                 Command="{Binding ShowConfigTabCommand}" />
+
+                        <!-- Nhóm nhà phát triển -->
+                        <Border Classes="device"
+                                Padding="8"
+                                Margin="0,10,0,0"
+                                IsVisible="{Binding HistoryView.IsHistoryEnabled}">
+                            <StackPanel Spacing="6">
+                                <TextBlock Classes="label"
+                                           FontSize="9"
+                                           Text="NHÀ PHÁT TRIỂN"
+                                           Margin="2,0,0,2" />
+                                <Button Classes="chip"
+                                        HorizontalAlignment="Stretch"
+                                        FontSize="12"
+                                        HorizontalContentAlignment="Left"
+                                        Content="Lịch sử thao tác"
+                                        Command="{Binding ShowHistoryTabCommand}" />
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
 
                     <!-- Gợi ý: license quản lý qua nút "?" trên thanh trên cùng -->
@@ -488,6 +523,7 @@
                 <views:InfoView IsVisible="{Binding IsInfoVisible}" />
                 <views:ProductionView IsVisible="{Binding IsProductionVisible}" />
                 <views:ConfigView IsVisible="{Binding IsConfigVisible}" />
+                <views:HistoryView IsVisible="{Binding IsHistoryVisible}" />
             </Grid>
         </Grid>
     </Grid>

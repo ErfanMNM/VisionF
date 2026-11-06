@@ -4,19 +4,19 @@ overview: Tạo lib log SQLite dùng chung (log kỹ thuật qua ILogger + log t
 todos:
   - id: new-proj
     content: Tạo project ClassLibraryMT.Logging (net10.0, AOT-compatible, XML doc) + thêm vào VisionF.slnx
-    status: pending
+    status: completed
   - id: core-writer
     content: Viết SQLite writer bất đồng bộ (Channel + batch), schema 3 bảng, WAL, retention prune
-    status: pending
+    status: completed
   - id: provider-di
     content: Viết SQLiteLoggerProvider + IUserActionLogger + ILogQueryService + AddSqliteLogging (bind ConfigReader, ValidateOnStart)
-    status: pending
+    status: completed
   - id: history-page
     content: "Thêm trang Lịch sử thao tác (mục nhà phát triển): AppSection + tab + HistoryView/ViewModel, lọc + xuất JSON/CSV"
-    status: pending
+    status: completed
   - id: docs-tests
     content: Viết docs/logging-sqlite.md + XML doc, thêm unit test, build và chạy thử kiểm tra file .db
-    status: pending
+    status: in_progress
 isProject: false
 ---
 

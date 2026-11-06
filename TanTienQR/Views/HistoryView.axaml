@@ -1,0 +1,226 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:TanTienQR.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1040" d:DesignHeight="700"
+             x:Class="TanTienQR.Views.HistoryView"
+             x:DataType="vm:MainViewModel">
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="18,6,18,18" RowSpacing="12">
+
+        <!-- Tiêu đề -->
+        <StackPanel Grid.Row="0" Spacing="4">
+            <TextBlock Text="Lịch sử thao tác"
+                       FontSize="21"
+                       FontWeight="Bold"
+                       Foreground="{StaticResource TextPrimary}" />
+            <TextBlock Classes="label"
+                       FontSize="12"
+                       Text="Nhật ký thao tác của người dùng (chuyển tab, lưu cấu hình, nhập/hủy license, xuất file). Mục dành cho nhà phát triển." />
+        </StackPanel>
+
+        <!-- Bộ lọc: 2 hàng - hàng 1 là trường lọc, hàng 2 là nút điều khiển + xuất file -->
+        <Border Grid.Row="1" Classes="filterBar" Padding="14,12">
+            <Grid RowDefinitions="Auto,Auto" RowSpacing="12">
+
+                <!-- Hàng 1: các trường lọc -->
+                <Grid Grid.Row="0"
+                      ColumnDefinitions="Auto,Auto,Auto,Auto,*"
+                      ColumnSpacing="10">
+
+                    <StackPanel Grid.Column="0" Spacing="4" Width="150">
+                        <TextBlock Classes="fieldLabel" Text="TỪ NGÀY" />
+                        <CalendarDatePicker Classes="field"
+                                            Width="150"
+                                            SelectedDateFormat="Short"
+                                            SelectedDate="{Binding HistoryView.FromDate}" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Spacing="4" Width="150">
+                        <TextBlock Classes="fieldLabel" Text="ĐẾN NGÀY" />
+                        <CalendarDatePicker Classes="field"
+                                            Width="150"
+                                            SelectedDateFormat="Short"
+                                            SelectedDate="{Binding HistoryView.ToDate}" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2" Spacing="4" Width="180">
+                        <TextBlock Classes="fieldLabel" Text="HÀNH ĐỘNG" />
+                        <TextBox Classes="field"
+                                 Width="180"
+                                 PlaceholderText="ví dụ: Config"
+                                 Text="{Binding HistoryView.ActionFilter}" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="3" Spacing="4" Width="140">
+                        <TextBlock Classes="fieldLabel" Text="KẾT QUẢ" />
+                        <ComboBox Classes="field"
+                                  Width="140"
+                                  ItemsSource="{Binding HistoryView.ResultOptions}"
+                                  SelectedItem="{Binding HistoryView.ResultFilter}" />
+                    </StackPanel>
+
+                    <Border Grid.Column="4"
+                            Margin="4,0,0,0"
+                            Padding="12,0"
+                            Height="38"
+                            VerticalAlignment="Bottom"
+                            CornerRadius="10"
+                            Background="{StaticResource BgRaised}">
+                        <TextBlock Classes="label"
+                                   FontSize="12"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"
+                                   Text="{Binding HistoryView.FilterSummary}" />
+                    </Border>
+                </Grid>
+
+                <!-- Hàng 2: nút điều khiển + xuất file -->
+                <Grid Grid.Row="1"
+                      ColumnDefinitions="Auto,Auto,Auto,*,Auto"
+                      ColumnSpacing="8">
+
+                    <Button Grid.Column="0"
+                            Classes="primary"
+                            Content="Áp dụng"
+                            Command="{Binding HistoryView.ApplyFilterCommand}" />
+
+                    <Button Grid.Column="1"
+                            Classes="soft"
+                            Content="Đặt lại"
+                            Command="{Binding HistoryView.ResetFilterCommand}" />
+
+                    <Button Grid.Column="2"
+                            Classes="soft"
+                            Content="Làm mới"
+                            Command="{Binding HistoryView.LoadCommand}" />
+
+                    <TextBlock Grid.Column="3"
+                               Classes="label"
+                               FontSize="11.5"
+                               VerticalAlignment="Center"
+                               Margin="6,0"
+                               TextTrimming="CharacterEllipsis"
+                               Text="{Binding HistoryView.PaginationText}" />
+
+                    <StackPanel Grid.Column="4"
+                                Orientation="Horizontal"
+                                Spacing="8">
+                        <Button Classes="soft"
+                                Content="Xuất JSON"
+                                Command="{Binding HistoryView.ExportJsonCommand}" />
+                        <Button Classes="soft"
+                                Content="Xuất CSV"
+                                Command="{Binding HistoryView.ExportCsvCommand}" />
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- Bảng dữ liệu -->
+        <Border Grid.Row="2" Classes="panel" Padding="0">
+            <Grid RowDefinitions="*,Auto">
+
+                <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding HistoryView.Items}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:HistoryRowViewModel">
+                                <Border BorderBrush="{StaticResource LineColor}"
+                                        BorderThickness="0,0,0,1"
+                                        Padding="12,7">
+                                    <Grid ColumnDefinitions="160,170,130,*,110" ColumnSpacing="10">
+                                        <TextBlock Grid.Column="0"
+                                                   Classes="mono"
+                                                   FontSize="11"
+                                                   VerticalAlignment="Center"
+                                                   Text="{Binding TimestampText}" />
+                                        <TextBlock Grid.Column="1"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{StaticResource Accent}"
+                                                   VerticalAlignment="Center"
+                                                   Text="{Binding Action}" />
+                                        <TextBlock Grid.Column="2"
+                                                   FontSize="11"
+                                                   VerticalAlignment="Center"
+                                                   Text="{Binding Target}" />
+                                        <TextBlock Grid.Column="3"
+                                                   FontSize="11"
+                                                   Foreground="{StaticResource TextMuted}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center"
+                                                   Text="{Binding Detail}" />
+                                        <Border Grid.Column="4"
+                                                Classes="badge"
+                                                HorizontalAlignment="Left"
+                                                Classes.running="{Binding IsSuccess}"
+                                                Classes.warning="{Binding IsCancelled}"
+                                                Classes.fault="{Binding IsFailed}">
+                                            <TextBlock Text="{Binding Result}" />
+                                        </Border>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+
+                <!-- Thông báo khi không có dữ liệu -->
+                <StackPanel Grid.Row="0"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Center"
+                            Spacing="6"
+                            IsVisible="{Binding HistoryView.IsEmpty}">
+                    <TextBlock Text="Không có bản ghi"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource TextMuted}"
+                               HorizontalAlignment="Center" />
+                    <TextBlock Classes="label"
+                               FontSize="11"
+                               Text="Thử đổi khoảng thời gian hoặc xoá bộ lọc."
+                               HorizontalAlignment="Center" />
+                </StackPanel>
+
+                <!-- Phân trang -->
+                <Border Grid.Row="1"
+                        BorderBrush="{StaticResource LineColor}"
+                        BorderThickness="0,1,0,0"
+                        Padding="12,8">
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                        <TextBlock Grid.Column="0"
+                                   Classes="label"
+                                   FontSize="11"
+                                   VerticalAlignment="Center"
+                                   Text="{Binding HistoryView.PaginationText}" />
+
+                        <StackPanel Grid.Column="1"
+                                    Orientation="Horizontal"
+                                    Spacing="8"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center">
+                            <Button Classes="chip small"
+                                    Content="« Trang đầu"
+                                    IsEnabled="{Binding HistoryView.HasPreviousPage}"
+                                    Command="{Binding HistoryView.PreviousPageCommand}" />
+                            <Button Classes="chip small"
+                                    Content="Trang sau »"
+                                    IsEnabled="{Binding HistoryView.HasNextPage}"
+                                    Command="{Binding HistoryView.NextPageCommand}" />
+                        </StackPanel>
+
+                        <TextBlock Grid.Column="2"
+                                   Classes="label"
+                                   FontSize="11"
+                                   VerticalAlignment="Center"
+                                   TextWrapping="Wrap"
+                                   Foreground="{StaticResource Ok}"
+                                   IsVisible="{Binding HistoryView.HasStatus}"
+                                   Text="{Binding HistoryView.StatusMessage}" />
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

@@ -63,6 +63,9 @@ internal sealed class ConfigStore
             snapshot.Camera ??= new CameraConfig();
             snapshot.Plc ??= new PlcConfig();
             snapshot.Web ??= new WebConfig();
+            snapshot.Logging ??= new LoggingConfig();
+            snapshot.Logging.Sqlite ??= new SqliteLoggingConfig();
+            snapshot.Logging.History ??= new LoggingHistoryConfig();
 
             return snapshot;
         }
@@ -80,6 +83,10 @@ internal sealed class ConfigStore
 
     /// <summary>
     /// Ghi cấu hình xuống file. Trả về true nếu ghi thành công.
+    ///
+    /// Phần <c>Logging</c> được giữ nguyên từ file hiện có: form cấu hình
+    /// không có ô nhập cho log, nên nếu ghi đè thì mọi thiết lập ghi log sẽ
+    /// bị xoá mất mỗi lần người dùng bấm "Lưu cấu hình".
     /// </summary>
     public bool Save(AppConfigSnapshot snapshot)
     {
@@ -89,6 +96,10 @@ internal sealed class ConfigStore
 
         try
         {
+            // Giữ lại cấu hình log hiện có (nếu có).
+            var existing = Load();
+            snapshot.Logging = existing.Logging ?? new LoggingConfig();
+
             var json = JsonSerializer.Serialize(
                 snapshot,
                 AppConfigJsonContext.Default.AppConfigSnapshot);
