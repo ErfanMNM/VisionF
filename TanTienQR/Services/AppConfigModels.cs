@@ -91,15 +91,31 @@ public sealed class PlcSettingsConfig
 }
 
 /// <summary>
+/// Cấu hình lưu bản ghi quét mã (mục "Scans").
+///
+/// Khớp với <c>ClassLibraryMT.Scans.ScanStoreOptions</c> — chỉ dùng để đọc
+/// và giữ lại khi lưu cấu hình từ UI, phần bind thực tế do lib Scans đảm nhiệm.
+/// </summary>
+public sealed class ScanConfig
+{
+    [JsonPropertyName("DbPath")] public string DbPath { get; set; } = "logs/scans.db";
+    [JsonPropertyName("BatchSize")] public int BatchSize { get; set; } = 100;
+    [JsonPropertyName("FlushIntervalMs")] public int FlushIntervalMs { get; set; } = 1000;
+    [JsonPropertyName("QueueCapacity")] public int QueueCapacity { get; set; } = 20_000;
+    [JsonPropertyName("RetentionDays")] public int RetentionDays { get; set; }
+    [JsonPropertyName("PruneIntervalMs")] public int PruneIntervalMs { get; set; } = 3_600_000;
+}
+
+/// <summary>
 /// Toàn bộ nội dung file appsettings.json.
 ///
 /// Các thuộc tính được đặt tên "Camera", "Plc", "Web", "Logging", "Auth",
 /// "PlcSettings" để khớp đúng key trong file JSON (không dùng camelCase mặc định
 /// của System.Text.Json).
 ///
-/// Phần "Logging", "Auth" và "PlcSettings" được giữ nguyên khi lưu cấu hình từ UI —
-/// nếu không có nó, thao tác lưu cấu hình sẽ xoá mất thiết lập ghi log, xác thực
-/// và tham số PLC.
+/// Phần "Logging", "Auth", "PlcSettings" và "Scans" được giữ nguyên khi lưu cấu hình từ UI —
+/// nếu không có nó, thao tác lưu cấu hình sẽ xoá mất thiết lập ghi log, xác thực,
+/// tham số PLC và lưu bản ghi quét mã.
 /// </summary>
 public sealed class AppConfigSnapshot
 {
@@ -109,6 +125,7 @@ public sealed class AppConfigSnapshot
     [JsonPropertyName("Logging")] public LoggingConfig Logging { get; set; } = new();
     [JsonPropertyName("Auth")] public AuthConfig Auth { get; set; } = new();
     [JsonPropertyName("PlcSettings")] public PlcSettingsConfig PlcSettings { get; set; } = new();
+    [JsonPropertyName("Scans")] public ScanConfig Scans { get; set; } = new();
 }
 
 // ---------------------------------------------------------------- JsonContext
@@ -123,6 +140,7 @@ public sealed class AppConfigSnapshot
 [JsonSerializable(typeof(LoggingHistoryConfig))]
 [JsonSerializable(typeof(AuthConfig))]
 [JsonSerializable(typeof(PlcSettingsConfig))]
+[JsonSerializable(typeof(ScanConfig))]
 public sealed partial class AppConfigJsonContext : JsonSerializerContext
 {
 }

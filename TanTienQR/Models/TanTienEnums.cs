@@ -14,4 +14,11 @@ public enum ScanOutcome
 
     /// <summary>Mã trùng với lần quét gần đây → Fail (gửi D12 = 0).</summary>
     Duplicate = 3,
+
+    /// <summary>
+    /// Mã bị từ chối vì hệ thống đang xử lý mã trước đó (quá tải).
+    ///
+    /// KHÔNG gửi xuống PLC — mã bị bỏ qua hoàn toàn.
+    /// </summary>
+    Overload = 4,
 }

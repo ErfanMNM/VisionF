@@ -68,6 +68,7 @@ internal sealed class ConfigStore
             snapshot.Logging.History ??= new LoggingHistoryConfig();
             snapshot.Auth ??= new AuthConfig();
             snapshot.PlcSettings ??= new PlcSettingsConfig();
+            snapshot.Scans ??= new ScanConfig();
 
             return snapshot;
         }
@@ -86,10 +87,10 @@ internal sealed class ConfigStore
     /// <summary>
     /// Ghi cấu hình xuống file. Trả về true nếu ghi thành công.
     ///
-    /// Phần <c>Logging</c>, <c>Auth</c> và <c>PlcSettings</c> được giữ nguyên từ
-    /// file hiện có: form cấu hình không có ô nhập cho log / xác thực / tham số PLC,
-    /// nên nếu ghi đè thì mọi thiết lập đó sẽ bị xoá mất mỗi lần người dùng bấm
-    /// "Lưu cấu hình".
+    /// Phần <c>Logging</c>, <c>Auth</c>, <c>PlcSettings</c> và <c>Scans</c> được giữ nguyên từ
+    /// file hiện có: form cấu hình không có ô nhập cho log / xác thực / tham số PLC /
+    /// lưu bản ghi quét mã, nên nếu ghi đè thì mọi thiết lập đó sẽ bị xoá mất mỗi lần
+    /// người dùng bấm "Lưu cấu hình".
     /// </summary>
     public bool Save(AppConfigSnapshot snapshot)
     {
@@ -104,6 +105,7 @@ internal sealed class ConfigStore
             snapshot.Logging = existing.Logging ?? new LoggingConfig();
             snapshot.Auth = existing.Auth ?? new AuthConfig();
             snapshot.PlcSettings = existing.PlcSettings ?? new PlcSettingsConfig();
+            snapshot.Scans = existing.Scans ?? new ScanConfig();
 
             var json = JsonSerializer.Serialize(
                 snapshot,

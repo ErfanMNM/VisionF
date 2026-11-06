@@ -85,13 +85,14 @@
 
                     <Grid Grid.Row="1" RowDefinitions="Auto,*" RowSpacing="6">
                         <!-- Header -->
-                        <Grid Grid.Row="0" ColumnDefinitions="80,*,140,110,90" ColumnSpacing="8"
+                        <Grid Grid.Row="0" ColumnDefinitions="102,*,140,110,90,90" ColumnSpacing="8"
                               Margin="4,0,4,0">
                             <TextBlock Classes="label" FontSize="10" Text="GIỜ" />
                             <TextBlock Grid.Column="1" Classes="label" FontSize="10" Text="MÃ / SERIAL" />
                             <TextBlock Grid.Column="2" Classes="label" FontSize="10" Text="GTIN" />
                             <TextBlock Grid.Column="3" Classes="label" FontSize="10" Text="KẾT QUẢ" />
-                            <TextBlock Grid.Column="4" Classes="label" FontSize="10" Text="GỬI PLC" />
+                            <TextBlock Grid.Column="4" Classes="label" FontSize="10" Text="XỬ LÝ" />
+                            <TextBlock Grid.Column="5" Classes="label" FontSize="10" Text="GỬI PLC" />
                         </Grid>
 
                         <!-- Dữ liệu -->
@@ -100,7 +101,7 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:ScanRowViewModel">
                                         <Border Classes="event" Margin="0,1" Padding="10,7">
-                                            <Grid ColumnDefinitions="80,*,140,110,90" ColumnSpacing="8">
+                                            <Grid ColumnDefinitions="102,*,140,110,90,90" ColumnSpacing="8">
                                                 <TextBlock Classes="mono" FontSize="11" VerticalAlignment="Center" Text="{Binding TimeText}" />
                                                 <TextBlock Grid.Column="1" Classes="mono" FontSize="12" FontWeight="SemiBold"
                                                            VerticalAlignment="Center" Text="{Binding CodeText}"
@@ -108,10 +109,12 @@
                                                 <TextBlock Grid.Column="2" Classes="mono" FontSize="11"
                                                            VerticalAlignment="Center" Text="{Binding GtinText}"
                                                            TextTrimming="CharacterEllipsis" />
-                                                <Border Grid.Column="3" Classes="badge" Classes.running="{Binding IsPass}" Classes.warning="{Binding IsNoRead}" Classes.fault="{Binding IsInvalid}">
+                                                <Border Grid.Column="3" Classes="badge" Classes.running="{Binding IsPass}" Classes.warning="{Binding IsWarningOutcome}" Classes.fault="{Binding IsInvalid}">
                                                     <TextBlock Text="{Binding OutcomeText}" />
                                                 </Border>
-                                                <TextBlock Grid.Column="4" Classes="label" FontSize="11" VerticalAlignment="Center" Text="{Binding PlcText}" />
+                                                <TextBlock Grid.Column="4" Classes="mono" FontSize="11"
+                                                           VerticalAlignment="Center" Text="{Binding ProcessingTimeText}" />
+                                                <TextBlock Grid.Column="5" Classes="label" FontSize="11" VerticalAlignment="Center" Text="{Binding PlcText}" />
                                             </Grid>
                                         </Border>
                                     </DataTemplate>

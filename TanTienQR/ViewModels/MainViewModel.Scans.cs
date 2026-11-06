@@ -40,7 +40,7 @@ internal partial class MainViewModel
         PassRate = TotalScans == 0 ? 0 : Math.Round(PassCount * 100.0 / TotalScans, 1);
 
         LastScanText = record.Serial ?? record.Raw;
-        LastScanTimeText = record.TimestampUtc.ToLocalTime().ToString("HH:mm:ss", ViCulture);
+        LastScanTimeText = record.TimestampUtc.ToLocalTime().ToString("HH:mm:ss.fff", ViCulture);
 
         switch (record.Outcome)
         {
@@ -53,12 +53,18 @@ internal partial class MainViewModel
             case ScanOutcome.Duplicate:
                 AddEvent($"Mã trùng với lần quét gần đây · {record.Serial}", EventLevel.Warning);
                 break;
+            case ScanOutcome.Overload:
+                AddEvent(
+                    $"Hệ thống đang xử lý mã trước, bỏ qua mã mới · {record.Raw}",
+                    EventLevel.Warning);
+                break;
             default:
                 AddEvent($"Mã sai định dạng · {record.Raw}", EventLevel.Warning);
                 break;
         }
 
-        if (!record.PlcWritten)
+        // Mã bị từ chối do quá tải thì KHÔNG ghi PLC -> không phải lỗi PLC.
+        if (!record.PlcWritten && record.Outcome != ScanOutcome.Overload)
             AddEvent("Ghi kết quả xuống PLC thất bại", EventLevel.Critical);
     }
 
@@ -101,7 +107,7 @@ public sealed record ScanEvent(string Message, EventLevel Level, DateTime Timest
     public bool IsCritical => Level == EventLevel.Critical;
 
     /// <summary>Giờ hiển thị.</summary>
-    public string TimeText => Timestamp.ToString("HH:mm:ss", ViCulture);
+    public string TimeText => Timestamp.ToString("HH:mm:ss.fff", ViCulture);
 
     private static CultureInfo CreateViCulture()
     {
