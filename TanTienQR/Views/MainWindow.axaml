@@ -2,13 +2,14 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:TanTienQR.ViewModels"
         xmlns:views="using:TanTienQR.Views"
+        xmlns:controls="using:TanTienQR.Controls"
         xmlns:prim="using:Avalonia.Controls.Primitives"
         xmlns:d="http://schemas.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="800"
         x:Class="TanTienQR.Views.MainWindow"
         x:DataType="vm:MainViewModel"
-        Icon="/Assets/tantien-logo.png"
+        Icon="/Assets/tantien-logo.ico"
         Title="TanTienQR · Quét mã - PLC Omron"
         Width="1360" Height="820"
         MinWidth="1100" MinHeight="700"
@@ -43,15 +44,14 @@
                 <!-- Logo -->
                 <StackPanel Grid.Row="0" Grid.Column="0"
                             Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                    <Border Width="36" Height="36"
+                    <Border Width="38" Height="38"
                             CornerRadius="11"
-                            Background="{StaticResource Accent}">
-                        <TextBlock Text="TT"
-                                   FontSize="14"
-                                   FontWeight="Black"
-                                   Foreground="White"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center" />
+                            Background="White"
+                            BorderBrush="{StaticResource LineAccent}"
+                            BorderThickness="1">
+                        <Image Source="/Assets/tantien-logo-tt.png"
+                               Stretch="Uniform"
+                               Margin="3" />
                     </Border>
                     <StackPanel VerticalAlignment="Center" Spacing="0">
                         <TextBlock Text="TanTienQR"
@@ -701,5 +701,12 @@
                 <views:DevView IsVisible="{Binding IsDevVisible}" />
             </Grid>
         </Grid>
+
+        <!-- ===== Bàn phím ảo (máy cảm ứng) =====
+             Hiện ở đáy cửa sổ khi người dùng chạm vào một ô nhập.
+             Grid.Row="2" -> phủ lên vùng nội dung tab. -->
+        <controls:VirtualKeyboard Grid.Row="2"
+                                 VerticalAlignment="Bottom"
+                                 DataContext="{Binding Keyboard}" />
     </Grid>
 </Window>

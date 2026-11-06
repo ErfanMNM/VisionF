@@ -349,14 +349,14 @@
                                   SelectedItem="{Binding PlcSettings.SelectedRecipe}" />
                         <Button Grid.Column="1"
                                 Classes="soft"
-                                Height="38" MinWidth="62" Padding="10,0"
+                                Height="44" MinWidth="62" Padding="10,0"
                                 HorizontalContentAlignment="Center"
                                 VerticalContentAlignment="Center"
                                 Content="Xoá"
                                 Command="{Binding PlcSettings.DeleteRecipeCommand}" />
                         <Button Grid.Column="2"
                                 Classes="soft"
-                                Height="38" MinWidth="62" Padding="10,0"
+                                Height="44" MinWidth="62" Padding="10,0"
                                 HorizontalContentAlignment="Center"
                                 VerticalContentAlignment="Center"
                                 Content="Tạo"
@@ -440,7 +440,7 @@
                     <Grid Grid.Row="3" ColumnDefinitions="*,*" ColumnSpacing="10">
                         <Button Grid.Column="0"
                                 Classes="soft"
-                                Height="40"
+                                Height="44"
                                 HorizontalAlignment="Stretch"
                                 HorizontalContentAlignment="Center"
                                 VerticalContentAlignment="Center"
@@ -448,7 +448,7 @@
                                 Command="{Binding PlcSettings.SaveRecipeValuesCommand}" />
                         <Button Grid.Column="1"
                                 Classes="primary"
-                                Height="40"
+                                Height="44"
                                 HorizontalAlignment="Stretch"
                                 HorizontalContentAlignment="Center"
                                 VerticalContentAlignment="Center"

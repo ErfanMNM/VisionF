@@ -7,6 +7,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using TanTienQR.Controls;
 using TanTienQR.Services;
 using TanTienQR.ViewModels;
 using TanTienQR.Views;
@@ -124,16 +125,24 @@ public partial class App : Application
             // Seed tài khoản quản trị mặc định TRƯỚC khi hiện màn hình đăng nhập.
             await EnsureSeedAdminAsync().ConfigureAwait(true);
 
+            // Đăng ký bàn phím ảo làm singleton toàn cục: mọi cửa sổ (kể cả
+            // hộp thoại con) dùng chung một bàn phím + một ô nhập đang focus.
+            var keyboardService = _host!.Services.GetRequiredService<KeyboardService>();
+            VirtualKeyboardHost.Register(keyboardService);
+
             while (true)
             {
                 // ---- 1. Màn hình đăng nhập (khung full-size, 2 cột) ----
-                var loginVm = _host!.Services.GetRequiredService<LoginViewModel>();
+                var loginVm = _host.Services.GetRequiredService<LoginViewModel>();
                 var loginWindow = new LoginShellWindow
                 {
                     DataContext = loginVm,
                 };
 
                 loginVm.Attach(loginWindow);
+
+                // Bàn phím ảo: theo dõi ô nhập đang focus trong cửa sổ này.
+                keyboardService.Attach(loginWindow);
 
                 desktop.MainWindow = loginWindow;
                 loginWindow.Show();
@@ -156,6 +165,9 @@ public partial class App : Application
                 {
                     DataContext = _host.Services.GetRequiredService<MainViewModel>(),
                 };
+
+                // Bàn phím ảo: theo dõi ô nhập đang focus trong cửa sổ này.
+                keyboardService.Attach(mainWindow);
 
                 desktop.MainWindow = mainWindow;
                 mainWindow.Show();

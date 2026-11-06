@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:TanTienQR.ViewModels"
+        xmlns:controls="using:TanTienQR.Controls"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="440" d:DesignHeight="520"
@@ -20,6 +21,12 @@
 
     <Border Background="{StaticResource BgBase}" Padding="26">
         <Grid RowDefinitions="Auto,*,Auto">
+
+            <!-- Bàn phím ảo (máy cảm ứng): phủ lên đáy hộp thoại -->
+            <controls:VirtualKeyboard Grid.Row="0" Grid.RowSpan="3"
+                                     Grid.Column="0"
+                                     VerticalAlignment="Bottom"
+                                     DataContext="{Binding Keyboard}" />
 
             <!-- Tiêu đề -->
             <StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,16">
@@ -102,14 +109,14 @@
             <Grid Grid.Row="2" ColumnDefinitions="*,*" ColumnSpacing="10" Margin="0,16,0,0">
                 <Button Grid.Column="0"
                         Classes="soft"
-                        Height="42"
+                        Height="44"
                         HorizontalAlignment="Stretch"
                         HorizontalContentAlignment="Center"
                         Content="Huỷ"
                         Click="OnCancelClick" />
                 <Button Grid.Column="1"
                         Classes="primary"
-                        Height="42"
+                        Height="44"
                         HorizontalAlignment="Stretch"
                         HorizontalContentAlignment="Center"
                         Content="Lưu"

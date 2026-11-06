@@ -4,6 +4,7 @@ using ClassLibraryMT.Communications.Plc;
 using ClassLibraryMT.Configuration;
 using ClassLibraryMT.Logging;
 using ClassLibraryMT.Plc;
+using ClassLibraryMT.Scans;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -29,6 +30,11 @@ public static class TanTienAppServices
         // Đăng ký TRƯỚC các worker để mọi ILogger<T> của worker đều được
         // ghi xuống SQLite ngay từ đầu.
         services.AddSqliteLogging(configuration);
+
+        // ---- Lưu bản ghi quét mã từ camera vào SQLite ----
+        // Đăng ký TRƯỚC CameraSignalWorker để IScanRecordWriter có mặt khi
+        // worker được khởi tạo (worker này ghi mọi mã camera vào DB).
+        services.AddScanStore(configuration);
 
         // ---- Xác thực & phân quyền (tài khoản, phiên đăng nhập) ----
         // Đăng ký SAU AddSqliteLogging vì AddAuth cần implement IUserContext
@@ -141,6 +147,12 @@ public static class TanTienAppServices
         services.AddSingleton<AccountsViewModel>();
         services.AddSingleton<PlcSettingsViewModel>();
         services.AddSingleton<DevViewModel>();
+
+        // ---- Bàn phím ảo cho máy cảm ứng ----
+        // VM bàn phím là singleton để mọi cửa sổ dùng chung một trạng thái
+        // (chỉ một ô nhập được focus tại một thời điểm).
+        services.AddSingleton<VirtualKeyboardViewModel>();
+        services.AddSingleton<KeyboardService>();
 
         // LoginViewModel: Transient vì mỗi lần đăng nhập cần trạng thái
         // form sạch (tên đăng nhập / mật khẩu / lỗi) — không dùng lại

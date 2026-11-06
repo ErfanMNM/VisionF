@@ -1,12 +1,13 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:TanTienQR.ViewModels"
+        xmlns:controls="using:TanTienQR.Controls"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d" d:DesignWidth="1360" d:DesignHeight="820"
         x:Class="TanTienQR.Views.LoginShellWindow"
         x:DataType="vm:LoginViewModel"
-        Icon="/Assets/tantien-logo.png"
+        Icon="/Assets/tantien-logo.ico"
         Title="TanTienQR · Đăng nhập"
         Width="1360" Height="820"
         MinWidth="1100" MinHeight="700"
@@ -93,15 +94,14 @@
             PointerPressed="OnHeaderPointerPressed">
       <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="18">
         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-          <Border Width="36" Height="36"
+          <Border Width="38" Height="38"
                   CornerRadius="11"
-                  Background="{StaticResource Accent}">
-            <TextBlock Text="TT"
-                       FontSize="14"
-                       FontWeight="Black"
-                       Foreground="White"
-                       HorizontalAlignment="Center"
-                       VerticalAlignment="Center" />
+                  Background="White"
+                  BorderBrush="{StaticResource LineAccent}"
+                  BorderThickness="1">
+            <Image Source="/Assets/tantien-logo-tt.png"
+                   Stretch="Uniform"
+                   Margin="3" />
           </Border>
           <StackPanel VerticalAlignment="Center" Spacing="0">
             <TextBlock Text="TanTienQR"
@@ -183,16 +183,13 @@
               Padding="40,36">
         <Grid RowDefinitions="Auto,*,Auto" RowSpacing="24">
           <StackPanel Grid.Row="0" Spacing="14">
-            <Border Width="64" Height="64"
+            <Border Width="92" Height="92"
                     CornerRadius="18"
-                    Background="#FFFFFF"
+                    Background="White"
                     HorizontalAlignment="Left">
-              <TextBlock Text="TT"
-                         FontSize="24"
-                         FontWeight="Black"
-                         Foreground="{StaticResource Accent}"
-                         HorizontalAlignment="Center"
-                         VerticalAlignment="Center" />
+              <Image Source="/Assets/tantien-logo.png"
+                     Stretch="Uniform"
+                     Margin="6" />
             </Border>
             <TextBlock Text="TanTienQR"
                        FontSize="30"
@@ -205,7 +202,7 @@
           </StackPanel>
 
           <StackPanel Grid.Row="1" Spacing="12" VerticalAlignment="Center">
-            <Border Background="#FFFFFF22"
+            <Border Background="#22FFFFFF"
                     CornerRadius="12"
                     Padding="14,12">
               <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
@@ -229,7 +226,7 @@
                 </StackPanel>
               </Grid>
             </Border>
-            <Border Background="#FFFFFF22"
+            <Border Background="#22FFFFFF"
                     CornerRadius="12"
                     Padding="14,12">
               <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
@@ -253,7 +250,7 @@
                 </StackPanel>
               </Grid>
             </Border>
-            <Border Background="#FFFFFF22"
+            <Border Background="#22FFFFFF"
                     CornerRadius="12"
                     Padding="14,12">
               <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
@@ -280,7 +277,7 @@
           </StackPanel>
 
           <StackPanel Grid.Row="2" Spacing="6">
-            <Border Height="1" Background="#FFFFFF33" />
+            <Border Height="1" Background="#33FFFFFF" />
             <TextBlock Text="Tài khoản mặc định admin / admin — hãy đổi mật khẩu ở lần đăng nhập đầu tiên."
                        FontSize="11"
                        Foreground="#E6FFF9"
@@ -355,6 +352,7 @@
                          TabIndex="0"
                          VerticalContentAlignment="Center"
                          PlaceholderText="Nhập tên đăng nhập"
+                         TextInputOptions.ContentType="Name"
                          Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}">
                   <TextBox.InnerLeftContent>
                     <Path Width="16" Height="16"
@@ -471,7 +469,7 @@
                       IsEnabled="{Binding CanSubmit}"
                       Command="{Binding LoginCommand}" />
               <Button Classes="soft"
-                      Height="42"
+                      Height="44"
                       TabIndex="3"
                       HorizontalAlignment="Stretch"
                       HorizontalContentAlignment="Center"
@@ -667,7 +665,7 @@
                         Command="{Binding ConfirmPasswordChangeCommand}" />
               </Grid>
               <Button Classes="soft"
-                      Height="38"
+                      Height="44"
                       HorizontalAlignment="Stretch"
                       HorizontalContentAlignment="Center"
                       VerticalContentAlignment="Center"
@@ -678,6 +676,12 @@
           </StackPanel>
         </ScrollViewer>
       </Border>
+
+      <!-- ===== Bàn phím ảo (máy cảm ứng) =====
+           Phủ lên cột phải (form đăng nhập), hiện khi chạm vào ô nhập. -->
+      <controls:VirtualKeyboard Grid.Column="1"
+                               VerticalAlignment="Bottom"
+                               DataContext="{Binding Keyboard}" />
     </Grid>
   </Grid>
 </Window>

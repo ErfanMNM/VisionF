@@ -17,6 +17,9 @@
          (dotnet publish TanTienQR -c Release -p:PublishProfile=win-x64) -->
     <PublishAot>true</PublishAot>
     <IsAotCompatible>true</IsAotCompatible>
+
+    <!-- Icon chinh cua file exe (logo cong ty Tan Tien) -->
+    <ApplicationIcon>Assets\tantien-logo.ico</ApplicationIcon>
     <!-- KHONG bat InvariantGlobalization: app hien thi ngay tieng Viet (vi-VN),
          bat len se roi ve tieng Anh. Native AOT van dong goi ICU day du. -->
     <!-- Symbol rieng cho debug crash, khong nhung vao exe -->
@@ -69,6 +72,7 @@
     <ProjectReference Include="..\ClassLibraryMT.Logging\ClassLibraryMT.Logging.csproj" />
     <ProjectReference Include="..\ClassLibraryMT.Auth\ClassLibraryMT.Auth.csproj" />
     <ProjectReference Include="..\ClassLibraryMT.Plc\ClassLibraryMT.Plc.csproj" />
+    <ProjectReference Include="..\ClassLibraryMT.Scans\ClassLibraryMT.Scans.csproj" />
   </ItemGroup>
 
 </Project>

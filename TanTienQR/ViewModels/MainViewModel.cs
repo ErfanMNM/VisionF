@@ -35,6 +35,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     private readonly AccountsViewModel _accountsView;
     private readonly PlcSettingsViewModel _plcSettingsView;
     private readonly DevViewModel _devView;
+    private readonly VirtualKeyboardViewModel _keyboard;
     private readonly IUserActionLogger _actionLog;
     private readonly ISessionContext _session;
     private readonly ILogger<MainViewModel> _logger;
@@ -56,6 +57,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         AccountsViewModel accountsView,
         PlcSettingsViewModel plcSettingsView,
         DevViewModel devView,
+        VirtualKeyboardViewModel keyboard,
         IUserActionLogger actionLog,
         ISessionContext session,
         ILogger<MainViewModel> logger)
@@ -67,6 +69,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         _accountsView = accountsView;
         _plcSettingsView = plcSettingsView;
         _devView = devView;
+        _keyboard = keyboard;
         _actionLog = actionLog;
         _session = session;
         _logger = logger;
@@ -255,6 +258,11 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     /// Trang Dev (tab Dev: trạng thái runtime, bộ đếm, bộ nhớ, log kỹ thuật).
     /// </summary>
     public DevViewModel DevView => _devView;
+
+    /// <summary>
+    /// Bàn phím ảo cho máy cảm ứng (hiện khi chạm vào ô nhập).
+    /// </summary>
+    public VirtualKeyboardViewModel Keyboard => _keyboard;
 
     // ---------- Phiên đăng nhập & phân quyền ----------
 

@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using TanTienQR.Controls;
 using TanTienQR.ViewModels;
 
 namespace TanTienQR.Views;
@@ -23,6 +24,9 @@ public partial class PlcParamEditWindow : Window
     {
         base.OnOpened(e);
         Hook(DataContext as PlcParamEditViewModel);
+
+        // Bàn phím ảo: theo dõi ô nhập đang focus trong hộp thoại này.
+        VirtualKeyboardHost.Attach(this);
     }
 
     protected override void OnClosed(EventArgs e)

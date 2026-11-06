@@ -36,6 +36,9 @@ internal sealed partial class LoginViewModel : ViewModelBase
     private readonly IUserActionLogger _actionLog;
     private readonly AuthOptions _authOptions;
 
+    /// <summary>Bàn phím ảo (dùng chung với cửa sổ chính).</summary>
+    private readonly VirtualKeyboardViewModel _keyboard;
+
     /// <summary>Cửa sổ shell — dùng để tự đóng khi xong wizard.</summary>
     private Window? _owner;
 
@@ -55,13 +58,20 @@ internal sealed partial class LoginViewModel : ViewModelBase
         IUserService users,
         ISessionContext session,
         IUserActionLogger actionLog,
+        VirtualKeyboardViewModel keyboard,
         IOptions<AuthOptions> authOptions)
     {
         _users = users;
         _session = session;
         _actionLog = actionLog;
+        _keyboard = keyboard;
         _authOptions = authOptions.Value;
     }
+
+    /// <summary>
+    /// Bàn phím ảo cho máy cảm ứng (hiện khi chạm vào ô nhập).
+    /// </summary>
+    public VirtualKeyboardViewModel Keyboard => _keyboard;
 
     /// <summary>
     /// Gắn cửa sổ shell để có thể tự đóng khi xong wizard.

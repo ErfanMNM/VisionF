@@ -21,6 +21,11 @@ internal sealed partial class PasswordChangeViewModel : ViewModelBase
     /// <summary>Tên tài khoản đang đổi mật khẩu (để hiển thị).</summary>
     public string Username => _user.Username;
 
+    /// <summary>
+    /// Bàn phím ảo cho máy cảm ứng (singleton dùng chung toàn ứng dụng).
+    /// </summary>
+    public VirtualKeyboardViewModel? Keyboard => Controls.VirtualKeyboardHost.ViewModel;
+
     /// <summary>Tên hiển thị của tài khoản.</summary>
     public string DisplayName =>
         string.IsNullOrWhiteSpace(_user.DisplayName) ? _user.Username : _user.DisplayName;

@@ -35,6 +35,11 @@ internal sealed partial class UserEditViewModel : ViewModelBase
     /// <summary>True nếu đang tạo tài khoản mới.</summary>
     public bool IsNew => _editing is null;
 
+    /// <summary>
+    /// Bàn phím ảo cho máy cảm ứng (singleton dùng chung toàn ứng dụng).
+    /// </summary>
+    public VirtualKeyboardViewModel? Keyboard => Controls.VirtualKeyboardHost.ViewModel;
+
     /// <summary>Tiêu đề hộp thoại.</summary>
     public string Title => IsNew ? "Tạo tài khoản mới" : "Sửa tài khoản";
 

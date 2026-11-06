@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using TanTienQR.Controls;
 using TanTienQR.ViewModels;
 
 namespace TanTienQR.Views;
@@ -24,6 +25,9 @@ public partial class PasswordChangeWindow : Window
     {
         base.OnOpened(e);
         Hook(DataContext as PasswordChangeViewModel);
+
+        // Bàn phím ảo: theo dõi ô nhập đang focus trong hộp thoại này.
+        VirtualKeyboardHost.Attach(this);
     }
 
     protected override void OnClosed(EventArgs e)

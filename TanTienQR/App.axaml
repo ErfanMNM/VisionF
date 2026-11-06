@@ -10,15 +10,16 @@
 
     <Application.Resources>
         <ResourceDictionary>
-            <!-- Bang mau sang phong cach Google 2026: nen sang, xanh teal primary. -->
+            <!-- Bang mau phong cach Google 2026: nen sang, xanh duong primary
+                 (theo logo cong ty Tan Tien). -->
             <SolidColorBrush x:Key="BgBase">#F6F9FB</SolidColorBrush>
             <SolidColorBrush x:Key="BgPanel">#FFFFFF</SolidColorBrush>
             <SolidColorBrush x:Key="BgRaised">#EDF4F7</SolidColorBrush>
             <SolidColorBrush x:Key="LineColor">#D8E6EC</SolidColorBrush>
             <SolidColorBrush x:Key="TextPrimary">#0F2A38</SolidColorBrush>
             <SolidColorBrush x:Key="TextMuted">#5C7683</SolidColorBrush>
-            <SolidColorBrush x:Key="Accent">#00A88E</SolidColorBrush>
-            <SolidColorBrush x:Key="AccentSoft">#D6F5EF</SolidColorBrush>
+            <SolidColorBrush x:Key="Accent">#1A56DB</SolidColorBrush>
+            <SolidColorBrush x:Key="AccentSoft">#DCE7FD</SolidColorBrush>
             <SolidColorBrush x:Key="Ok">#12A150</SolidColorBrush>
             <SolidColorBrush x:Key="OkSoft">#DFF6E7</SolidColorBrush>
             <SolidColorBrush x:Key="Warn">#E08600</SolidColorBrush>
@@ -30,7 +31,7 @@
             <SolidColorBrush x:Key="LineDanger">#F5C6C2</SolidColorBrush>
             <SolidColorBrush x:Key="LineWarn">#F5D9A8</SolidColorBrush>
             <SolidColorBrush x:Key="LineOk">#A8E0BE</SolidColorBrush>
-            <SolidColorBrush x:Key="LineAccent">#8FDDCB</SolidColorBrush>
+            <SolidColorBrush x:Key="LineAccent">#A9C4F5</SolidColorBrush>
 
             <FontFamily x:Key="UiFont">Google Sans, Segoe UI, Inter</FontFamily>
             <FontFamily x:Key="MonoFont">Roboto Mono, Cascadia Mono, Consolas</FontFamily>
@@ -406,12 +407,12 @@
             <Setter Property="CornerRadius" Value="10" />
         </Style>
         <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-            <Setter Property="Background" Value="#00BF9F" />
-            <Setter Property="BorderBrush" Value="#00BF9F" />
+            <Setter Property="Background" Value="#2563EB" />
+            <Setter Property="BorderBrush" Value="#2563EB" />
         </Style>
         <Style Selector="Button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
-            <Setter Property="Background" Value="#00937D" />
-            <Setter Property="BorderBrush" Value="#00937D" />
+            <Setter Property="Background" Value="#1747B0" />
+            <Setter Property="BorderBrush" Value="#1747B0" />
         </Style>
         <Style Selector="Button.primary TextBlock">
             <Setter Property="Foreground" Value="White" />
