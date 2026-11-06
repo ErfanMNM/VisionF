@@ -67,6 +67,12 @@ internal sealed class LogQueryService : ILogQueryService
                 where.Append(" AND Result = $result");
                 parameters.Add(("$result", filter.Result));
             }
+
+            if (!string.IsNullOrWhiteSpace(filter.Username))
+            {
+                where.Append(" AND Username LIKE $username");
+                parameters.Add(("$username", $"%{filter.Username}%"));
+            }
         }
 
         await using var connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
@@ -86,7 +92,7 @@ internal sealed class LogQueryService : ILogQueryService
         await using (var cmd = connection.CreateCommand())
         {
             cmd.CommandText = $"""
-                SELECT Id, TimestampUtc, Action, Target, DetailJson, Result
+                SELECT Id, TimestampUtc, Action, Target, DetailJson, Result, Username, UserId
                 FROM UserActions
                 {where}
                 ORDER BY TimestampUtc DESC, Id DESC
@@ -107,6 +113,8 @@ internal sealed class LogQueryService : ILogQueryService
                     Target = reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
                     DetailJson = reader.IsDBNull(4) ? null : reader.GetString(4),
                     Result = reader.IsDBNull(5) ? string.Empty : reader.GetString(5),
+                    Username = reader.IsDBNull(6) ? string.Empty : reader.GetString(6),
+                    UserId = reader.IsDBNull(7) ? null : reader.GetInt64(7),
                 });
             }
         }

@@ -67,12 +67,18 @@ internal partial class HistoryViewModel : ViewModelBase
     /// <c>object?</c> và có thể đẩy giá trị null xuống khi người dùng xoá lựa chọn.
     /// </summary>
     [ObservableProperty]
-    public partial string? ResultFilter { get; set; } = string.Empty;
+    public partial string? ResultFilter { get; set; } = AllResultsLabel;
+
+    /// <summary>
+    /// Nhãn của mục "không lọc theo kết quả" trong combo box. Trước đây mục này là
+    /// chuỗi rỗng nên combo box trông như trống; giờ hiển thị chữ rõ ràng.
+    /// </summary>
+    public const string AllResultsLabel = "Tất cả";
 
     /// <summary>Các giá trị kết quả để hiển thị trong combo box.</summary>
     public IReadOnlyList<string> ResultOptions { get; } =
     [
-        string.Empty,
+        AllResultsLabel,
         UserActionResults.Success,
         UserActionResults.Failed,
         UserActionResults.Cancelled,
@@ -132,9 +138,9 @@ internal partial class HistoryViewModel : ViewModelBase
                 parts.Add($"hành động ~ \"{ActionFilter.Trim()}\"");
             }
 
-            if (!string.IsNullOrWhiteSpace(ResultFilter))
+            if (HasResultFilter)
             {
-                parts.Add($"kết quả = {ResultFilter.Trim()}");
+                parts.Add($"kết quả = {ResultFilter!.Trim()}");
             }
 
             return parts.Count == 0
@@ -145,7 +151,11 @@ internal partial class HistoryViewModel : ViewModelBase
 
     /// <summary>True khi bộ lọc đang lọc (để hiện nút "Xoá lọc" nổi bật).</summary>
     public bool HasActiveFilter =>
-        !string.IsNullOrWhiteSpace(ActionFilter) || !string.IsNullOrWhiteSpace(ResultFilter);
+        !string.IsNullOrWhiteSpace(ActionFilter) || HasResultFilter;
+
+    /// <summary>True khi người dùng chọn một kết quả cụ thể (khác "Tất cả").</summary>
+    private bool HasResultFilter =>
+        !string.IsNullOrWhiteSpace(ResultFilter) && ResultFilter != AllResultsLabel;
 
     /// <summary>
     /// True khi mục nhà phát triển (trang Lịch sử) được bật trong cấu hình
@@ -208,7 +218,7 @@ internal partial class HistoryViewModel : ViewModelBase
             FromUtc = from,
             ToUtc = to,
             ActionContains = string.IsNullOrWhiteSpace(ActionFilter) ? null : ActionFilter.Trim(),
-            Result = string.IsNullOrWhiteSpace(ResultFilter) ? null : ResultFilter,
+            Result = HasResultFilter ? ResultFilter : null,
         };
     }
 
@@ -226,7 +236,7 @@ internal partial class HistoryViewModel : ViewModelBase
     {
         (FromDate, ToDate) = DefaultDateRange();
         ActionFilter = string.Empty;
-        ResultFilter = string.Empty;
+        ResultFilter = AllResultsLabel;
         CurrentPage = 1;
 
         await LoadAsync().ConfigureAwait(true);

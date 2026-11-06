@@ -1,0 +1,121 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:TanTienQR.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="440" d:DesignHeight="520"
+        x:Class="TanTienQR.Views.UserEditWindow"
+        x:DataType="vm:UserEditViewModel"
+        Title="Tài khoản"
+        Width="440" Height="520"
+        MinWidth="400" MinHeight="500"
+        CanResize="False"
+        CanMinimize="False"
+        CanMaximize="False"
+        WindowStartupLocation="CenterOwner">
+
+    <Design.DataContext>
+        <vm:UserEditViewModel />
+    </Design.DataContext>
+
+    <Border Background="{StaticResource BgBase}" Padding="26">
+        <Grid RowDefinitions="Auto,*,Auto">
+
+            <!-- Tiêu đề -->
+            <StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,16">
+                <TextBlock Text="{Binding Title}"
+                           FontSize="17"
+                           FontWeight="Bold"
+                           Foreground="{StaticResource TextPrimary}" />
+                <TextBlock Classes="label"
+                           FontSize="11"
+                           Text="Tên đăng nhập không phân biệt hoa thường và là duy nhất." />
+            </StackPanel>
+
+            <!-- Form -->
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="14">
+
+                    <!-- Tên đăng nhập (chỉ khi tạo mới) -->
+                    <StackPanel Spacing="6" IsVisible="{Binding IsNew}">
+                        <TextBlock Classes="fieldLabel" Text="TÊN ĐĂNG NHẬP *" />
+                        <TextBox Classes="field"
+                                 Height="42"
+                                 PlaceholderText="Ví dụ: nguyenvana"
+                                 Text="{Binding Username}" />
+                    </StackPanel>
+
+                    <!-- Tên hiển thị -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Classes="fieldLabel" Text="TÊN HIỂN THỊ" />
+                        <TextBox Classes="field"
+                                 Height="42"
+                                 PlaceholderText="Ví dụ: Nguyễn Văn A"
+                                 Text="{Binding DisplayName}" />
+                    </StackPanel>
+
+                    <!-- Vai trò -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Classes="fieldLabel" Text="VAI TRÒ" />
+                        <ComboBox Classes="field"
+                                  Height="42"
+                                  ItemsSource="{Binding AvailableRoles}"
+                                  SelectedItem="{Binding Role}" />
+                    </StackPanel>
+
+                    <!-- Mật khẩu (chỉ khi tạo mới) -->
+                    <StackPanel Spacing="6" IsVisible="{Binding IsNew}">
+                        <TextBlock Classes="fieldLabel" Text="MẬT KHẨU *" />
+                        <TextBox Classes="field"
+                                 Height="42"
+                                 PasswordChar="•"
+                                 PlaceholderText="Tối thiểu 6 ký tự"
+                                 Text="{Binding Password}" />
+                    </StackPanel>
+
+                    <!-- Xác nhận mật khẩu (chỉ khi tạo mới) -->
+                    <StackPanel Spacing="6" IsVisible="{Binding IsNew}">
+                        <TextBlock Classes="fieldLabel" Text="XÁC NHẬN MẬT KHẨU *" />
+                        <TextBox Classes="field"
+                                 Height="42"
+                                 PasswordChar="•"
+                                 PlaceholderText="Nhập lại mật khẩu"
+                                 Text="{Binding ConfirmPassword}" />
+                    </StackPanel>
+
+                    <!-- Lỗi -->
+                    <Border IsVisible="{Binding HasError}"
+                            Padding="11"
+                            CornerRadius="10"
+                            Background="{StaticResource DangerSoft}"
+                            BorderBrush="{StaticResource Danger}"
+                            BorderThickness="1">
+                        <TextBlock Text="{Binding ErrorMessage}"
+                                   FontSize="12"
+                                   Foreground="{StaticResource Danger}"
+                                   TextWrapping="Wrap" />
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Nút -->
+            <Grid Grid.Row="2" ColumnDefinitions="*,*" ColumnSpacing="10" Margin="0,16,0,0">
+                <Button Grid.Column="0"
+                        Classes="soft"
+                        Height="42"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center"
+                        Content="Huỷ"
+                        Click="OnCancelClick" />
+                <Button Grid.Column="1"
+                        Classes="primary"
+                        Height="42"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center"
+                        Content="Lưu"
+                        IsEnabled="{Binding CanSubmit}"
+                        Command="{Binding SaveCommand}" />
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

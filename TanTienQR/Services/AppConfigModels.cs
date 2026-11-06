@@ -64,13 +64,29 @@ public sealed class LoggingConfig
 }
 
 /// <summary>
+/// Cấu hình xác thực (mục "Auth").
+///
+/// Khớp với <see cref="ClassLibraryMT.Auth.AuthOptions"/> — chỉ dùng để đọc
+/// và giữ lại khi lưu cấu hình từ UI, phần bind thực tế do lib Auth đảm nhiệm.
+/// </summary>
+public sealed class AuthConfig
+{
+    [JsonPropertyName("DbPath")] public string DbPath { get; set; } = "logs/users.db";
+    [JsonPropertyName("MaxFailedAttempts")] public int MaxFailedAttempts { get; set; } = 5;
+    [JsonPropertyName("LockoutMinutes")] public int LockoutMinutes { get; set; } = 5;
+    [JsonPropertyName("Pbkdf2Iterations")] public int Pbkdf2Iterations { get; set; } = 210_000;
+    [JsonPropertyName("SeedAdminUser")] public string SeedAdminUser { get; set; } = "admin";
+    [JsonPropertyName("SeedAdminPassword")] public string SeedAdminPassword { get; set; } = "admin";
+}
+
+/// <summary>
 /// Toàn bộ nội dung file appsettings.json.
 ///
-/// Các thuộc tính được đặt tên "Camera", "Plc", "Web", "Logging" để khớp đúng
+/// Các thuộc tính được đặt tên "Camera", "Plc", "Web", "Logging", "Auth" để khớp đúng
 /// key trong file JSON (không dùng camelCase mặc định của System.Text.Json).
 ///
-/// Phần "Logging" được giữ nguyên khi lưu cấu hình từ UI — nếu không có nó,
-/// thao tác lưu cấu hình sẽ xoá mất thiết lập ghi log.
+/// Phần "Logging" và "Auth" được giữ nguyên khi lưu cấu hình từ UI — nếu không có nó,
+/// thao tác lưu cấu hình sẽ xoá mất thiết lập ghi log và xác thực.
 /// </summary>
 public sealed class AppConfigSnapshot
 {
@@ -78,6 +94,7 @@ public sealed class AppConfigSnapshot
     [JsonPropertyName("Plc")] public PlcConfig Plc { get; set; } = new();
     [JsonPropertyName("Web")] public WebConfig Web { get; set; } = new();
     [JsonPropertyName("Logging")] public LoggingConfig Logging { get; set; } = new();
+    [JsonPropertyName("Auth")] public AuthConfig Auth { get; set; } = new();
 }
 
 // ---------------------------------------------------------------- JsonContext
@@ -90,6 +107,7 @@ public sealed class AppConfigSnapshot
 [JsonSerializable(typeof(LoggingConfig))]
 [JsonSerializable(typeof(SqliteLoggingConfig))]
 [JsonSerializable(typeof(LoggingHistoryConfig))]
+[JsonSerializable(typeof(AuthConfig))]
 public sealed partial class AppConfigJsonContext : JsonSerializerContext
 {
 }

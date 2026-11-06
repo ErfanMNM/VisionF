@@ -1,0 +1,153 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:TanTienQR.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="580"
+        x:Class="TanTienQR.Views.LoginWindow"
+        x:DataType="vm:LoginViewModel"
+        Icon="/Assets/tantien-logo.png"
+        Title="TanTienQR · Đăng nhập"
+        Width="420" Height="580"
+        MinWidth="380" MinHeight="520"
+        CanResize="True"
+        CanMinimize="False"
+        CanMaximize="False"
+        WindowDecorations="None"
+        WindowStartupLocation="CenterScreen">
+
+    <Design.DataContext>
+        <vm:LoginViewModel />
+    </Design.DataContext>
+
+    <Border Background="{StaticResource BgBase}">
+        <Grid RowDefinitions="Auto,*,Auto">
+
+            <!-- Viền accent trên cùng -->
+            <Border Grid.Row="0" Height="3" Background="{StaticResource Accent}" />
+
+            <!-- ===== Nội dung form ===== -->
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="32,26,32,16" Spacing="18">
+
+                    <!-- Logo + tiêu đề -->
+                    <StackPanel Spacing="14" HorizontalAlignment="Center">
+                        <Border Width="64" Height="64"
+                                CornerRadius="20"
+                                Background="{StaticResource Accent}">
+                            <TextBlock Text="TT"
+                                       FontSize="24"
+                                       FontWeight="Black"
+                                       Foreground="White"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                        </Border>
+
+                        <StackPanel Spacing="3" HorizontalAlignment="Center">
+                            <TextBlock Text="TanTienQR"
+                                       FontSize="20"
+                                       FontWeight="Bold"
+                                       Foreground="{StaticResource TextPrimary}"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock Text="Quét mã · PLC Omron"
+                                       Classes="label"
+                                       FontSize="11"
+                                       HorizontalAlignment="Center" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Tên đăng nhập -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Classes="fieldLabel" Text="TÊN ĐĂNG NHẬP" />
+                        <TextBox x:Name="UsernameBox"
+                                 Classes="field"
+                                 Height="44"
+                                 FontSize="14"
+                                 PlaceholderText="Nhập tên đăng nhập"
+                                 Text="{Binding Username}" />
+                    </StackPanel>
+
+                    <!-- Mật khẩu -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Classes="fieldLabel" Text="MẬT KHẨU" />
+                        <TextBox x:Name="PasswordBox"
+                                 Classes="field"
+                                 Height="44"
+                                 FontSize="14"
+                                 PasswordChar="•"
+                                 PlaceholderText="Nhập mật khẩu"
+                                 Text="{Binding Password}" />
+                    </StackPanel>
+
+                    <!-- Thông báo lỗi -->
+                    <Border IsVisible="{Binding HasError}"
+                            Padding="12"
+                            CornerRadius="10"
+                            Background="{StaticResource DangerSoft}"
+                            BorderBrush="{StaticResource Danger}"
+                            BorderThickness="1">
+                        <StackPanel Orientation="Horizontal" Spacing="9">
+                            <TextBlock Text="⚠"
+                                       FontSize="13"
+                                       Foreground="{StaticResource Danger}"
+                                       VerticalAlignment="Top" />
+                            <TextBlock Text="{Binding ErrorMessage}"
+                                       FontSize="12"
+                                       Foreground="{StaticResource Danger}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Cảnh báo -->
+                    <Border IsVisible="{Binding HasWarning}"
+                            Padding="12"
+                            CornerRadius="10"
+                            Background="{StaticResource WarnSoft}"
+                            BorderBrush="{StaticResource Warn}"
+                            BorderThickness="1">
+                        <StackPanel Orientation="Horizontal" Spacing="9">
+                            <TextBlock Text="!"
+                                       FontSize="13"
+                                       FontWeight="Bold"
+                                       Foreground="{StaticResource Warn}"
+                                       VerticalAlignment="Top" />
+                            <TextBlock Text="{Binding WarningMessage}"
+                                       FontSize="12"
+                                       Foreground="{StaticResource Warn}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Nút đăng nhập -->
+                    <Button Classes="primary"
+                            Height="46"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
+                            Content="Đăng nhập"
+                            IsEnabled="{Binding CanSubmit}"
+                            Command="{Binding LoginCommand}" />
+
+                    <!-- Nút huỷ -->
+                    <Button Classes="soft"
+                            Height="40"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
+                            Content="Thoát ứng dụng"
+                            Command="{Binding CancelCommand}" />
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- ===== Chân trang ===== -->
+            <Border Grid.Row="2"
+                    Padding="32,10,32,14"
+                    BorderBrush="{StaticResource LineColor}"
+                    BorderThickness="0,1,0,0">
+                <TextBlock Text="Phiên đăng nhập kết thúc khi đóng ứng dụng."
+                           Classes="label"
+                           FontSize="10"
+                           HorizontalAlignment="Center"
+                           TextWrapping="Wrap" />
+            </Border>
+        </Grid>
+    </Border>
+</Window>

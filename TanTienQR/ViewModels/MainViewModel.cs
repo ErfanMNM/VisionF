@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using ClassLibraryMT.Auth;
 using ClassLibraryMT.DeviceStatus;
 using ClassLibraryMT.Logging;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -30,7 +31,9 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     private readonly LicenseManager _license;
     private readonly ConfigEditorViewModel _configEditor;
     private readonly HistoryViewModel _historyView;
+    private readonly AccountsViewModel _accountsView;
     private readonly IUserActionLogger _actionLog;
+    private readonly ISessionContext _session;
     private readonly CancellationTokenSource _cts = new();
 
     private DispatcherTimer? _pollTimer;
@@ -46,13 +49,17 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         IOptions<WebOptions> webOptions,
         ConfigEditorViewModel configEditor,
         HistoryViewModel historyView,
-        IUserActionLogger actionLog)
+        AccountsViewModel accountsView,
+        IUserActionLogger actionLog,
+        ISessionContext session)
     {
         _feed = feed;
         _license = license;
         _configEditor = configEditor;
         _historyView = historyView;
+        _accountsView = accountsView;
         _actionLog = actionLog;
+        _session = session;
 
         // URL web lấy từ cấu hình; nếu cấu hình sai thì dùng URL mặc định.
         var web = webOptions.Value;
@@ -62,6 +69,11 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         WebUrl = string.IsNullOrWhiteSpace(url) || !Uri.TryCreate(url, UriKind.Absolute, out _)
             ? DefaultWebUrl
             : url.Trim();
+
+        // Theo dõi phiên đăng nhập để cập nhật quyền hiển thị khi user đổi.
+        _session.Changed += OnSessionChanged;
+
+        RefreshCurrentUser();
     }
 
     private static CultureInfo CreateViCulture()
@@ -218,6 +230,118 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     /// Trang lịch sử thao tác (tab Lịch sử, mục nhà phát triển).
     /// </summary>
     public HistoryViewModel HistoryView => _historyView;
+
+    /// <summary>
+    /// Trang quản lý tài khoản (tab Tài khoản, nhóm Quản trị).
+    /// </summary>
+    public AccountsViewModel AccountsView => _accountsView;
+
+    // ---------- Phiên đăng nhập & phân quyền ----------
+
+    /// <summary>
+    /// True khi người dùng bấm "Đăng xuất" (không phải đóng cửa sổ).
+    /// App dùng cờ này để quay lại màn hình đăng nhập thay vì tắt app.
+    /// </summary>
+    public bool IsLogoutRequested { get; private set; }
+
+    /// <summary>Tên đăng nhập của người đang dùng app.</summary>
+    [ObservableProperty]
+    public partial string CurrentUserName { get; set; } = "—";
+
+    /// <summary>Tên hiển thị của người đang dùng app.</summary>
+    [ObservableProperty]
+    public partial string CurrentUserDisplayName { get; set; } = "—";
+
+    /// <summary>Vai trò của người đang dùng app (tiếng Việt).</summary>
+    [ObservableProperty]
+    public partial string CurrentRoleText { get; set; } = "—";
+
+    /// <summary>Chữ cái đầu tiên của tên hiển thị (dùng cho avatar tròn).</summary>
+    [ObservableProperty]
+    public partial string CurrentUserInitial { get; set; } = "?";
+
+    /// <summary>
+    /// Class style cho badge vai trò (theo màu: worker / operator / admin / dev).
+    /// </summary>
+    public string CurrentRoleBadgeClass => _session.CurrentRole switch
+    {
+        UserRole.Worker => "idle",
+        UserRole.Operator => "running",
+        UserRole.Administrator => "accent",
+        UserRole.Developer => "developer",
+        _ => "idle",
+    };
+
+    /// <summary>True nếu vai trò hiện tại là Nhân viên (Worker).</summary>
+    public bool IsRoleWorker => _session.CurrentRole == UserRole.Worker;
+
+    /// <summary>True nếu vai trò hiện tại là Vận hành (Operator).</summary>
+    public bool IsRoleOperator => _session.CurrentRole == UserRole.Operator;
+
+    /// <summary>True nếu vai trò hiện tại là Quản trị (Administrator).</summary>
+    public bool IsRoleAdministrator => _session.CurrentRole == UserRole.Administrator;
+
+    /// <summary>True nếu vai trò hiện tại là Lập trình viên (Developer).</summary>
+    public bool IsRoleDeveloper => _session.CurrentRole == UserRole.Developer;
+
+    /// <summary>True khi người dùng hiện tại có quyền quản lý tài khoản.</summary>
+    public bool CanManageUsers => _session.Can(Permission.ManageUsers);
+
+    /// <summary>
+    /// Đăng xuất: kết thúc phiên và đóng cửa sổ chính, quay lại màn hình đăng nhập.
+    /// </summary>
+    [RelayCommand]
+    private void Logout()
+    {
+        IsLogoutRequested = true;
+
+        _actionLog.Log(
+            "Auth.Logout",
+            "User",
+            $"Dang xuat tai khoan {_session.CurrentUser?.Username ?? "?"}",
+            UserActionResults.Success);
+
+        _session.SignOut();
+
+        // Đóng cửa sổ chính -> App nhận biết và mở lại màn hình đăng nhập.
+        _window?.Close();
+    }
+
+    /// <summary>
+    /// Cập nhật thông tin người dùng hiện tại + các cờ quyền hiển thị.
+    /// </summary>
+    private void RefreshCurrentUser()
+    {
+        var user = _session.CurrentUser;
+
+        CurrentUserName = user?.Username ?? "—";
+        CurrentUserDisplayName = string.IsNullOrWhiteSpace(user?.DisplayName)
+            ? (user?.Username ?? "—")
+            : user.DisplayName;
+        CurrentRoleText = user?.RoleName ?? "—";
+        CurrentUserInitial = string.IsNullOrWhiteSpace(CurrentUserDisplayName)
+            ? "?"
+            : CurrentUserDisplayName[..1].ToUpperInvariant();
+
+        OnPropertyChanged(nameof(CurrentRoleBadgeClass));
+        OnPropertyChanged(nameof(CanManageUsers));
+        OnPropertyChanged(nameof(IsRoleWorker));
+        OnPropertyChanged(nameof(IsRoleOperator));
+        OnPropertyChanged(nameof(IsRoleAdministrator));
+        OnPropertyChanged(nameof(IsRoleDeveloper));
+
+        // Cập nhật luôn cờ hiển thị tab theo quyền mới.
+        RefreshPermissionFlags();
+    }
+
+    /// <summary>
+    /// Xử lý khi phiên đăng nhập thay đổi (đăng nhập / đăng xuất).
+    /// </summary>
+    private void OnSessionChanged(object? sender, EventArgs e)
+    {
+        // Event có thể bắn từ luồng khác -> đưa về luồng UI.
+        Dispatcher.UIThread.Post(RefreshCurrentUser);
+    }
 
     /// <summary>Trạng thái license: "Hợp lệ" / "Không hợp lệ" / "Sắp hết hạn".</summary>
     [ObservableProperty]
@@ -415,7 +539,17 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         if (window is not null)
         {
             _historyView.Attach(window);
+
+            // Trang Tài khoản cần cửa sổ chính để mở hộp thoại tạo/sửa.
+            _accountsView.Attach(window);
         }
+
+        // Đăng nhập lại sau khi đăng xuất -> subscribe lại sự kiện phiên.
+        _session.Changed -= OnSessionChanged;
+        _session.Changed += OnSessionChanged;
+
+        // Cập nhật lại thông tin người dùng + cờ quyền hiển thị tab.
+        RefreshCurrentUser();
 
         if (_pollTimer != null) return;
 
@@ -545,6 +679,9 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
 
         _disposed = true;
 
+        // Ngừng theo dõi phiên đăng nhập (tránh giữ tham chiếu tới VM).
+        _session.Changed -= OnSessionChanged;
+
         _pollTimer?.Stop();
         _pollTimer = null;
 
@@ -569,5 +706,21 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         }
 
         GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// Dừng hoạt động tạm thời (khi đăng xuất) nhưng giữ lại VM để dùng lại
+    /// được khi đăng nhập lại.
+    ///
+    /// Khác với <see cref="Dispose"/>: không huỷ <see cref="CancellationTokenSource"/>
+    /// và không hoàn tất feed — nên có thể gọi <see cref="Start"/> lại.
+    /// </summary>
+    public void Stop()
+    {
+        _pollTimer?.Stop();
+        _pollTimer = null;
+
+        // Ngừng theo dõi phiên (đăng nhập lại sẽ subscribe lại trong Start).
+        _session.Changed -= OnSessionChanged;
     }
 }

@@ -24,48 +24,64 @@
         <Border Grid.Row="1" Classes="filterBar" Padding="14,12">
             <Grid RowDefinitions="Auto,Auto" RowSpacing="12">
 
-                <!-- Hàng 1: các trường lọc -->
+                <!-- Hàng 1: các trường lọc.
+                     Kích thước do cột Grid quyết định (không đặt Width cứng) và
+                     MinWidth="0" ghi đè MinWidth của style/template mặc định,
+                     nên các ô không còn bị tràn đè lên nhau. -->
                 <Grid Grid.Row="0"
-                      ColumnDefinitions="Auto,Auto,Auto,Auto,*"
-                      ColumnSpacing="10">
+                      ColumnDefinitions="170,170,200,160,*"
+                      ColumnSpacing="12">
 
-                    <StackPanel Grid.Column="0" Spacing="4" Width="150">
+                    <StackPanel Grid.Column="0" Spacing="4">
                         <TextBlock Classes="fieldLabel" Text="TỪ NGÀY" />
                         <CalendarDatePicker Classes="field"
-                                            Width="150"
-                                            SelectedDateFormat="Short"
+                                            MinWidth="0"
+                                            Height="38"
+                                            HorizontalAlignment="Stretch"
+                                            VerticalContentAlignment="Center"
+                                            SelectedDateFormat="Custom"
+                                            CustomDateFormatString="dd/MM/yyyy"
                                             SelectedDate="{Binding HistoryView.FromDate}" />
                     </StackPanel>
 
-                    <StackPanel Grid.Column="1" Spacing="4" Width="150">
+                    <StackPanel Grid.Column="1" Spacing="4">
                         <TextBlock Classes="fieldLabel" Text="ĐẾN NGÀY" />
                         <CalendarDatePicker Classes="field"
-                                            Width="150"
-                                            SelectedDateFormat="Short"
+                                            MinWidth="0"
+                                            Height="38"
+                                            HorizontalAlignment="Stretch"
+                                            VerticalContentAlignment="Center"
+                                            SelectedDateFormat="Custom"
+                                            CustomDateFormatString="dd/MM/yyyy"
                                             SelectedDate="{Binding HistoryView.ToDate}" />
                     </StackPanel>
 
-                    <StackPanel Grid.Column="2" Spacing="4" Width="180">
+                    <StackPanel Grid.Column="2" Spacing="4">
                         <TextBlock Classes="fieldLabel" Text="HÀNH ĐỘNG" />
                         <TextBox Classes="field"
-                                 Width="180"
+                                 MinWidth="0"
+                                 Height="38"
+                                 HorizontalAlignment="Stretch"
+                                 VerticalContentAlignment="Center"
                                  PlaceholderText="ví dụ: Config"
                                  Text="{Binding HistoryView.ActionFilter}" />
                     </StackPanel>
 
-                    <StackPanel Grid.Column="3" Spacing="4" Width="140">
+                    <StackPanel Grid.Column="3" Spacing="4">
                         <TextBlock Classes="fieldLabel" Text="KẾT QUẢ" />
                         <ComboBox Classes="field"
-                                  Width="140"
+                                  MinWidth="0"
+                                  Height="38"
+                                  HorizontalAlignment="Stretch"
+                                  VerticalContentAlignment="Center"
                                   ItemsSource="{Binding HistoryView.ResultOptions}"
                                   SelectedItem="{Binding HistoryView.ResultFilter}" />
                     </StackPanel>
 
                     <Border Grid.Column="4"
-                            Margin="4,0,0,0"
-                            Padding="12,0"
                             Height="38"
                             VerticalAlignment="Bottom"
+                            Padding="12,0"
                             CornerRadius="10"
                             Background="{StaticResource BgRaised}">
                         <TextBlock Classes="label"
@@ -76,41 +92,49 @@
                     </Border>
                 </Grid>
 
-                <!-- Hàng 2: nút điều khiển + xuất file -->
+                <!-- Hàng 2: nút điều khiển + xuất file.
+                     Thông tin phân trang chỉ hiển thị ở chân bảng (tránh lặp 2 lần). -->
                 <Grid Grid.Row="1"
                       ColumnDefinitions="Auto,Auto,Auto,*,Auto"
                       ColumnSpacing="8">
 
                     <Button Grid.Column="0"
                             Classes="primary"
+                            Height="36" MinWidth="88" Padding="14,0"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
                             Content="Áp dụng"
                             Command="{Binding HistoryView.ApplyFilterCommand}" />
 
                     <Button Grid.Column="1"
                             Classes="soft"
+                            Height="36" MinWidth="80" Padding="14,0"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
                             Content="Đặt lại"
                             Command="{Binding HistoryView.ResetFilterCommand}" />
 
                     <Button Grid.Column="2"
                             Classes="soft"
+                            Height="36" MinWidth="80" Padding="14,0"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
                             Content="Làm mới"
                             Command="{Binding HistoryView.LoadCommand}" />
-
-                    <TextBlock Grid.Column="3"
-                               Classes="label"
-                               FontSize="11.5"
-                               VerticalAlignment="Center"
-                               Margin="6,0"
-                               TextTrimming="CharacterEllipsis"
-                               Text="{Binding HistoryView.PaginationText}" />
 
                     <StackPanel Grid.Column="4"
                                 Orientation="Horizontal"
                                 Spacing="8">
                         <Button Classes="soft"
+                                Height="36" MinWidth="90" Padding="14,0"
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center"
                                 Content="Xuất JSON"
                                 Command="{Binding HistoryView.ExportJsonCommand}" />
                         <Button Classes="soft"
+                                Height="36" MinWidth="90" Padding="14,0"
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center"
                                 Content="Xuất CSV"
                                 Command="{Binding HistoryView.ExportCsvCommand}" />
                     </StackPanel>

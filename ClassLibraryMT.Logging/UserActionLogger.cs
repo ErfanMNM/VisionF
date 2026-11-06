@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -8,16 +9,52 @@ namespace ClassLibraryMT.Logging;
 /// Cài đặt <see cref="IUserActionLogger"/> ghi vào bảng <c>UserActions</c>.
 ///
 /// Ghi bất đồng bộ (enqueue) nên không block UI thread.
+///
+/// Nếu ứng dụng đăng ký <see cref="IUserContext"/> (ví dụ qua lib Auth) thì
+/// mỗi bản ghi sẽ kèm tên người dùng đang đăng nhập. Nếu không có thì cột
+/// <c>Username</c> để rỗng — app vẫn chạy bình thường.
 /// </summary>
 internal sealed class UserActionLogger : IUserActionLogger
 {
     private readonly SqliteLogWriter _writer;
     private readonly SqliteLoggingOptions _opt;
+    private readonly IUserContext? _userContext;
 
-    public UserActionLogger(SqliteLogWriter writer, IOptions<SqliteLoggingOptions> options)
+    /// <summary>
+    /// Khởi tạo logger thao tác.
+    /// </summary>
+    /// <param name="writer">Writer ghi log.</param>
+    /// <param name="options">Cấu hình ghi log.</param>
+    /// <param name="serviceProvider">
+    /// Service provider — dùng để lấy <see cref="IUserContext"/> (tuỳ chọn).
+    /// Được lấy qua <c>GetService&lt;IUserContext&gt;()</c> vì DI của
+    /// Microsoft.Extensions không tự hỗ trợ tham số nullable.
+    /// </param>
+    public UserActionLogger(
+        SqliteLogWriter writer,
+        IOptions<SqliteLoggingOptions> options,
+        IServiceProvider serviceProvider)
     {
         _writer = writer;
         _opt = options.Value;
+        _userContext = serviceProvider.GetService<IUserContext>();
+    }
+
+    /// <summary>
+    /// Khởi tạo logger thao tác không có ngữ cảnh người dùng.
+    ///
+    /// Dùng khi app không đăng nhập / không có lib Auth — các bản ghi sẽ có
+    /// cột <c>Username</c> rỗng.
+    /// </summary>
+    /// <param name="writer">Writer ghi log.</param>
+    /// <param name="options">Cấu hình ghi log.</param>
+    public UserActionLogger(
+        SqliteLogWriter writer,
+        IOptions<SqliteLoggingOptions> options)
+    {
+        _writer = writer;
+        _opt = options.Value;
+        _userContext = null;
     }
 
     public void Log(string action, string? target = null, string? detail = null, string? result = null)
@@ -27,6 +64,10 @@ internal sealed class UserActionLogger : IUserActionLogger
             return;
         }
 
+        // Lấy thông tin người dùng ở thời điểm ghi (có thể đã đăng xuất sau đó).
+        var username = _userContext?.Username;
+        var userId = _userContext?.UserId;
+
         _writer.Enqueue(new UserActionEntry
         {
             TimestampUtc = DateTime.UtcNow,
@@ -34,6 +75,8 @@ internal sealed class UserActionLogger : IUserActionLogger
             Target = target?.Trim() ?? string.Empty,
             DetailJson = NormalizeDetail(detail),
             Result = result?.Trim() ?? UserActionResults.Success,
+            Username = username?.Trim() ?? string.Empty,
+            UserId = userId,
         });
     }
 

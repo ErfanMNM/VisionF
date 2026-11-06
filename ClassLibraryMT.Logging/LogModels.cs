@@ -54,6 +54,18 @@ public sealed class UserActionEntry
 
     /// <summary>Kết quả: <c>Success</c> / <c>Failed</c> / <c>Cancelled</c>.</summary>
     public string Result { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Tên đăng nhập của người dùng thực hiện thao tác (rỗng nếu không có ai
+    /// đăng nhập, ví dụ thao tác tự động của hệ thống).
+    /// </summary>
+    public string Username { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Khoá chính của người dùng thực hiện thao tác, null nếu không có ai
+    /// đăng nhập.
+    /// </summary>
+    public long? UserId { get; set; }
 }
 
 /// <summary>
@@ -93,6 +105,11 @@ public sealed class UserActionFilter
 
     /// <summary>Lọc theo kết quả (null = tất cả).</summary>
     public string? Result { get; set; }
+
+    /// <summary>
+    /// Lọc theo tên đăng nhập của người thực hiện (null = tất cả).
+    /// </summary>
+    public string? Username { get; set; }
 }
 
 /// <summary>

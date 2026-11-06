@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>ClassLibraryMT.Auth.Tests</RootNamespace>
+    <AssemblyName>ClassLibraryMT.Auth.Tests</AssemblyName>
+    <IsAotCompatible>true</IsAotCompatible>
+    <!-- Khong dung package de test: runner tu viet, khong can internet khi build. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ClassLibraryMT.Auth\ClassLibraryMT.Auth.csproj" />
+    <!-- NullLogger: dung de tao logger im lang trong test. -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.14" />
+  </ItemGroup>
+
+</Project>

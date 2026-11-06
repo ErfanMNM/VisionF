@@ -21,4 +21,9 @@ public enum AppSection
     /// Lịch sử: nhật ký thao tác người dùng (mục nhà phát triển).
     /// </summary>
     History = 3,
+
+    /// <summary>
+    /// Tài khoản: quản lý tài khoản người dùng (chỉ Quản trị / Lập trình viên).
+    /// </summary>
+    Accounts = 4,
 }

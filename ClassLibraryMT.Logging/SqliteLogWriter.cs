@@ -317,7 +317,9 @@ public sealed class SqliteLogWriter : IDisposable
                 Action       TEXT    NOT NULL,
                 Target       TEXT    NOT NULL DEFAULT '',
                 DetailJson   TEXT    NULL,
-                Result       TEXT    NOT NULL DEFAULT ''
+                Result       TEXT    NOT NULL DEFAULT '',
+                Username     TEXT    NOT NULL DEFAULT '',
+                UserId       INTEGER NULL
             );
 
             CREATE INDEX IF NOT EXISTS IX_UserActions_TimestampUtc ON UserActions (TimestampUtc DESC);
@@ -330,14 +332,62 @@ public sealed class SqliteLogWriter : IDisposable
         cmd.CommandText = schema;
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
 
+        // Migration: file app.db đã tồn tại từ trước khi thêm cột Username /
+        // UserId -> ALTER TABLE thêm vào, KHÔNG xoá DB (để giữ lịch sử).
+        // Phải chạy TRƯỚC khi tạo index trên cột mới.
+        await EnsureUserActionColumnsAsync(connection, ct).ConfigureAwait(false);
+
+        // Index trên cột Username (tạo sau migration để chắc chắn cột tồn tại).
+        await using (var indexCmd = connection.CreateCommand())
+        {
+            indexCmd.CommandText =
+                "CREATE INDEX IF NOT EXISTS IX_UserActions_Username ON UserActions (Username);";
+            await indexCmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+
         // Ghi version hiện tại nếu chưa có.
         await using var versionCmd = connection.CreateCommand();
         versionCmd.CommandText = """
             INSERT OR IGNORE INTO SchemaVersion (Version, AppliedUtc)
-            VALUES (1, $appliedUtc);
+            VALUES (2, $appliedUtc);
             """;
         versionCmd.Parameters.AddWithValue("$appliedUtc", DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture));
         await versionCmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Thêm cột mới vào bảng <c>UserActions</c> nếu bảng cũ chưa có.
+    /// </summary>
+    private static async Task EnsureUserActionColumnsAsync(
+        SqliteConnection connection, CancellationToken ct)
+    {
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        await using (var pragma = connection.CreateCommand())
+        {
+            pragma.CommandText = "PRAGMA table_info(UserActions);";
+
+            await using var reader = await pragma.ExecuteReaderAsync(ct).ConfigureAwait(false);
+            while (await reader.ReadAsync(ct).ConfigureAwait(false))
+            {
+                // PRAGMA table_info: cid | name | type | notnull | dflt_value | pk
+                columns.Add(reader.GetString(1));
+            }
+        }
+
+        if (!columns.Contains("Username"))
+        {
+            await using var alter = connection.CreateCommand();
+            alter.CommandText = "ALTER TABLE UserActions ADD COLUMN Username TEXT NOT NULL DEFAULT '';";
+            await alter.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+
+        if (!columns.Contains("UserId"))
+        {
+            await using var alter = connection.CreateCommand();
+            alter.CommandText = "ALTER TABLE UserActions ADD COLUMN UserId INTEGER NULL;";
+            await alter.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
     }
 
     private static async Task InsertAppLogsAsync(
@@ -384,8 +434,8 @@ public sealed class SqliteLogWriter : IDisposable
         await using var cmd = connection.CreateCommand();
         cmd.Transaction = transaction;
         cmd.CommandText = """
-            INSERT INTO UserActions (TimestampUtc, Action, Target, DetailJson, Result)
-            VALUES ($ts, $action, $target, $detail, $result);
+            INSERT INTO UserActions (TimestampUtc, Action, Target, DetailJson, Result, Username, UserId)
+            VALUES ($ts, $action, $target, $detail, $result, $username, $userId);
             """;
 
         var pTs = cmd.Parameters.Add("$ts", SqliteType.Text);
@@ -393,6 +443,8 @@ public sealed class SqliteLogWriter : IDisposable
         var pTarget = cmd.Parameters.Add("$target", SqliteType.Text);
         var pDetail = cmd.Parameters.Add("$detail", SqliteType.Text);
         var pResult = cmd.Parameters.Add("$result", SqliteType.Text);
+        var pUsername = cmd.Parameters.Add("$username", SqliteType.Text);
+        var pUserId = cmd.Parameters.Add("$userId", SqliteType.Integer);
 
         foreach (var e in entries)
         {
@@ -401,6 +453,8 @@ public sealed class SqliteLogWriter : IDisposable
             pTarget.Value = e.Target;
             pDetail.Value = (object?)e.DetailJson ?? DBNull.Value;
             pResult.Value = e.Result;
+            pUsername.Value = e.Username;
+            pUserId.Value = (object?)e.UserId ?? DBNull.Value;
 
             await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }

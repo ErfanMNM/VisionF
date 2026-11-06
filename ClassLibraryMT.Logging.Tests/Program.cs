@@ -49,6 +49,14 @@ internal static class Program
         Console.WriteLine("--- Schema va WAL ---");
         await TestRunner.RunAsync("Schema 3 bang + WAL", TestSchema);
 
+        Console.WriteLine();
+        Console.WriteLine("--- Nguoi dung trong nhat ky ---");
+        await TestRunner.RunAsync("Ghi Username/UserId vao UserActions", TestUserContextInLog);
+
+        Console.WriteLine();
+        Console.WriteLine("--- Migration bang UserActions cu ---");
+        await TestRunner.RunAsync("ALTER TABLE them cot Username/UserId", TestMigrationUserActions);
+
         return TestRunner.Summary();
     }
 
@@ -458,6 +466,153 @@ internal static class Program
         {
             Cleanup(dir);
         }
+    }
+
+    // ------------------------------------------------------------------
+    // 8. Nguoi dung trong nhat ky
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// IUserContext (tu lib Auth) duoc ghi vao UserActions.
+    /// </summary>
+    private static async Task TestUserContextInLog()
+    {
+        var dir = CreateTempDir();
+
+        try
+        {
+            var (writer, provider, query) = CreateStack(OptionsFor(dir));
+
+            // Service provider gia lap: chi co IUserContext, khong co gi khac.
+            var userContext = new FakeUserContext { Username = "nguyenvana", UserId = 42 };
+            var services = new FakeServiceProvider(userContext);
+
+            using (provider)
+            {
+                var actionLog = new UserActionLogger(
+                    writer, Options.Create(OptionsFor(dir)), services);
+
+                actionLog.Log("Config.Save", "Config", "Luu cau hinh", UserActionResults.Success);
+
+                await writer.FlushAsync();
+            }
+
+            var result = await query.GetUserActionsAsync();
+
+            TestRunner.AreEqual(1L, result.TotalCount, "Co 1 ban ghi");
+            TestRunner.AreEqual("nguyenvana", result.Items[0].Username, "Username duoc ghi");
+            TestRunner.AreEqual(42L, result.Items[0].UserId, "UserId duoc ghi");
+
+            // Loc theo username.
+            var byUser = await query.GetUserActionsAsync(new UserActionFilter { Username = "nguyenvana" });
+            TestRunner.AreEqual(1L, byUser.TotalCount, "Loc theo Username");
+
+            var byOther = await query.GetUserActionsAsync(new UserActionFilter { Username = "khac" });
+            TestRunner.AreEqual(0L, byOther.TotalCount, "Loc theo Username sai -> rong");
+
+            writer.Dispose();
+        }
+        finally
+        {
+            Cleanup(dir);
+        }
+    }
+
+    /// <summary>
+    /// Bang UserActions tao tu phien ban cu (khong co cot Username/UserId) phai
+    /// duoc ALTER TABLE them cot moi, giu nguyen du lieu cu.
+    /// </summary>
+    private static async Task TestMigrationUserActions()
+    {
+        var dir = CreateTempDir();
+
+        try
+        {
+            var dbPath = Path.Combine(dir, "test.db");
+
+            // Tao bang UserActions theo phien ban cu (khong co cot moi).
+            using (var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={dbPath}"))
+            {
+                connection.Open();
+
+                using var cmd = connection.CreateCommand();
+                cmd.CommandText = """
+                    CREATE TABLE UserActions (
+                        Id           INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        TimestampUtc TEXT    NOT NULL,
+                        Action       TEXT    NOT NULL,
+                        Target       TEXT    NOT NULL DEFAULT '',
+                        DetailJson   TEXT    NULL,
+                        Result       TEXT    NOT NULL DEFAULT ''
+                    );
+                    """;
+                cmd.ExecuteNonQuery();
+
+                // Chen 1 ban ghi cu.
+                using var insert = connection.CreateCommand();
+                insert.CommandText = """
+                    INSERT INTO UserActions (TimestampUtc, Action, Target, DetailJson, Result)
+                    VALUES ($ts, $a, $t, $d, $r);
+                    """;
+                insert.Parameters.AddWithValue("$ts", DateTime.UtcNow.ToString("O"));
+                insert.Parameters.AddWithValue("$a", "Old.Action");
+                insert.Parameters.AddWithValue("$t", "Old");
+                insert.Parameters.AddWithValue("$d", DBNull.Value);
+                insert.Parameters.AddWithValue("$r", "Success");
+                insert.ExecuteNonQuery();
+            }
+
+            // Mo writer -> phai chay migration.
+            var (writer, provider, query) = CreateStack(OptionsFor(dir));
+
+            using (provider)
+            {
+                var actionLog = new UserActionLogger(writer, Options.Create(OptionsFor(dir)));
+                actionLog.Log("New.Action", "New", "Ban ghi moi", UserActionResults.Success);
+                await writer.FlushAsync();
+            }
+
+            var result = await query.GetUserActionsAsync();
+
+            // Du lieu cu phai con nguyen.
+            TestRunner.AreEqual(2L, result.TotalCount, "Phai giu ca ban ghi cu va ban ghi moi");
+            TestRunner.IsTrue(
+                result.Items.Any(e => e.Action == "Old.Action"),
+                "Ban ghi cu phai con nguyen");
+
+            // Ban ghi moi co cot Username/UserId (rong vi khong co user context).
+            var newest = result.Items[0];
+            TestRunner.AreEqual("New.Action", newest.Action, "Ban ghi moi");
+            TestRunner.AreEqual(string.Empty, newest.Username, "Username rong khi khong co context");
+
+            writer.Dispose();
+        }
+        finally
+        {
+            Cleanup(dir);
+        }
+    }
+
+    /// <summary>
+    /// IUserContext gia lap cho test.
+    /// </summary>
+    private sealed class FakeUserContext : IUserContext
+    {
+        public string? Username { get; set; }
+        public long? UserId { get; set; }
+    }
+
+    /// <summary>
+    /// Service provider toi gian chi tra ve IUserContext.
+    /// </summary>
+    private sealed class FakeServiceProvider : IServiceProvider
+    {
+        private readonly IUserContext _userContext;
+
+        public FakeServiceProvider(IUserContext userContext) => _userContext = userContext;
+
+        public object? GetService(Type serviceType) =>
+            serviceType == typeof(IUserContext) ? _userContext : null;
     }
 
     // ------------------------------------------------------------------

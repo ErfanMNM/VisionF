@@ -85,7 +85,16 @@ public partial class MainWindow : Window
     {
         if (DataContext is MainViewModel vm)
         {
-            vm.Dispose();
+            // Nếu người dùng bấm "Đăng xuất" thì chỉ dừng tạm (app còn chạy để
+            // đăng nhập lại) — chỉ dispose khi cửa sổ đóng hẳn (thoát app).
+            if (vm.IsLogoutRequested)
+            {
+                vm.Stop();
+            }
+            else
+            {
+                vm.Dispose();
+            }
         }
 
         base.OnClosed(e);

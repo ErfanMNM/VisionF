@@ -1,3 +1,4 @@
+using ClassLibraryMT.Auth;
 using ClassLibraryMT.Logging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -9,6 +10,10 @@ namespace TanTienQR.ViewModels;
 /// Điều hướng giữa các tab của giao diện SCADA và trạng thái WebView.
 ///
 /// Phần này tách riêng khỏi <see cref="MainViewModel"/> để file không quá dài.
+///
+/// Mỗi tab được ẩn/hiện theo quyền của người dùng đang đăng nhập (xem
+/// <see cref="RolePermissions"/>): Worker chỉ xem Thông tin + Sản xuất, Operator
+/// thêm Cấu hình, Quản trị / Lập trình viên có thêm Lịch sử + Tài khoản.
 /// </summary>
 internal partial class MainViewModel
 {
@@ -26,6 +31,7 @@ internal partial class MainViewModel
     [NotifyPropertyChangedFor(nameof(IsProductionVisible))]
     [NotifyPropertyChangedFor(nameof(IsConfigVisible))]
     [NotifyPropertyChangedFor(nameof(IsHistoryVisible))]
+    [NotifyPropertyChangedFor(nameof(IsAccountsVisible))]
     [NotifyPropertyChangedFor(nameof(PageTitle))]
     [NotifyPropertyChangedFor(nameof(PageSubtitle))]
     public partial AppSection CurrentSection { get; set; } = AppSection.Info;
@@ -33,14 +39,21 @@ internal partial class MainViewModel
     /// <summary>True khi đang ở tab Thông tin.</summary>
     public bool IsInfoVisible => CurrentSection == AppSection.Info;
 
-    /// <summary>True khi đang ở tab Sản xuất.</summary>
-    public bool IsProductionVisible => CurrentSection == AppSection.Production;
+    /// <summary>True khi đang ở tab Sản xuất (và có quyền xem).</summary>
+    public bool IsProductionVisible =>
+        CurrentSection == AppSection.Production && CanViewProduction;
 
-    /// <summary>True khi đang ở tab Cấu hình.</summary>
-    public bool IsConfigVisible => CurrentSection == AppSection.Configuration;
+    /// <summary>True khi đang ở tab Cấu hình (và có quyền sửa).</summary>
+    public bool IsConfigVisible =>
+        CurrentSection == AppSection.Configuration && CanEditConfig;
 
-    /// <summary>True khi đang ở tab Lịch sử (mục nhà phát triển).</summary>
-    public bool IsHistoryVisible => CurrentSection == AppSection.History;
+    /// <summary>True khi đang ở tab Lịch sử (và có quyền xem).</summary>
+    public bool IsHistoryVisible =>
+        CurrentSection == AppSection.History && CanViewHistory;
+
+    /// <summary>True khi đang ở tab Tài khoản (và có quyền quản lý).</summary>
+    public bool IsAccountsVisible =>
+        CurrentSection == AppSection.Accounts && CanManageUsers;
 
     /// <summary>Tiêu đề trên thanh header, đổi theo tab.</summary>
     public string PageTitle => CurrentSection switch
@@ -48,6 +61,7 @@ internal partial class MainViewModel
         AppSection.Production => "Sản xuất",
         AppSection.Configuration => "Cấu hình",
         AppSection.History => "Lịch sử thao tác",
+        AppSection.Accounts => "Tài khoản",
         _ => "Thông tin",
     };
 
@@ -57,8 +71,40 @@ internal partial class MainViewModel
         AppSection.Production => "Theo dõi sản xuất trên hệ thống Checkee",
         AppSection.Configuration => "Tham số camera, PLC và web — áp dụng sau khi khởi động lại",
         AppSection.History => "Nhật ký thao tác của người dùng — dành cho nhà phát triển",
+        AppSection.Accounts => "Quản lý tài khoản người dùng và phân quyền truy cập",
         _ => "Nhận tín hiệu camera và gửi kết quả xuống PLC Omron (D12 = kết quả, D16 = Ready)",
     };
+
+    // ---------- Quyền hiển thị tab ----------
+
+    /// <summary>True khi người dùng có quyền xem tab Thông tin.</summary>
+    public bool CanViewInfo => _session.Can(Permission.ViewInfo);
+
+    /// <summary>True khi người dùng có quyền xem tab Sản xuất.</summary>
+    public bool CanViewProduction => _session.Can(Permission.ViewProduction);
+
+    /// <summary>True khi người dùng có quyền mở tab Cấu hình.</summary>
+    public bool CanEditConfig => _session.Can(Permission.EditConfig);
+
+    /// <summary>True khi người dùng có quyền mở tab Lịch sử.</summary>
+    public bool CanViewHistory => _session.Can(Permission.ViewHistory);
+
+    /// <summary>
+    /// Cập nhật lại tất cả cờ quyền (gọi khi phiên đăng nhập thay đổi).
+    /// </summary>
+    public void RefreshPermissionFlags()
+    {
+        OnPropertyChanged(nameof(CanViewInfo));
+        OnPropertyChanged(nameof(CanViewProduction));
+        OnPropertyChanged(nameof(CanEditConfig));
+        OnPropertyChanged(nameof(CanViewHistory));
+        OnPropertyChanged(nameof(CanManageUsers));
+        OnPropertyChanged(nameof(IsInfoVisible));
+        OnPropertyChanged(nameof(IsProductionVisible));
+        OnPropertyChanged(nameof(IsConfigVisible));
+        OnPropertyChanged(nameof(IsHistoryVisible));
+        OnPropertyChanged(nameof(IsAccountsVisible));
+    }
 
     // ---------- Lệnh chuyển tab ----------
 
@@ -70,6 +116,11 @@ internal partial class MainViewModel
     [RelayCommand]
     private void ShowProductionTab()
     {
+        if (!CanViewProduction)
+        {
+            return;
+        }
+
         SwitchTo(AppSection.Production, "Sản xuất");
 
         if (!IsWebEnabled)
@@ -97,6 +148,11 @@ internal partial class MainViewModel
     [RelayCommand]
     private void ShowConfigTab()
     {
+        if (!CanEditConfig)
+        {
+            return;
+        }
+
         SwitchTo(AppSection.Configuration, "Cấu hình");
 
         // Nạp lại giá trị từ file để không có thay đổi chưa lưu bị bỏ sót.
@@ -107,8 +163,26 @@ internal partial class MainViewModel
     [RelayCommand]
     private void ShowHistoryTab()
     {
+        if (!CanViewHistory)
+        {
+            return;
+        }
+
         SwitchTo(AppSection.History, "Lịch sử");
         HistoryView?.LoadCommand.Execute(null);
+    }
+
+    /// <summary>Chuyển sang tab Tài khoản (quản trị tài khoản người dùng).</summary>
+    [RelayCommand]
+    private void ShowAccountsTab()
+    {
+        if (!CanManageUsers)
+        {
+            return;
+        }
+
+        SwitchTo(AppSection.Accounts, "Tài khoản");
+        AccountsView?.LoadCommand.Execute(null);
     }
 
     /// <summary>

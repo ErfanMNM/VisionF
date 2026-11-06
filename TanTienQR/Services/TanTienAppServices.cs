@@ -1,3 +1,4 @@
+using ClassLibraryMT.Auth;
 using ClassLibraryMT.Communications.CodeReaderProtocol;
 using ClassLibraryMT.Communications.Plc;
 using ClassLibraryMT.Configuration;
@@ -27,6 +28,11 @@ public static class TanTienAppServices
         // Đăng ký TRƯỚC các worker để mọi ILogger<T> của worker đều được
         // ghi xuống SQLite ngay từ đầu.
         services.AddSqliteLogging(configuration);
+
+        // ---- Xác thực & phân quyền (tài khoản, phiên đăng nhập) ----
+        // Đăng ký SAU AddSqliteLogging vì AddAuth cần implement IUserContext
+        // (interface của lib Logging) để nhật ký thao tác có tên người dùng.
+        services.AddAuth(configuration);
 
         // ---- Camera: bind cấu hình thủ công (tương thích Native AOT) ----
         services.AddOptions<CameraOptions>()
@@ -119,6 +125,12 @@ public static class TanTienAppServices
         // ---- ViewModel ----
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<HistoryViewModel>();
+        services.AddSingleton<AccountsViewModel>();
+
+        // LoginViewModel: Transient vì mỗi lần đăng nhập cần trạng thái
+        // form sạch (tên đăng nhập / mật khẩu / lỗi) — không dùng lại
+        // instance của lần trước.
+        services.AddTransient<LoginViewModel>();
 
         return services;
     }

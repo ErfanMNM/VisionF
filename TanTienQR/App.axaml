@@ -481,6 +481,22 @@
         <Style Selector="Border.badge.fault TextBlock">
             <Setter Property="Foreground" Value="{StaticResource Danger}" />
         </Style>
+        <!-- Badge vai trò Quản trị (accent teal) -->
+        <Style Selector="Border.badge.accent">
+            <Setter Property="Background" Value="{StaticResource AccentSoft}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineAccent}" />
+        </Style>
+        <Style Selector="Border.badge.accent TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Accent}" />
+        </Style>
+        <!-- Badge vai trò Lập trình viên (tím) -->
+        <Style Selector="Border.badge.developer">
+            <Setter Property="Background" Value="#F0E6FF" />
+            <Setter Property="BorderBrush" Value="#CDB4F5" />
+        </Style>
+        <Style Selector="Border.badge.developer TextBlock">
+            <Setter Property="Foreground" Value="#6B37C9" />
+        </Style>
 
         <!-- ===== The thiet bi (sidebar) ===== -->
         <Style Selector="Border.device">

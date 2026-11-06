@@ -120,6 +120,7 @@
 
                         <Button Classes="segtab"
                                 Classes.active="{Binding IsHistoryVisible}"
+                                IsVisible="{Binding CanViewHistory}"
                                 Command="{Binding ShowHistoryTabCommand}">
                             <StackPanel Orientation="Horizontal" Spacing="8"
                                         HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -131,6 +132,23 @@
                                       StrokeJoin="Round"
                                       Data="M4,5 L4,19 L7,19 L7,5 Z M9,5 L9,19 L12,19 L12,5 Z M14,5 L14,19 L17,19 L17,5 Z M20,9 L20,19 L20,19" />
                                 <TextBlock Text="Lịch sử" />
+                            </StackPanel>
+                        </Button>
+
+                        <Button Classes="segtab"
+                                Classes.active="{Binding IsAccountsVisible}"
+                                IsVisible="{Binding CanManageUsers}"
+                                Command="{Binding ShowAccountsTabCommand}">
+                            <StackPanel Orientation="Horizontal" Spacing="8"
+                                        HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Path Classes="icon"
+                                      Width="15" Height="15"
+                                      Stretch="Uniform"
+                                      StrokeThickness="2"
+                                      StrokeLineCap="Round"
+                                      StrokeJoin="Round"
+                                      Data="M12,11 A4,4 0 1 0 12,3 A4,4 0 1 0 12,11 Z M4,21 C4,16.5 7.6,14 12,14 C16.4,14 20,16.5 20,21" />
+                                <TextBlock Text="Tài khoản" />
                             </StackPanel>
                         </Button>
                     </StackPanel>
@@ -146,6 +164,57 @@
                     <Border Width="1" Height="28"
                             Background="{StaticResource LineColor}"
                             VerticalAlignment="Center" />
+
+                    <!-- Người dùng đang đăng nhập + vai trò -->
+                    <StackPanel Orientation="Horizontal"
+                                Spacing="8"
+                                VerticalAlignment="Center">
+                        <Border Width="30" Height="30"
+                                CornerRadius="15"
+                                Background="{StaticResource AccentSoft}">
+                            <TextBlock Text="{Binding CurrentUserInitial}"
+                                       FontSize="12"
+                                       FontWeight="Bold"
+                                       Foreground="{StaticResource Accent}"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel Spacing="0" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding CurrentUserDisplayName}"
+                                       FontSize="12"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimary}" />
+                            <Border Classes="badge"
+                                    Classes.running="{Binding IsRoleOperator}"
+                                    Classes.warning="{Binding IsRoleWorker}"
+                                    Classes.accent="{Binding IsRoleAdministrator}"
+                                    Classes.developer="{Binding IsRoleDeveloper}"
+                                    HorizontalAlignment="Left"
+                                    Padding="6,1"
+                                    CornerRadius="5">
+                                <TextBlock Text="{Binding CurrentRoleText}" FontSize="9" />
+                            </Border>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Nút đăng xuất -->
+                    <Button x:Name="LogoutButton"
+                            Width="34" Height="34"
+                            MinWidth="0" MinHeight="0"
+                            Padding="0"
+                            CornerRadius="17"
+                            Background="{StaticResource BgRaised}"
+                            BorderBrush="{StaticResource LineColor}"
+                            BorderThickness="1"
+                            Foreground="{StaticResource TextMuted}"
+                            FontSize="13"
+                            FontWeight="Bold"
+                            Content="⏻"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            VerticalAlignment="Center"
+                            ToolTip.Tip="Đăng xuất"
+                            Command="{Binding LogoutCommand}" />
 
                     <StackPanel Spacing="0" MinWidth="124">
                         <TextBlock Classes="mono"
@@ -493,7 +562,7 @@
                         <Border Classes="device"
                                 Padding="8"
                                 Margin="0,10,0,0"
-                                IsVisible="{Binding HistoryView.IsHistoryEnabled}">
+                                IsVisible="{Binding CanViewHistory}">
                             <StackPanel Spacing="6">
                                 <TextBlock Classes="label"
                                            FontSize="9"
@@ -505,6 +574,25 @@
                                         HorizontalContentAlignment="Left"
                                         Content="Lịch sử thao tác"
                                         Command="{Binding ShowHistoryTabCommand}" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Nhóm quản trị (chỉ Quản trị / Lập trình viên) -->
+                        <Border Classes="device"
+                                Padding="8"
+                                Margin="0,10,0,0"
+                                IsVisible="{Binding CanManageUsers}">
+                            <StackPanel Spacing="6">
+                                <TextBlock Classes="label"
+                                           FontSize="9"
+                                           Text="QUẢN TRỊ"
+                                           Margin="2,0,0,2" />
+                                <Button Classes="chip"
+                                        HorizontalAlignment="Stretch"
+                                        FontSize="12"
+                                        HorizontalContentAlignment="Left"
+                                        Content="Tài khoản"
+                                        Command="{Binding ShowAccountsTabCommand}" />
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -524,6 +612,7 @@
                 <views:ProductionView IsVisible="{Binding IsProductionVisible}" />
                 <views:ConfigView IsVisible="{Binding IsConfigVisible}" />
                 <views:HistoryView IsVisible="{Binding IsHistoryVisible}" />
+                <views:AccountsView IsVisible="{Binding IsAccountsVisible}" />
             </Grid>
         </Grid>
     </Grid>
