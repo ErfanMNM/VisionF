@@ -23,11 +23,14 @@ todos:
   - id: di-registration
     content: "Đăng ký DI: HandheldOptions + HandheldScannerService + CodeLookupViewModel trong TanTienAppServices.cs"
     status: pending
-  - id: mock-script
-    content: Viết tools/send-scan.ps1 để gửi mã mô phỏng handheld và kiểm thử
-    status: pending
   - id: verify
-    content: "Build Debug + publish AOT Release, chạy app xác minh: nhập tay, quét mock TCP, xem card + lịch sử"
+    content: Build Debug + publish AOT Release
+    status: pending
+  - id: todo-1793988343265-8o4un7m7p
+    content: Commit và Đẩy lên
+    status: pending
+  - id: todo-1793988353436-4gjtksslr
+    content: Tắt máy tính
     status: pending
 isProject: false
 ---

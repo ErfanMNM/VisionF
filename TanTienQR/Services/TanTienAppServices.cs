@@ -108,6 +108,29 @@ public static class TanTienAppServices
         // ---- Kênh kết quả quét mã (worker -> UI) ----
         services.AddSingleton<ScanFeed>();
 
+        // ---- Máy quét cầm tay (handheld) ----
+        // Mô phỏng qua TCP localhost:6999; giao diện COM sẽ thêm sau.
+        services.AddOptions<HandheldOptions>()
+            .Configure<IConfiguration>((o, cfg) =>
+            {
+                o.Enabled = ConfigReader.GetBool(cfg, $"{HandheldOptions.SectionName}:Enabled", o.Enabled);
+                o.TcpHost = ConfigReader.GetString(cfg, $"{HandheldOptions.SectionName}:TcpHost", o.TcpHost);
+                o.TcpPort = ConfigReader.GetInt(cfg, $"{HandheldOptions.SectionName}:TcpPort", o.TcpPort);
+                o.ComPort = ConfigReader.GetString(cfg, $"{HandheldOptions.SectionName}:ComPort", o.ComPort);
+                o.BaudRate = ConfigReader.GetInt(cfg, $"{HandheldOptions.SectionName}:BaudRate", o.BaudRate);
+
+                var mode = ConfigReader.GetString(cfg, $"{HandheldOptions.SectionName}:Mode", "TcpServer");
+                o.Mode = string.Equals(mode, "TcpClient", StringComparison.OrdinalIgnoreCase)
+                    ? HandheldMode.TcpClient
+                    : HandheldMode.TcpServer;
+            })
+            .Validate(o => !string.IsNullOrWhiteSpace(o.TcpHost), "Scanner:TcpHost khong duoc de trong.")
+            .Validate(o => o.TcpPort is > 0 and <= 65535, "Scanner:TcpPort phai tu 1 den 65535.")
+            .Validate(o => o.BaudRate > 0, "Scanner:BaudRate phai lon hon 0.")
+            .ValidateOnStart();
+
+        services.AddSingleton<HandheldScannerService>();
+
         // ---- Web Checkee nhúng (tab Sản xuất) ----
         services.AddOptions<WebOptions>()
             .Configure<IConfiguration>((o, cfg) =>
@@ -147,6 +170,7 @@ public static class TanTienAppServices
         services.AddSingleton<AccountsViewModel>();
         services.AddSingleton<PlcSettingsViewModel>();
         services.AddSingleton<DevViewModel>();
+        services.AddSingleton<CodeLookupViewModel>();
 
         // ---- Bàn phím ảo cho máy cảm ứng ----
         // VM bàn phím là singleton để mọi cửa sổ dùng chung một trạng thái

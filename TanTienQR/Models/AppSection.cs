@@ -38,4 +38,9 @@ public enum AppSection
     /// Chỉ dành cho vai trò Lập trình viên.
     /// </summary>
     Dev = 6,
+
+    /// <summary>
+    /// Tra cứu mã: tra cứu mã đã quét qua hệ thống (nhập tay hoặc handheld).
+    /// </summary>
+    CodeLookup = 7,
 }

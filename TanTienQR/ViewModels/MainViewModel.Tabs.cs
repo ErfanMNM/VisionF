@@ -34,6 +34,7 @@ internal partial class MainViewModel
     [NotifyPropertyChangedFor(nameof(IsAccountsVisible))]
     [NotifyPropertyChangedFor(nameof(IsPlcSettingsVisible))]
     [NotifyPropertyChangedFor(nameof(IsDevVisible))]
+    [NotifyPropertyChangedFor(nameof(IsCodeLookupVisible))]
     [NotifyPropertyChangedFor(nameof(PageTitle))]
     [NotifyPropertyChangedFor(nameof(PageSubtitle))]
     public partial AppSection CurrentSection { get; set; } = AppSection.Info;
@@ -65,6 +66,15 @@ internal partial class MainViewModel
     public bool IsDevVisible =>
         CurrentSection == AppSection.Dev && CanViewDev;
 
+    /// <summary>
+    /// True khi đang ở tab Tra cứu mã.
+    ///
+    /// Mọi vai trò đều được xem (không thêm quyền mới vào
+    /// <c>ClassLibraryMT.Auth</c> vì ma trận quyền dùng chung cho mọi app).
+    /// </summary>
+    public bool IsCodeLookupVisible =>
+        CurrentSection == AppSection.CodeLookup;
+
     /// <summary>Tiêu đề trên thanh header, đổi theo tab.</summary>
     public string PageTitle => CurrentSection switch
     {
@@ -74,6 +84,7 @@ internal partial class MainViewModel
         AppSection.Accounts => "Tài khoản",
         AppSection.PlcSettings => "Chỉnh PLC",
         AppSection.Dev => "Dev",
+        AppSection.CodeLookup => "Tra cứu mã",
         _ => "Thông tin",
     };
 
@@ -86,6 +97,7 @@ internal partial class MainViewModel
         AppSection.Accounts => "Quản lý tài khoản người dùng và phân quyền truy cập",
         AppSection.PlcSettings => "Đọc/ghi ô nhớ PLC Omron, quản lý tham số và áp dụng recipe",
         AppSection.Dev => "Trạng thái runtime, bộ đếm, bộ nhớ, log kỹ thuật — dành cho nhà phát triển",
+        AppSection.CodeLookup => "Tra cứu mã đã quét qua hệ thống — nhập tay hoặc quét bằng handheld cầm tay",
         _ => "Nhận tín hiệu camera và gửi kết quả xuống PLC Omron (D12 = kết quả, D16 = Ready)",
     };
 
@@ -135,6 +147,7 @@ internal partial class MainViewModel
         OnPropertyChanged(nameof(IsAccountsVisible));
         OnPropertyChanged(nameof(IsPlcSettingsVisible));
         OnPropertyChanged(nameof(IsDevVisible));
+        OnPropertyChanged(nameof(IsCodeLookupVisible));
     }
 
     // ---------- Lệnh chuyển tab ----------
@@ -248,6 +261,18 @@ internal partial class MainViewModel
 
         // Bật timer refresh của tab Dev (chỉ chạy khi tab đang mở).
         DevView.Activate();
+    }
+
+    /// <summary>
+    /// Chuyển sang tab Tra cứu mã (tra cứu mã đã quét qua hệ thống).
+    /// </summary>
+    [RelayCommand]
+    private void ShowCodeLookupTab()
+    {
+        SwitchTo(AppSection.CodeLookup, "Tra cứu mã");
+
+        // Nạp danh sách mã quét gần đây (không ghi đè kết quả đang tra cứu).
+        CodeLookup.LoadCommand.Execute(null);
     }
 
     /// <summary>

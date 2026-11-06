@@ -182,6 +182,23 @@
                             </StackPanel>
                         </Button>
 
+                        <!-- Tra cứu mã: mọi vai trò đều xem được -->
+                        <Button Classes="segtab"
+                                Classes.active="{Binding IsCodeLookupVisible}"
+                                Command="{Binding ShowCodeLookupTabCommand}">
+                            <StackPanel Orientation="Horizontal" Spacing="8"
+                                        HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Path Classes="icon"
+                                      Width="15" Height="15"
+                                      Stretch="Uniform"
+                                      StrokeThickness="2"
+                                      StrokeLineCap="Round"
+                                      StrokeJoin="Round"
+                                      Data="M10,3 A7,7 0 1 0 10,17 A7,7 0 1 0 10,3 Z M15,15 L21,21" />
+                                <TextBlock Text="Tra cứu mã" />
+                            </StackPanel>
+                        </Button>
+
                         <Button Classes="segtab"
                                 Classes.active="{Binding IsAccountsVisible}"
                                 IsVisible="{Binding CanManageUsers}"
@@ -634,6 +651,12 @@
                                 Content="Chỉnh PLC"
                                 IsVisible="{Binding CanEditPlc}"
                                 Command="{Binding ShowPlcSettingsTabCommand}" />
+                        <Button Classes="chip"
+                                HorizontalAlignment="Stretch"
+                                FontSize="12"
+                                HorizontalContentAlignment="Left"
+                                Content="Tra cứu mã"
+                                Command="{Binding ShowCodeLookupTabCommand}" />
 
                         <!-- Nhóm nhà phát triển -->
                         <Border Classes="device"
@@ -699,6 +722,7 @@
                 <views:AccountsView IsVisible="{Binding IsAccountsVisible}" />
                 <views:PlcSettingsView IsVisible="{Binding IsPlcSettingsVisible}" />
                 <views:DevView IsVisible="{Binding IsDevVisible}" />
+                <views:CodeLookupView IsVisible="{Binding IsCodeLookupVisible}" />
             </Grid>
         </Grid>
 

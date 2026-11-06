@@ -66,6 +66,12 @@ public partial class App : Application
             // chuyển PLCStatus về Connected.
             _host.Start();
 
+            // ---- Máy quét cầm tay (handheld) ----
+            // Bật lắng nghe TCP (mặc định 127.0.0.1:6999) để nhận mã quét.
+            // Bắt đầu ở đây (ngoài vòng lặp đăng nhập) để không mở/đóng
+            // listener mỗi lần đăng xuất.
+            _host.Services.GetRequiredService<HandheldScannerService>().Start();
+
             // Đăng nhập là BẮT BUỘC trước khi vào ứng dụng.
             // ShutdownMode = OnExplicitShutdown để đóng cửa sổ đăng nhập KHÔNG
             // tắt app (đăng xuất sẽ quay lại cửa sổ đăng nhập).
