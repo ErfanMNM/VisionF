@@ -162,16 +162,31 @@
             <Setter Property="Stroke" Value="{StaticResource Accent}" />
         </Style>
 
-        <!-- ===== Segmented tab (header): nút rộng cố định, track bo tròn ===== -->
+        <!-- ===== Segmented tab (header): nut co gian theo noi dung, khong tran ===== -->
+        <Style Selector="ScrollViewer.segtabs">
+            <!-- Thanh cuon ngang mo mong, chi xuat hien khi that su tran. -->
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="ScrollViewer.segtabs ScrollBar">
+            <Setter Property="Height" Value="6" />
+            <Setter Property="MinWidth" Value="48" />
+            <Setter Property="Background" Value="{StaticResource LineColor}" />
+        </Style>
+        <Style Selector="ScrollViewer.segtabs ScrollBar:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource TextMuted}" />
+        </Style>
         <Style Selector="Button.segtab">
-            <Setter Property="Width" Value="140" />
-            <Setter Property="Height" Value="36" />
-            <Setter Property="Padding" Value="0" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="Height" Value="32" />
+            <!-- Padding ngang linh hoat: nut co lai khi cua so hep,
+                 khong dung Width co dinh de tran sang cac thanh khac. -->
+            <Setter Property="Padding" Value="16,0" />
             <Setter Property="CornerRadius" Value="999" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontSize" Value="12.5" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />

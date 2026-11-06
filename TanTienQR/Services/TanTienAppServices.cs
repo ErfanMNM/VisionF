@@ -126,11 +126,21 @@ public static class TanTienAppServices
         // Heartbeat PLC: ghi trạng thái Ready xuống D16 mỗi chu kỳ.
         services.AddHostedService<PlcHeartbeatService>();
 
+        // ---- Bộ đếm runtime (tab Dev) ----
+        // Singleton: gom số liệu từ nhiều service, dùng Interlocked.
+        services.AddSingleton<RuntimeCounters>();
+
+        // ---- Danh sách service DI (tab Dev) ----
+        // Đăng ký bằng factory nên danh sách được chụp LÚC container build
+        // (sau khi mọi service đã đăng ký) -> không bỏ sót service nào.
+        services.AddSingleton(sp => new DevServiceRegistry(services.ToList()));
+
         // ---- ViewModel ----
         services.AddSingleton<MainViewModel>();
-    services.AddSingleton<HistoryViewModel>();
-    services.AddSingleton<AccountsViewModel>();
-    services.AddSingleton<PlcSettingsViewModel>();
+        services.AddSingleton<HistoryViewModel>();
+        services.AddSingleton<AccountsViewModel>();
+        services.AddSingleton<PlcSettingsViewModel>();
+        services.AddSingleton<DevViewModel>();
 
         // LoginViewModel: Transient vì mỗi lần đăng nhập cần trạng thái
         // form sạch (tên đăng nhập / mật khẩu / lỗi) — không dùng lại

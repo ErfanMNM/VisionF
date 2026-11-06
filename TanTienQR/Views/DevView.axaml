@@ -1,0 +1,442 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:TanTienQR.ViewModels"
+             xmlns:d="http://schemas.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1040" d:DesignHeight="700"
+             x:Class="TanTienQR.Views.DevView"
+             x:DataType="vm:MainViewModel">
+
+    <Grid RowDefinitions="Auto,Auto,*" Margin="18,6,18,18" RowSpacing="12">
+
+        <!-- Tiêu đề -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="12">
+            <StackPanel Spacing="4">
+                <TextBlock Text="Dev · Trạng thái runtime"
+                           FontSize="21"
+                           FontWeight="Bold"
+                           Foreground="{StaticResource TextPrimary}" />
+                <TextBlock Classes="label"
+                           FontSize="12"
+                           Text="Biến global, bộ đếm, bộ nhớ, service DI và log kỹ thuật — tự làm mới mỗi 1–3 giây. Chỉ dành cho Lập trình viên." />
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <Border Classes="pill">
+                    <TextBlock Classes="mono" Text="{Binding DevView.AppVersionText}" />
+                </Border>
+                <Border Classes="pill" Classes.ok="{Binding DevView.HasNoErrors}" Classes.danger="{Binding !DevView.HasNoErrors}">
+                    <TextBlock Text="{Binding DevView.LogSummary}" />
+                </Border>
+            </StackPanel>
+        </Grid>
+
+        <!-- Thanh công cụ -->
+        <Border Grid.Row="1" Classes="filterBar" Padding="12,10">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto" ColumnSpacing="8">
+
+                <Button Grid.Column="0"
+                        Classes="primary"
+                        Height="36" MinWidth="96" Padding="14,0"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        Content="Làm mới"
+                        Command="{Binding DevView.RefreshAllCommand}" />
+
+                <Button Grid.Column="1"
+                        Classes="soft"
+                        Height="36" MinWidth="130" Padding="14,0"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        Content="Giải phóng RAM"
+                        ToolTip.Tip="Chạy GC.Collect toàn bộ heap + nén bộ nhớ (có thể gây pause ngắn)"
+                        Command="{Binding DevView.CollectGarbageCommand}" />
+
+                <ComboBox Grid.Column="2"
+                          Classes="field"
+                          MinWidth="0"
+                          Height="36"
+                          VerticalContentAlignment="Center"
+                          ItemsSource="{Binding DevView.LogLevelOptions}"
+                          SelectedItem="{Binding DevView.SelectedLogLevel}"
+                          ToolTip.Tip="Lọc log theo mức" />
+
+                <TextBox Grid.Column="3"
+                         Classes="field"
+                         MinWidth="0"
+                         Height="36"
+                         VerticalContentAlignment="Center"
+                         PlaceholderText="category (vd: Plc)"
+                         Text="{Binding DevView.LogCategoryFilter}" />
+
+                <TextBox Grid.Column="4"
+                         Classes="field"
+                         MinWidth="0"
+                         Height="36"
+                         VerticalContentAlignment="Center"
+                         PlaceholderText="nội dung log"
+                         Text="{Binding DevView.LogMessageFilter}" />
+
+                <CheckBox Grid.Column="6"
+                          VerticalContentAlignment="Center"
+                          IsChecked="{Binding DevView.IsLogAutoRefresh}"
+                          Content="Tự làm mới log" />
+            </Grid>
+        </Border>
+
+        <!-- Các bảng -->
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="12">
+
+                <!-- ===== TRẠNG THÁI GLOBAL ===== -->
+                <Border Grid.Row="0" Grid.Column="0" Classes="panel" Padding="14,12">
+                    <StackPanel Spacing="8">
+                        <TextBlock Classes="sectionTitle" Text="TRẠNG THÁI GLOBAL" />
+
+                        <ItemsControl ItemsSource="{Binding DevView.GlobalStates}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:DevKeyValueRow">
+                                    <Border Classes="event" Margin="0,1" Padding="9,6">
+                                        <Grid ColumnDefinitions="150,*" ColumnSpacing="8">
+                                            <TextBlock Grid.Column="0"
+                                                       Classes="mono"
+                                                       FontSize="11"
+                                                       VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       ToolTip.Tip="{Binding Name}"
+                                                       Text="{Binding Name}" />
+                                            <StackPanel Grid.Column="1" Spacing="1">
+                                                <TextBlock FontSize="11"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{StaticResource TextPrimary}"
+                                                           Text="{Binding Value}" />
+                                                <TextBlock Classes="label"
+                                                           FontSize="9"
+                                                           TextWrapping="Wrap"
+                                                           IsVisible="{Binding HasDetail}"
+                                                           Text="{Binding Detail}" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <!-- ===== LỖI HIỆN TẠI ===== -->
+                <Border Grid.Row="0" Grid.Column="1" Classes="panel" Padding="14,12">
+                    <StackPanel Spacing="8">
+                        <TextBlock Classes="sectionTitle" Text="LỖI HIỆN TẠI" />
+
+                        <ItemsControl ItemsSource="{Binding DevView.CurrentErrors}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:DevKeyValueRow">
+                                    <Border Classes="event" Margin="0,1" Padding="9,6">
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                            <StackPanel Grid.Column="0" Spacing="1">
+                                                <TextBlock FontSize="11"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{StaticResource Danger}"
+                                                           Text="{Binding Name}" />
+                                                <TextBlock FontSize="10"
+                                                           TextWrapping="Wrap"
+                                                           Foreground="{StaticResource TextPrimary}"
+                                                           Text="{Binding Value}" />
+                                                <TextBlock Classes="label mono" FontSize="9" Text="{Binding Detail}" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <StackPanel Spacing="4"
+                                    IsVisible="{Binding DevView.HasNoErrors}">
+                            <TextBlock Text="Không có lỗi"
+                                       FontSize="12"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource Ok}"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock Classes="label"
+                                       FontSize="10"
+                                       Text="Camera, PLC và license đều ổn."
+                                       HorizontalAlignment="Center" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- ===== BỘ ĐẾM RUNTIME ===== -->
+                <Border Grid.Row="1" Grid.Column="0" Classes="panel" Padding="14,12">
+                    <StackPanel Spacing="8">
+                        <TextBlock Classes="sectionTitle" Text="BỘ ĐẾM RUNTIME" />
+
+                        <ItemsControl ItemsSource="{Binding DevView.Counters}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:DevKeyValueRow">
+                                    <Border Classes="event" Margin="0,1" Padding="9,6">
+                                        <Grid ColumnDefinitions="150,*" ColumnSpacing="8">
+                                            <TextBlock Grid.Column="0"
+                                                       Classes="mono"
+                                                       FontSize="11"
+                                                       VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       ToolTip.Tip="{Binding Name}"
+                                                       Text="{Binding Name}" />
+                                            <StackPanel Grid.Column="1" Spacing="1">
+                                                <TextBlock FontSize="11"
+                                                           FontWeight="Bold"
+                                                           Foreground="{StaticResource TextPrimary}"
+                                                           Text="{Binding Value}" />
+                                                <TextBlock Classes="label"
+                                                           FontSize="9"
+                                                           TextWrapping="Wrap"
+                                                           IsVisible="{Binding HasDetail}"
+                                                           Text="{Binding Detail}" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <!-- ===== BỘ NHỚ ===== -->
+                <Border Grid.Row="1" Grid.Column="1" Classes="panel" Padding="14,12">
+                    <StackPanel Spacing="8">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <TextBlock Classes="sectionTitle" Text="BỘ NHỚ (RAM)" />
+                            <TextBlock Grid.Column="1"
+                                       Classes="label mono"
+                                       FontSize="10"
+                                       VerticalAlignment="Center"
+                                       Text="{Binding DevView.MemorySummary}" />
+                        </Grid>
+
+                        <ItemsControl ItemsSource="{Binding DevView.MemoryRows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:DevKeyValueRow">
+                                    <Border Classes="event" Margin="0,1" Padding="9,6">
+                                        <Grid ColumnDefinitions="170,*" ColumnSpacing="8">
+                                            <TextBlock Grid.Column="0"
+                                                       Classes="mono"
+                                                       FontSize="10"
+                                                       VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       ToolTip.Tip="{Binding Name}"
+                                                       Text="{Binding Name}" />
+                                            <StackPanel Grid.Column="1" Spacing="1">
+                                                <TextBlock FontSize="11"
+                                                           FontWeight="Bold"
+                                                           Foreground="{StaticResource TextPrimary}"
+                                                           Text="{Binding Value}" />
+                                                <TextBlock Classes="label"
+                                                           FontSize="9"
+                                                           TextWrapping="Wrap"
+                                                           IsVisible="{Binding HasDetail}"
+                                                           Text="{Binding Detail}" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <Border Classes="device" Padding="10">
+                            <TextBlock FontSize="10"
+                                       TextWrapping="Wrap"
+                                       Foreground="{StaticResource TextMuted}"
+                                       Text="Hàng đợi camera (512) và kênh kết quả (1000) đã giới hạn sức chứa để không rò bộ nhớ khi app chạy lâu." />
+                        </Border>
+                    </StackPanel>
+                </Border>
+
+                <!-- ===== MÔI TRƯỜNG ===== -->
+                <Border Grid.Row="2" Grid.Column="0" Classes="panel" Padding="14,12">
+                    <StackPanel Spacing="8">
+                        <TextBlock Classes="sectionTitle" Text="MÔI TRƯỜNG" />
+
+                        <ItemsControl ItemsSource="{Binding DevView.EnvironmentRows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:DevKeyValueRow">
+                                    <Border Classes="event" Margin="0,1" Padding="9,6">
+                                        <Grid ColumnDefinitions="140,*" ColumnSpacing="8">
+                                            <TextBlock Grid.Column="0"
+                                                       Classes="mono"
+                                                       FontSize="10"
+                                                       VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       ToolTip.Tip="{Binding Name}"
+                                                       Text="{Binding Name}" />
+                                            <TextBlock Grid.Column="1"
+                                                       Classes="mono"
+                                                       FontSize="10"
+                                                       TextWrapping="Wrap"
+                                                       Foreground="{StaticResource TextPrimary}"
+                                                       Text="{Binding Value}" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <!-- ===== CẤU HÌNH ĐỌC ĐƯỢC ===== -->
+                <Border Grid.Row="2" Grid.Column="1" Classes="panel" Padding="14,12">
+                    <StackPanel Spacing="8">
+                        <TextBlock Classes="sectionTitle" Text="CẤU HÌNH ĐỌC ĐƯỢC" />
+
+                        <ScrollViewer MaxHeight="230" VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding DevView.ConfigRows}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:DevKeyValueRow">
+                                        <Border Classes="event" Margin="0,1" Padding="9,5">
+                                            <Grid ColumnDefinitions="220,*" ColumnSpacing="8">
+                                                <TextBlock Grid.Column="0"
+                                                           Classes="mono"
+                                                           FontSize="10"
+                                                           VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           ToolTip.Tip="{Binding Name}"
+                                                           Text="{Binding Name}" />
+                                                <TextBlock Grid.Column="1"
+                                                           Classes="mono"
+                                                           FontSize="10"
+                                                           TextWrapping="Wrap"
+                                                           Foreground="{StaticResource TextPrimary}"
+                                                           Text="{Binding Value}" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </StackPanel>
+                </Border>
+
+                <!-- ===== DỊCH VỤ ĐĂNG KÝ (DI) ===== -->
+                <Border Grid.Row="3" Grid.Column="0" Classes="panel" Padding="14,12">
+                    <StackPanel Spacing="8">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <TextBlock Classes="sectionTitle" Text="DỊCH VỤ ĐĂNG KÝ (DI)" />
+                            <TextBlock Grid.Column="1"
+                                       Classes="label"
+                                       FontSize="10"
+                                       VerticalAlignment="Center"
+                                       Text="{Binding DevView.TotalServiceCount, StringFormat='Tổng: {0}'}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <TextBox Grid.Column="0"
+                                     Classes="field"
+                                     MinWidth="0"
+                                     Height="34"
+                                     VerticalContentAlignment="Center"
+                                     PlaceholderText="lọc theo tên service..."
+                                     Text="{Binding DevView.ServiceFilter}" />
+                            <Button Grid.Column="1"
+                                    Classes="soft"
+                                    Height="34" MinWidth="70" Padding="12,0"
+                                    HorizontalContentAlignment="Center"
+                                    VerticalContentAlignment="Center"
+                                    Content="Xoá"
+                                    Command="{Binding DevView.ClearServiceFilterCommand}" />
+                        </Grid>
+
+                        <ScrollViewer MaxHeight="260" VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding DevView.ServiceRows}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:DevServiceRow">
+                                        <Border BorderBrush="{StaticResource LineColor}"
+                                                BorderThickness="0,0,0,1"
+                                                Padding="9,5">
+                                            <Grid ColumnDefinitions="*,110,140" ColumnSpacing="8">
+                                                <TextBlock Grid.Column="0"
+                                                           Classes="mono"
+                                                           FontSize="10"
+                                                           VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           ToolTip.Tip="{Binding ServiceType}"
+                                                           Text="{Binding ServiceType}" />
+                                                <TextBlock Grid.Column="1"
+                                                           FontSize="10"
+                                                           VerticalAlignment="Center"
+                                                           Foreground="{StaticResource TextMuted}"
+                                                           Text="{Binding Lifetime}" />
+                                                <TextBlock Grid.Column="2"
+                                                           Classes="mono"
+                                                           FontSize="10"
+                                                           VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Foreground="{StaticResource Accent}"
+                                                           ToolTip.Tip="{Binding Implementation}"
+                                                           Text="{Binding Implementation}" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </StackPanel>
+                </Border>
+
+                <!-- ===== LOG KỸ THUẬT ===== -->
+                <Border Grid.Row="3" Grid.Column="1" Classes="panel" Padding="14,12">
+                    <StackPanel Spacing="8">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <TextBlock Classes="sectionTitle" Text="LOG KỸ THUẬT (AppLogs)" />
+                            <TextBlock Grid.Column="1"
+                                       Classes="label"
+                                       FontSize="10"
+                                       VerticalAlignment="Center"
+                                       Text="{Binding DevView.LogSummary}" />
+                        </Grid>
+
+                        <ScrollViewer MaxHeight="260" VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding DevView.LogRows}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:DevLogRow">
+                                        <Border BorderBrush="{StaticResource LineColor}"
+                                                BorderThickness="0,0,0,1"
+                                                Padding="9,5">
+                                            <Grid ColumnDefinitions="80,90,150,*" ColumnSpacing="8">
+                                                <TextBlock Grid.Column="0"
+                                                           Classes="mono"
+                                                           FontSize="10"
+                                                           VerticalAlignment="Center"
+                                                           Text="{Binding TimeText}" />
+                                                <Border Grid.Column="1"
+                                                        Classes="badge"
+                                                        HorizontalAlignment="Left"
+                                                        Classes.running="{Binding IsInformation}"
+                                                        Classes.warning="{Binding IsWarning}"
+                                                        Classes.fault="{Binding IsError}">
+                                                    <TextBlock FontSize="9" Text="{Binding Level}" />
+                                                </Border>
+                                                <TextBlock Grid.Column="2"
+                                                           Classes="mono"
+                                                           FontSize="10"
+                                                           VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Foreground="{StaticResource Accent}"
+                                                           ToolTip.Tip="{Binding Category}"
+                                                           Text="{Binding Category}" />
+                                                <TextBlock Grid.Column="3"
+                                                           FontSize="10"
+                                                           TextWrapping="Wrap"
+                                                           Foreground="{StaticResource TextPrimary}"
+                                                           Text="{Binding Message}" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

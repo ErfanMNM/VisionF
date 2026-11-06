@@ -39,17 +39,28 @@ internal sealed class PlcHeartbeatService : BackgroundService
         // PeriodicTimer là BCL, không cần package thêm.
         using var timer = new PeriodicTimer(interval);
 
-        // Ghi ngay một lần khi khởi động để xác định trạng thái kết nối PLC.
-        await TickAsync(stoppingToken);
-
         try
         {
+            // Ghi ngay một lần khi khởi động để xác định trạng thái kết nối PLC.
+            await TickAsync(stoppingToken);
+
             while (await timer.WaitForNextTickAsync(stoppingToken))
                 await TickAsync(stoppingToken);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
             // Shutdown bình thường.
+        }
+        catch (Exception ex)
+        {
+            // KHÔNG để exception làm service chết.
+            //
+            // Mặc định BackgroundService ném exception sẽ kích hoạt
+            // BackgroundServiceExceptionBehavior.StopHost -> DỪNG CẢ APP, mất
+            // luôn heartbeat. Lỗi ghi PLC (timeout, PLC tắt) là chuyện bình
+            // thường và PHẢI được xử lý ở tầng "ghi thất bại" chứ không phải
+            // làm sập app.
+            _logger.LogError(ex, "Heartbeat PLC gặp lỗi ngoài dự kiến, vòng lặp sẽ dừng.");
         }
     }
 

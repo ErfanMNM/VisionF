@@ -12,8 +12,24 @@ namespace TanTienQR.Services;
 /// </summary>
 internal sealed class ScanFeed
 {
-    private readonly Channel<ScanRecord> _channel = Channel.CreateUnbounded<ScanRecord>(
-        new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
+    /// <summary>
+    /// Sức chứa tối đa của kênh.
+    ///
+    /// Giới hạn để không rò bộ nhớ: nếu consumer (ViewModel) bị kẹt — ví dụ
+    /// UI treo hoặc task đọc bị lỗi và chết — thì kênh unbounded sẽ phình vô
+    /// hạn vì không còn ai đọc. Kênh bounded + <c>DropOldest</c> đảm bảo bộ
+    /// nhớ luôn ở mức giới hạn.
+    /// </summary>
+    private const int FeedCapacity = 1000;
+
+    private readonly Channel<ScanRecord> _channel = Channel.CreateBounded<ScanRecord>(
+        new BoundedChannelOptions(FeedCapacity)
+        {
+            // DropOldest: nếu UI bị chậm, bỏ bản ghi cũ thay vì nuốt hết RAM.
+            FullMode = BoundedChannelFullMode.DropOldest,
+            SingleReader = true,
+            SingleWriter = false,
+        });
 
     /// <summary>
     /// Đẩy một bản ghi kết quả quét mã. Không chặn luồng gọi.

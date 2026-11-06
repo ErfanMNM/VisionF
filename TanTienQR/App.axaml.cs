@@ -50,6 +50,21 @@ public partial class App : Application
             // Nạp cấu hình vào form của tab Cấu hình.
             _host.Services.GetRequiredService<ConfigEditorViewModel>().Load();
 
+            // BẮT BUỘC phải Start() — Build() CHỈ tạo container, KHÔNG tự chạy
+            // BackgroundService. Nếu thiếu dòng này:
+            //   - PlcHeartbeatService KHÔNG chạy -> không ghi D16 xuống PLC
+            //     -> PLC mất kết nối rồi bật lại sẽ không thấy app "online".
+            //   - CameraSignalWorker KHÔNG chạy -> không nhận mã quét.
+            //
+            // Đặt SAU license + config để tick đầu tiên của heartbeat đã đúng
+            // trạng thái (license hợp lệ hay chưa), tránh ghi D16 sai 1 nhịp.
+            //
+            // Start() chỉ gọi 1 lần cho cả vòng đời app: heartbeat vẫn ghi
+            // D16 = 0 trong lúc chưa đăng nhập — đúng ý nghĩa (PLC biết app chưa
+            // sẵn sàng). Khi PLC bật lại, heartbeat tự phát hiện kết nối lại và
+            // chuyển PLCStatus về Connected.
+            _host.Start();
+
             // Đăng nhập là BẮT BUỘC trước khi vào ứng dụng.
             // ShutdownMode = OnExplicitShutdown để đóng cửa sổ đăng nhập KHÔNG
             // tắt app (đăng xuất sẽ quay lại cửa sổ đăng nhập).

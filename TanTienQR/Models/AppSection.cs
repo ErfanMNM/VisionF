@@ -32,4 +32,10 @@ public enum AppSection
     /// (Operator trở lên — dùng quyền EditConfig).
     /// </summary>
     PlcSettings = 5,
+
+    /// <summary>
+    /// Dev: trạng thái runtime, bộ đếm, bộ nhớ, service DI và log kỹ thuật.
+    /// Chỉ dành cho vai trò Lập trình viên.
+    /// </summary>
+    Dev = 6,
 }

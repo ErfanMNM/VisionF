@@ -21,15 +21,32 @@ namespace TanTienQR.Services;
 /// </summary>
 internal sealed class CameraSignalWorker : BackgroundService
 {
+    /// <summary>
+    /// Sức chứa tối đa của hàng đợi mã quét.
+    ///
+    /// Hàng đợi có giới hạn để không rò bộ nhớ: nếu camera đẩy mã nhanh hơn
+    /// lúc worker xử lý (mỗi mã lại ghi PLC — I/O đồng bộ có timeout), hàng
+    /// đợi unbounded sẽ phình vô hạn và cuối cùng làm app bị OOM.
+    ///
+    /// Khi đầy thì bỏ mã cũ nhất (<c>DropOldest</c>) — chấp nhận được vì UI
+    /// cũng chỉ giữ 200 dòng gần nhất.
+    /// </summary>
+    private const int CameraQueueCapacity = 512;
+
     private readonly Reader _camera;
     private readonly PlcWriter _plc;
     private readonly ScanFeed _feed;
     private readonly CameraOptions _opt;
+    private readonly RuntimeCounters _counters;
     private readonly ILogger<CameraSignalWorker> _logger;
 
     // Hàng đợi để callback của camera không bị chặn bởi I/O.
-    private readonly Channel<string> _queue = Channel.CreateUnbounded<string>(
-        new UnboundedChannelOptions { SingleReader = true });
+    private readonly Channel<string> _queue = Channel.CreateBounded<string>(
+        new BoundedChannelOptions(CameraQueueCapacity)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest,
+            SingleReader = true,
+        });
 
     // Mã đã quét gần đây, dùng để phát hiện mã trùng.
     private readonly Dictionary<string, DateTime> _recent = new();
@@ -39,12 +56,14 @@ internal sealed class CameraSignalWorker : BackgroundService
         PlcWriter plc,
         ScanFeed feed,
         IOptions<CameraOptions> options,
+        RuntimeCounters counters,
         ILogger<CameraSignalWorker> logger)
     {
         _camera = camera;
         _plc = plc;
         _feed = feed;
         _opt = options.Value;
+        _counters = counters;
         _logger = logger;
     }
 
@@ -93,6 +112,7 @@ internal sealed class CameraSignalWorker : BackgroundService
         {
             _logger.LogWarning("Camera không đọc được mã, gửi Fail xuống PLC: {Data}", raw);
             var written = await _plc.WriteResultAsync(pass: false, ct);
+            _counters.AddScan(pass: false);
             _feed.Publish(new ScanRecord(raw, null, null, ScanOutcome.NoRead, DateTime.UtcNow, written));
             return;
         }
@@ -102,6 +122,7 @@ internal sealed class CameraSignalWorker : BackgroundService
         {
             _logger.LogWarning("QR không đúng định dạng TXNG, gửi Fail xuống PLC: {Data}", raw);
             var written = await _plc.WriteResultAsync(pass: false, ct);
+            _counters.AddScan(pass: false);
             _feed.Publish(new ScanRecord(raw, null, null, ScanOutcome.InvalidFormat, DateTime.UtcNow, written));
             return;
         }
@@ -111,12 +132,14 @@ internal sealed class CameraSignalWorker : BackgroundService
         {
             _logger.LogInformation("Mã vừa quét gần đây, gửi Fail xuống PLC: {Serial}", serial);
             var dupWritten = await _plc.WriteResultAsync(pass: false, ct);
+            _counters.AddScan(pass: false);
             _feed.Publish(new ScanRecord(raw, gtin, serial, ScanOutcome.Duplicate, DateTime.UtcNow, dupWritten));
             return;
         }
 
         // Đọc được mã hợp lệ → Pass (không cần gọi API để quyết định).
         var ok = await _plc.WriteResultAsync(pass: true, ct);
+        _counters.AddScan(pass: true);
         _logger.LogInformation(
             ok
                 ? "Mã hợp lệ, gửi Pass xuống PLC: GTIN={Gtin} Serial={Serial}"

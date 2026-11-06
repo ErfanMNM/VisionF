@@ -10,6 +10,7 @@ using ClassLibraryMT.Logging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging;
 using TanTienQR.Services;
 using TanTienQR.Views;
 
@@ -33,8 +34,10 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     private readonly HistoryViewModel _historyView;
     private readonly AccountsViewModel _accountsView;
     private readonly PlcSettingsViewModel _plcSettingsView;
+    private readonly DevViewModel _devView;
     private readonly IUserActionLogger _actionLog;
     private readonly ISessionContext _session;
+    private readonly ILogger<MainViewModel> _logger;
     private readonly CancellationTokenSource _cts = new();
 
     private DispatcherTimer? _pollTimer;
@@ -52,8 +55,10 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         HistoryViewModel historyView,
         AccountsViewModel accountsView,
         PlcSettingsViewModel plcSettingsView,
+        DevViewModel devView,
         IUserActionLogger actionLog,
-        ISessionContext session)
+        ISessionContext session,
+        ILogger<MainViewModel> logger)
     {
         _feed = feed;
         _license = license;
@@ -61,8 +66,10 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         _historyView = historyView;
         _accountsView = accountsView;
         _plcSettingsView = plcSettingsView;
+        _devView = devView;
         _actionLog = actionLog;
         _session = session;
+        _logger = logger;
 
         // URL web lấy từ cấu hình; nếu cấu hình sai thì dùng URL mặc định.
         var web = webOptions.Value;
@@ -243,6 +250,11 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     /// Trang chỉnh PLC (tab Chỉnh PLC: webview camera, tham số ô nhớ, recipe).
     /// </summary>
     public PlcSettingsViewModel PlcSettings => _plcSettingsView;
+
+    /// <summary>
+    /// Trang Dev (tab Dev: trạng thái runtime, bộ đếm, bộ nhớ, log kỹ thuật).
+    /// </summary>
+    public DevViewModel DevView => _devView;
 
     // ---------- Phiên đăng nhập & phân quyền ----------
 
@@ -597,6 +609,14 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         {
             // Shutdown bình thường.
         }
+        catch (Exception ex)
+        {
+            // KHÔNG để consumer chết: nếu task này kết thúc thì không ai đọc
+            // ScanFeed nữa -> hàng đợi kết quả phình to theo thời gian
+            // (rò bộ nhớ không kiểm soát). Vì vậy bắt mọi exception, log lại
+            // và tiếp tục vòng lặp.
+            _logger.LogError(ex, "Lỗi trong luồng đọc kênh kết quả quét mã.");
+        }
     }
 
     /// <summary>
@@ -696,6 +716,9 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         _pollTimer?.Stop();
         _pollTimer = null;
 
+        // Tắt timer của tab Dev (state + tail log).
+        _devView.Dispose();
+
         try
         {
             _cts.Cancel();
@@ -730,6 +753,9 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     {
         _pollTimer?.Stop();
         _pollTimer = null;
+
+        // Tắt timer của tab Dev (đăng nhập lại sẽ bật lại khi mở tab).
+        _devView.Deactivate();
 
         // Ngừng theo dõi phiên (đăng nhập lại sẽ subscribe lại trong Start).
         _session.Changed -= OnSessionChanged;

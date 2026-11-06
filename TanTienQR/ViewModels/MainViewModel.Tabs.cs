@@ -33,6 +33,7 @@ internal partial class MainViewModel
     [NotifyPropertyChangedFor(nameof(IsHistoryVisible))]
     [NotifyPropertyChangedFor(nameof(IsAccountsVisible))]
     [NotifyPropertyChangedFor(nameof(IsPlcSettingsVisible))]
+    [NotifyPropertyChangedFor(nameof(IsDevVisible))]
     [NotifyPropertyChangedFor(nameof(PageTitle))]
     [NotifyPropertyChangedFor(nameof(PageSubtitle))]
     public partial AppSection CurrentSection { get; set; } = AppSection.Info;
@@ -60,6 +61,10 @@ internal partial class MainViewModel
     public bool IsPlcSettingsVisible =>
         CurrentSection == AppSection.PlcSettings && CanEditPlc;
 
+    /// <summary>True khi đang ở tab Dev (và là Lập trình viên).</summary>
+    public bool IsDevVisible =>
+        CurrentSection == AppSection.Dev && CanViewDev;
+
     /// <summary>Tiêu đề trên thanh header, đổi theo tab.</summary>
     public string PageTitle => CurrentSection switch
     {
@@ -68,6 +73,7 @@ internal partial class MainViewModel
         AppSection.History => "Lịch sử thao tác",
         AppSection.Accounts => "Tài khoản",
         AppSection.PlcSettings => "Chỉnh PLC",
+        AppSection.Dev => "Dev",
         _ => "Thông tin",
     };
 
@@ -79,6 +85,7 @@ internal partial class MainViewModel
         AppSection.History => "Nhật ký thao tác của người dùng — dành cho nhà phát triển",
         AppSection.Accounts => "Quản lý tài khoản người dùng và phân quyền truy cập",
         AppSection.PlcSettings => "Đọc/ghi ô nhớ PLC Omron, quản lý tham số và áp dụng recipe",
+        AppSection.Dev => "Trạng thái runtime, bộ đếm, bộ nhớ, log kỹ thuật — dành cho nhà phát triển",
         _ => "Nhận tín hiệu camera và gửi kết quả xuống PLC Omron (D12 = kết quả, D16 = Ready)",
     };
 
@@ -100,6 +107,16 @@ internal partial class MainViewModel
     public bool CanEditPlc => _session.Can(Permission.EditConfig);
 
     /// <summary>
+    /// True khi người dùng được mở tab Dev.
+    ///
+    /// Kiểm tra TRỰC TIẾP vai trò Lập trình viên, KHÔNG dùng cờ
+    /// <see cref="Permission"/> — ma trận quyền nằm trong lib
+    /// <c>ClassLibraryMT.Auth</c> và dùng chung cho mọi app trong repo,
+    /// nên không thêm quyền mới chỉ riêng cho TanTienQR.
+    /// </summary>
+    public bool CanViewDev => _session.CurrentRole == UserRole.Developer;
+
+    /// <summary>
     /// Cập nhật lại tất cả cờ quyền (gọi khi phiên đăng nhập thay đổi).
     /// </summary>
     public void RefreshPermissionFlags()
@@ -110,12 +127,14 @@ internal partial class MainViewModel
         OnPropertyChanged(nameof(CanViewHistory));
         OnPropertyChanged(nameof(CanManageUsers));
         OnPropertyChanged(nameof(CanEditPlc));
+        OnPropertyChanged(nameof(CanViewDev));
         OnPropertyChanged(nameof(IsInfoVisible));
         OnPropertyChanged(nameof(IsProductionVisible));
         OnPropertyChanged(nameof(IsConfigVisible));
         OnPropertyChanged(nameof(IsHistoryVisible));
         OnPropertyChanged(nameof(IsAccountsVisible));
         OnPropertyChanged(nameof(IsPlcSettingsVisible));
+        OnPropertyChanged(nameof(IsDevVisible));
     }
 
     // ---------- Lệnh chuyển tab ----------
@@ -215,6 +234,23 @@ internal partial class MainViewModel
     }
 
     /// <summary>
+    /// Chuyển sang tab Dev (trạng thái runtime — chỉ Lập trình viên).
+    /// </summary>
+    [RelayCommand]
+    private void ShowDevTab()
+    {
+        if (!CanViewDev)
+        {
+            return;
+        }
+
+        SwitchTo(AppSection.Dev, "Dev");
+
+        // Bật timer refresh của tab Dev (chỉ chạy khi tab đang mở).
+        DevView.Activate();
+    }
+
+    /// <summary>
     /// Chuyển tab và ghi lại thao tác của người dùng.
     /// </summary>
     /// <param name="section">Tab đích.</param>
@@ -222,6 +258,13 @@ internal partial class MainViewModel
     private void SwitchTo(AppSection section, string label)
     {
         var changed = CurrentSection != section;
+
+        // Rời khỏi tab Dev -> tắt timer để không tự làm mới khi không nhìn thấy.
+        if (changed && CurrentSection == AppSection.Dev)
+        {
+            DevView.Deactivate();
+        }
+
         CurrentSection = section;
 
         if (changed)

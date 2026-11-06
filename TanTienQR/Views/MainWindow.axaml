@@ -35,10 +35,14 @@
                 BorderThickness="0,0,0,1"
                 Padding="16,8,8,8"
                 PointerPressed="OnHeaderPointerPressed">
-            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="18">
+            <Grid RowDefinitions="Auto,Auto"
+                  ColumnDefinitions="Auto,*,Auto"
+                  ColumnSpacing="18"
+                  RowSpacing="8">
 
                 <!-- Logo -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                <StackPanel Grid.Row="0" Grid.Column="0"
+                            Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                     <Border Width="36" Height="36"
                             CornerRadius="11"
                             Background="{StaticResource Accent}">
@@ -60,16 +64,42 @@
                     </StackPanel>
                 </StackPanel>
 
-                <!-- Thanh tab: segmented control, nút rộng cố định nên không giật khi chuyển tab -->
-                <Border Grid.Column="1"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center"
-                        Background="{StaticResource BgRaised}"
-                        BorderBrush="{StaticResource LineColor}"
-                        BorderThickness="1"
-                        CornerRadius="999"
-                        Padding="4">
-                    <StackPanel Orientation="Horizontal" Spacing="2">
+                <!-- Tiêu đề trang (lấp khoảng trống giữa, giúp header cân đối) -->
+                <StackPanel Grid.Row="0" Grid.Column="1"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Center"
+                            Spacing="1"
+                            Margin="8,0">
+                    <TextBlock Text="{Binding PageTitle}"
+                               FontSize="15"
+                               FontWeight="Bold"
+                               Foreground="{StaticResource TextPrimary}"
+                               HorizontalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding PageSubtitle}"
+                               Classes="label"
+                               FontSize="10"
+                               HorizontalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+
+                <!-- Thanh tab: chiếm hết hàng riêng, nút co giãn theo noi dung
+                     -> khong bao gio chong cheo voi logo / vung trang thai ben phai -->
+                <Grid Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3">
+                    <ScrollViewer Classes="segtabs"
+                                  HorizontalScrollBarVisibility="Auto"
+                                  VerticalScrollBarVisibility="Disabled">
+                        <!-- Grid boc trong ScrollViewer: Border ben trong moi duoc canh giua
+                             theo quy tac cua Grid (ScrollViewer khong ho tro canh giua noi dung). -->
+                        <Grid>
+                            <Border HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Background="{StaticResource BgRaised}"
+                                    BorderBrush="{StaticResource LineColor}"
+                                    BorderThickness="1"
+                                    CornerRadius="999"
+                                    Padding="4">
+                            <StackPanel Orientation="Horizontal" Spacing="2">
                         <Button Classes="segtab"
                                 Classes.active="{Binding IsInfoVisible}"
                                 Command="{Binding ShowInfoTabCommand}">
@@ -168,11 +198,32 @@
                                 <TextBlock Text="Tài khoản" />
                             </StackPanel>
                         </Button>
-                    </StackPanel>
-                </Border>
+
+                        <!-- Dev: chỉ Lập trình viên -->
+                        <Button Classes="segtab"
+                                Classes.active="{Binding IsDevVisible}"
+                                IsVisible="{Binding CanViewDev}"
+                                Command="{Binding ShowDevTabCommand}">
+                            <StackPanel Orientation="Horizontal" Spacing="8"
+                                        HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Path Classes="icon"
+                                      Width="15" Height="15"
+                                      Stretch="Uniform"
+                                      StrokeThickness="2"
+                                      StrokeLineCap="Round"
+                                      StrokeJoin="Round"
+                                      Data="M8,4 L16,4 L20,8 L20,20 L4,20 L4,8 Z M8,4 L8,8 L20,8 M8,12 L16,12 M8,16 L16,16" />
+                                <TextBlock Text="Dev" />
+                            </StackPanel>
+                        </Button>
+                            </StackPanel>
+                        </Border>
+                        </Grid>
+                    </ScrollViewer>
+                </Grid>
 
                 <!-- Trạng thái + đồng hồ (độ rộng ổn định, không phụ thuộc tab đang mở) -->
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                <StackPanel Grid.Row="0" Grid.Column="2" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                     <Border Classes="pill" Classes.ok="{Binding IsReady}" Classes.warn="{Binding !IsReady}"
                             MinWidth="96">
                         <TextBlock Text="{Binding AppStateText}" HorizontalAlignment="Center" />
@@ -196,11 +247,13 @@
                                        HorizontalAlignment="Center"
                                        VerticalAlignment="Center" />
                         </Border>
-                        <StackPanel Spacing="0" VerticalAlignment="Center">
+                        <StackPanel Spacing="0" VerticalAlignment="Center" MaxWidth="130">
                             <TextBlock Text="{Binding CurrentUserDisplayName}"
                                        FontSize="12"
                                        FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimary}" />
+                                       Foreground="{StaticResource TextPrimary}"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip.Tip="{Binding CurrentUserDisplayName}" />
                             <Border Classes="badge"
                                     Classes.running="{Binding IsRoleOperator}"
                                     Classes.warning="{Binding IsRoleWorker}"
@@ -598,6 +651,13 @@
                                         HorizontalContentAlignment="Left"
                                         Content="Lịch sử thao tác"
                                         Command="{Binding ShowHistoryTabCommand}" />
+                                <Button Classes="chip"
+                                        HorizontalAlignment="Stretch"
+                                        FontSize="12"
+                                        HorizontalContentAlignment="Left"
+                                        Content="Dev"
+                                        IsVisible="{Binding CanViewDev}"
+                                        Command="{Binding ShowDevTabCommand}" />
                             </StackPanel>
                         </Border>
 
@@ -638,6 +698,7 @@
                 <views:HistoryView IsVisible="{Binding IsHistoryVisible}" />
                 <views:AccountsView IsVisible="{Binding IsAccountsVisible}" />
                 <views:PlcSettingsView IsVisible="{Binding IsPlcSettingsVisible}" />
+                <views:DevView IsVisible="{Binding IsDevVisible}" />
             </Grid>
         </Grid>
     </Grid>

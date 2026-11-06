@@ -16,6 +16,7 @@ internal sealed class PlcWriter
 {
     private readonly OmronPlc _plc;
     private readonly PlcOptions _opt;
+    private readonly RuntimeCounters _counters;
     private readonly ILogger<PlcWriter> _logger;
 
     // Chỉ cho phép 1 lệnh ghi chạy tại một thời điểm.
@@ -24,10 +25,12 @@ internal sealed class PlcWriter
     public PlcWriter(
         OmronPlc plc,
         IOptions<PlcOptions> options,
+        RuntimeCounters counters,
         ILogger<PlcWriter> logger)
     {
         _plc = plc;
         _opt = options.Value;
+        _counters = counters;
         _logger = logger;
     }
 
@@ -39,6 +42,8 @@ internal sealed class PlcWriter
     {
         var value = pass ? (short)1 : (short)0;
         var result = await WriteAsync(_opt.ResultAddress, value, ct);
+        _counters.AddResult(result.IsSuccess);
+
         if (!result.IsSuccess)
         {
             _logger.LogError(
@@ -57,6 +62,8 @@ internal sealed class PlcWriter
     {
         var value = (short)(ready != 0 ? 1 : 0);
         var result = await WriteAsync(_opt.ReadyAddress, value, ct);
+        _counters.AddHeartbeat(result.IsSuccess);
+
         if (!result.IsSuccess)
         {
             _logger.LogError(
