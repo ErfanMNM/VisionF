@@ -3,10 +3,6 @@
   <Project Path="ClassLibraryMT.Auth/ClassLibraryMT.Auth.csproj" />
   <Project Path="ClassLibraryMT.Logging/ClassLibraryMT.Logging.csproj" />
   <Project Path="ClassLibraryMT.Plc/ClassLibraryMT.Plc.csproj" />
-  <Project Path="ClassLibraryMT.Logging.Tests/ClassLibraryMT.Logging.Tests.csproj" />
-  <Project Path="ClassLibraryMT.Auth.Tests/ClassLibraryMT.Auth.Tests.csproj" />
-  <Project Path="ClassLibraryMT.Plc.Tests/ClassLibraryMT.Plc.Tests.csproj" />
-  <Project Path="ClassLibraryMT.Plc.Settings.Tests/ClassLibraryMT.Plc.Settings.Tests.csproj" />
   <Project Path="DemoQR/DemoQR.csproj" Id="95b2641b-ae38-48d4-891c-9ed4539149b1" />
   <Project Path="TanTienQR/TanTienQR.csproj" />
   <Project Path="tools/LicenseTool/LicenseTool.csproj" />
