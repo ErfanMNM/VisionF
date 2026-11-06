@@ -119,6 +119,23 @@
                         </Button>
 
                         <Button Classes="segtab"
+                                Classes.active="{Binding IsPlcSettingsVisible}"
+                                IsVisible="{Binding CanEditPlc}"
+                                Command="{Binding ShowPlcSettingsTabCommand}">
+                            <StackPanel Orientation="Horizontal" Spacing="8"
+                                        HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Path Classes="icon"
+                                      Width="15" Height="15"
+                                      Stretch="Uniform"
+                                      StrokeThickness="2"
+                                      StrokeLineCap="Round"
+                                      StrokeJoin="Round"
+                                      Data="M4,8 L8,8 M12,8 L20,8 M6,4 L6,12 M14,4 L14,12 M4,16 L20,16 M8,12 L8,20 M16,12 L16,20" />
+                                <TextBlock Text="Chỉnh PLC" />
+                            </StackPanel>
+                        </Button>
+
+                        <Button Classes="segtab"
                                 Classes.active="{Binding IsHistoryVisible}"
                                 IsVisible="{Binding CanViewHistory}"
                                 Command="{Binding ShowHistoryTabCommand}">
@@ -557,6 +574,13 @@
                                 HorizontalContentAlignment="Left"
                                 Content="Cấu hình"
                                 Command="{Binding ShowConfigTabCommand}" />
+                        <Button Classes="chip"
+                                HorizontalAlignment="Stretch"
+                                FontSize="12"
+                                HorizontalContentAlignment="Left"
+                                Content="Chỉnh PLC"
+                                IsVisible="{Binding CanEditPlc}"
+                                Command="{Binding ShowPlcSettingsTabCommand}" />
 
                         <!-- Nhóm nhà phát triển -->
                         <Border Classes="device"
@@ -613,6 +637,7 @@
                 <views:ConfigView IsVisible="{Binding IsConfigVisible}" />
                 <views:HistoryView IsVisible="{Binding IsHistoryVisible}" />
                 <views:AccountsView IsVisible="{Binding IsAccountsVisible}" />
+                <views:PlcSettingsView IsVisible="{Binding IsPlcSettingsVisible}" />
             </Grid>
         </Grid>
     </Grid>

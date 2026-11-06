@@ -3,6 +3,7 @@ using ClassLibraryMT.Communications.CodeReaderProtocol;
 using ClassLibraryMT.Communications.Plc;
 using ClassLibraryMT.Configuration;
 using ClassLibraryMT.Logging;
+using ClassLibraryMT.Plc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -33,6 +34,9 @@ public static class TanTienAppServices
         // Đăng ký SAU AddSqliteLogging vì AddAuth cần implement IUserContext
         // (interface của lib Logging) để nhật ký thao tác có tên người dùng.
         services.AddAuth(configuration);
+
+        // ---- Quản lý tham số PLC & recipe (tab "Chỉnh PLC") ----
+        services.AddPlcSettings(configuration);
 
         // ---- Camera: bind cấu hình thủ công (tương thích Native AOT) ----
         services.AddOptions<CameraOptions>()
@@ -124,8 +128,9 @@ public static class TanTienAppServices
 
         // ---- ViewModel ----
         services.AddSingleton<MainViewModel>();
-        services.AddSingleton<HistoryViewModel>();
-        services.AddSingleton<AccountsViewModel>();
+    services.AddSingleton<HistoryViewModel>();
+    services.AddSingleton<AccountsViewModel>();
+    services.AddSingleton<PlcSettingsViewModel>();
 
         // LoginViewModel: Transient vì mỗi lần đăng nhập cần trạng thái
         // form sạch (tên đăng nhập / mật khẩu / lỗi) — không dùng lại

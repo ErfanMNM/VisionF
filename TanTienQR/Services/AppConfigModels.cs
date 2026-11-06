@@ -80,13 +80,26 @@ public sealed class AuthConfig
 }
 
 /// <summary>
+/// Cấu hình quản lý tham số PLC (mục "PlcSettings").
+///
+/// Khớp với <see cref="ClassLibraryMT.Plc.PlcSettingsOptions"/> — chỉ dùng để đọc
+/// và giữ lại khi lưu cấu hình từ UI, phần bind thực tế do lib Plc đảm nhiệm.
+/// </summary>
+public sealed class PlcSettingsConfig
+{
+    [JsonPropertyName("DbPath")] public string DbPath { get; set; } = "logs/plc.db";
+}
+
+/// <summary>
 /// Toàn bộ nội dung file appsettings.json.
 ///
-/// Các thuộc tính được đặt tên "Camera", "Plc", "Web", "Logging", "Auth" để khớp đúng
-/// key trong file JSON (không dùng camelCase mặc định của System.Text.Json).
+/// Các thuộc tính được đặt tên "Camera", "Plc", "Web", "Logging", "Auth",
+/// "PlcSettings" để khớp đúng key trong file JSON (không dùng camelCase mặc định
+/// của System.Text.Json).
 ///
-/// Phần "Logging" và "Auth" được giữ nguyên khi lưu cấu hình từ UI — nếu không có nó,
-/// thao tác lưu cấu hình sẽ xoá mất thiết lập ghi log và xác thực.
+/// Phần "Logging", "Auth" và "PlcSettings" được giữ nguyên khi lưu cấu hình từ UI —
+/// nếu không có nó, thao tác lưu cấu hình sẽ xoá mất thiết lập ghi log, xác thực
+/// và tham số PLC.
 /// </summary>
 public sealed class AppConfigSnapshot
 {
@@ -95,6 +108,7 @@ public sealed class AppConfigSnapshot
     [JsonPropertyName("Web")] public WebConfig Web { get; set; } = new();
     [JsonPropertyName("Logging")] public LoggingConfig Logging { get; set; } = new();
     [JsonPropertyName("Auth")] public AuthConfig Auth { get; set; } = new();
+    [JsonPropertyName("PlcSettings")] public PlcSettingsConfig PlcSettings { get; set; } = new();
 }
 
 // ---------------------------------------------------------------- JsonContext
@@ -108,6 +122,7 @@ public sealed class AppConfigSnapshot
 [JsonSerializable(typeof(SqliteLoggingConfig))]
 [JsonSerializable(typeof(LoggingHistoryConfig))]
 [JsonSerializable(typeof(AuthConfig))]
+[JsonSerializable(typeof(PlcSettingsConfig))]
 public sealed partial class AppConfigJsonContext : JsonSerializerContext
 {
 }

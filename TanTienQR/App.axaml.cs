@@ -111,9 +111,9 @@ public partial class App : Application
 
             while (true)
             {
-                // ---- 1. Màn hình đăng nhập ----
+                // ---- 1. Màn hình đăng nhập (khung full-size, 2 cột) ----
                 var loginVm = _host!.Services.GetRequiredService<LoginViewModel>();
-                var loginWindow = new LoginWindow
+                var loginWindow = new LoginShellWindow
                 {
                     DataContext = loginVm,
                 };

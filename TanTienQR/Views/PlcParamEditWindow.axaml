@@ -1,0 +1,131 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:TanTienQR.ViewModels"
+        xmlns:d="http://schemas.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="460" d:DesignHeight="560"
+        x:Class="TanTienQR.Views.PlcParamEditWindow"
+        x:DataType="vm:PlcParamEditViewModel"
+        Title="Tham số PLC"
+        Width="460" Height="560"
+        MinWidth="420" MinHeight="520"
+        CanResize="False"
+        CanMinimize="False"
+        CanMaximize="False"
+        WindowStartupLocation="CenterOwner">
+
+    <Design.DataContext>
+        <vm:PlcParamEditViewModel />
+    </Design.DataContext>
+
+    <Border Background="{StaticResource BgBase}" Padding="26">
+        <Grid RowDefinitions="Auto,*,Auto">
+
+            <!-- Tiêu đề -->
+            <StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,16">
+                <TextBlock Text="{Binding Title}"
+                           FontSize="17"
+                           FontWeight="Bold"
+                           Foreground="{StaticResource TextPrimary}" />
+                <TextBlock Classes="label"
+                           FontSize="11"
+                           Text="Ô nhớ trong vùng D của PLC Omron. Ví dụ D12 hoặc D12.05 cho bit." />
+            </StackPanel>
+
+            <!-- Form -->
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="14">
+
+                    <!-- Tên tham số -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Classes="fieldLabel" Text="TÊN THAM SỐ *" />
+                        <TextBox Classes="field"
+                                 Height="42"
+                                 PlaceholderText="Ví dụ: Delay Reject"
+                                 Text="{Binding Name}" />
+                    </StackPanel>
+
+                    <!-- Ô nhớ -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Classes="fieldLabel" Text="Ô NHỚ *" />
+                        <TextBox Classes="field"
+                                 Height="42"
+                                 PlaceholderText="Ví dụ: D12 hoặc D12.05"
+                                 Text="{Binding Address}" />
+                    </StackPanel>
+
+                    <!-- Kiểu dữ liệu -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Classes="fieldLabel" Text="KIỂU DỮ LIỆU" />
+                        <ComboBox Classes="field"
+                                  Height="42"
+                                  ItemsSource="{Binding AvailableValueTypes}"
+                                  SelectedItem="{Binding ValueType}" />
+                    </StackPanel>
+
+                    <!-- Chế độ truy cập -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Classes="fieldLabel" Text="CHẾ ĐỘ TRUY CẬP" />
+                        <ComboBox Classes="field"
+                                  Height="42"
+                                  ItemsSource="{Binding AvailableAccessModes}"
+                                  SelectedItem="{Binding AccessMode}" />
+                    </StackPanel>
+
+                    <!-- Mô tả -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Classes="fieldLabel" Text="MÔ TẢ" />
+                        <TextBox Classes="field"
+                                 Height="42"
+                                 PlaceholderText="Không bắt buộc"
+                                 Text="{Binding Description}" />
+                    </StackPanel>
+
+                    <!-- Thứ tự -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Classes="fieldLabel" Text="THỨ TỰ SẮP XẾP" />
+                        <NumericUpDown Classes="field"
+                                       Height="42"
+                                       Minimum="0"
+                                       Maximum="9999"
+                                       Increment="1"
+                                       FormatString="0"
+                                       Value="{Binding SortOrder}" />
+                    </StackPanel>
+
+                    <!-- Lỗi -->
+                    <Border IsVisible="{Binding HasError}"
+                            Padding="11"
+                            CornerRadius="10"
+                            Background="{StaticResource DangerSoft}"
+                            BorderBrush="{StaticResource Danger}"
+                            BorderThickness="1">
+                        <TextBlock Text="{Binding ErrorMessage}"
+                                   FontSize="12"
+                                   Foreground="{StaticResource Danger}"
+                                   TextWrapping="Wrap" />
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Nút -->
+            <Grid Grid.Row="2" ColumnDefinitions="*,*" ColumnSpacing="10" Margin="0,16,0,0">
+                <Button Grid.Column="0"
+                        Classes="soft"
+                        Height="42"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center"
+                        Content="Huỷ"
+                        Click="OnCancelClick" />
+                <Button Grid.Column="1"
+                        Classes="primary"
+                        Height="42"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center"
+                        Content="Lưu"
+                        IsEnabled="{Binding CanSubmit}"
+                        Command="{Binding SaveCommand}" />
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

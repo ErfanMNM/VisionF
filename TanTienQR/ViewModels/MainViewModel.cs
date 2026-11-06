@@ -32,6 +32,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     private readonly ConfigEditorViewModel _configEditor;
     private readonly HistoryViewModel _historyView;
     private readonly AccountsViewModel _accountsView;
+    private readonly PlcSettingsViewModel _plcSettingsView;
     private readonly IUserActionLogger _actionLog;
     private readonly ISessionContext _session;
     private readonly CancellationTokenSource _cts = new();
@@ -50,6 +51,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         ConfigEditorViewModel configEditor,
         HistoryViewModel historyView,
         AccountsViewModel accountsView,
+        PlcSettingsViewModel plcSettingsView,
         IUserActionLogger actionLog,
         ISessionContext session)
     {
@@ -58,6 +60,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         _configEditor = configEditor;
         _historyView = historyView;
         _accountsView = accountsView;
+        _plcSettingsView = plcSettingsView;
         _actionLog = actionLog;
         _session = session;
 
@@ -235,6 +238,11 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     /// Trang quản lý tài khoản (tab Tài khoản, nhóm Quản trị).
     /// </summary>
     public AccountsViewModel AccountsView => _accountsView;
+
+    /// <summary>
+    /// Trang chỉnh PLC (tab Chỉnh PLC: webview camera, tham số ô nhớ, recipe).
+    /// </summary>
+    public PlcSettingsViewModel PlcSettings => _plcSettingsView;
 
     // ---------- Phiên đăng nhập & phân quyền ----------
 
@@ -542,6 +550,9 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
 
             // Trang Tài khoản cần cửa sổ chính để mở hộp thoại tạo/sửa.
             _accountsView.Attach(window);
+
+            // Trang Chỉnh PLC cần cửa sổ chính để mở hộp thoại thêm/sửa tham số.
+            _plcSettingsView.Attach(window);
         }
 
         // Đăng nhập lại sau khi đăng xuất -> subscribe lại sự kiện phiên.

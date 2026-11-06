@@ -1,0 +1,683 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:TanTienQR.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1360" d:DesignHeight="820"
+        x:Class="TanTienQR.Views.LoginShellWindow"
+        x:DataType="vm:LoginViewModel"
+        Icon="/Assets/tantien-logo.png"
+        Title="TanTienQR · Đăng nhập"
+        Width="1360" Height="820"
+        MinWidth="1100" MinHeight="700"
+        CanResize="True"
+        CanMinimize="True"
+        CanMaximize="True"
+        WindowDecorations="None"
+        WindowStartupLocation="CenterScreen">
+
+  <Design.DataContext>
+    <vm:LoginViewModel />
+  </Design.DataContext>
+
+  <Window.Styles>
+    <!-- Nút hiện/ẩn mật khẩu nằm bên phải ô nhập -->
+    <Style Selector="ToggleButton.reveal">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="10,0" />
+      <Setter Property="Width" Value="40" />
+      <Setter Property="VerticalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Opacity" Value="0.55" />
+      <Setter Property="FontSize" Value="14" />
+    </Style>
+    <Style Selector="ToggleButton.reveal:pointerover">
+      <Setter Property="Opacity" Value="0.9" />
+    </Style>
+    <Style Selector="ToggleButton.reveal:checked">
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="ToggleButton.reveal:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="ToggleButton.reveal:checked /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <!-- Vòng tròn bước trong stepper -->
+    <Style Selector="Border.stepDot">
+      <Setter Property="Width" Value="28" />
+      <Setter Property="Height" Value="28" />
+      <Setter Property="CornerRadius" Value="14" />
+      <Setter Property="Background" Value="{StaticResource BgRaised}" />
+      <Setter Property="BorderBrush" Value="{StaticResource LineColor}" />
+      <Setter Property="BorderThickness" Value="1.5" />
+    </Style>
+    <Style Selector="Border.stepDot TextBlock">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.stepDot.active">
+      <Setter Property="Background" Value="{StaticResource Accent}" />
+      <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+    </Style>
+    <Style Selector="Border.stepDot.active TextBlock">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Border.stepDot.done">
+      <Setter Property="Background" Value="{StaticResource AccentSoft}" />
+      <Setter Property="BorderBrush" Value="{StaticResource LineAccent}" />
+    </Style>
+    <Style Selector="Border.stepDot.done TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource Accent}" />
+    </Style>
+  </Window.Styles>
+
+  <Grid RowDefinitions="Auto,Auto,*">
+
+    <!-- Viền accent trên cùng của custom chrome -->
+    <Border Grid.Row="0" Height="3" Background="{StaticResource Accent}" />
+
+    <!-- ===== Thanh tiêu đề tự vẽ ===== -->
+    <Border Grid.Row="1" x:Name="HeaderBar"
+            Background="{StaticResource BgPanel}"
+            BorderBrush="{StaticResource LineColor}"
+            BorderThickness="0,0,0,1"
+            Padding="16,8,8,8"
+            PointerPressed="OnHeaderPointerPressed">
+      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="18">
+        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+          <Border Width="36" Height="36"
+                  CornerRadius="11"
+                  Background="{StaticResource Accent}">
+            <TextBlock Text="TT"
+                       FontSize="14"
+                       FontWeight="Black"
+                       Foreground="White"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center" />
+          </Border>
+          <StackPanel VerticalAlignment="Center" Spacing="0">
+            <TextBlock Text="TanTienQR"
+                       FontSize="14"
+                       FontWeight="Bold"
+                       Foreground="{StaticResource TextPrimary}" />
+            <TextBlock Text="Quét mã · PLC"
+                       Classes="label"
+                       FontSize="10" />
+          </StackPanel>
+        </StackPanel>
+
+        <TextBlock Grid.Column="1"
+                   Text="Đăng nhập để tiếp tục"
+                   Classes="label"
+                   FontSize="12"
+                   VerticalAlignment="Center"
+                   HorizontalAlignment="Center" />
+
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Button x:Name="MinButton"
+                  Width="34" Height="34"
+                  MinWidth="0" MinHeight="0"
+                  Padding="0"
+                  CornerRadius="17"
+                  Background="{StaticResource BgRaised}"
+                  BorderBrush="{StaticResource LineColor}"
+                  BorderThickness="1"
+                  Foreground="{StaticResource TextPrimary}"
+                  FontSize="14"
+                  FontWeight="Bold"
+                  Content="–"
+                  HorizontalContentAlignment="Center"
+                  VerticalContentAlignment="Center"
+                  ToolTip.Tip="Thu nhỏ"
+                  Click="OnMinimizeClick" />
+          <Button x:Name="MaxButton"
+                  Width="34" Height="34"
+                  MinWidth="0" MinHeight="0"
+                  Padding="0"
+                  CornerRadius="17"
+                  Background="{StaticResource BgRaised}"
+                  BorderBrush="{StaticResource LineColor}"
+                  BorderThickness="1"
+                  Foreground="{StaticResource TextPrimary}"
+                  FontSize="12"
+                  FontWeight="Bold"
+                  Content="▢"
+                  HorizontalContentAlignment="Center"
+                  VerticalContentAlignment="Center"
+                  ToolTip.Tip="Phóng to / khôi phục"
+                  Click="OnMaxRestoreClick" />
+          <Button x:Name="CloseButton"
+                  Width="34" Height="34"
+                  MinWidth="0" MinHeight="0"
+                  Padding="0"
+                  CornerRadius="17"
+                  Background="{StaticResource DangerSoft}"
+                  BorderBrush="{StaticResource LineDanger}"
+                  BorderThickness="1"
+                  Foreground="{StaticResource Danger}"
+                  FontSize="12"
+                  FontWeight="Bold"
+                  Content="✕"
+                  HorizontalContentAlignment="Center"
+                  VerticalContentAlignment="Center"
+                  ToolTip.Tip="Thoát ứng dụng"
+                  Click="OnCloseClick" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- ===== Nội dung 2 cột ===== -->
+    <Grid Grid.Row="2" ColumnDefinitions="480,*">
+
+      <!-- ===== Cột trái: branding ===== -->
+      <Border Grid.Column="0"
+              Background="{StaticResource Accent}"
+              Padding="40,36">
+        <Grid RowDefinitions="Auto,*,Auto" RowSpacing="24">
+          <StackPanel Grid.Row="0" Spacing="14">
+            <Border Width="64" Height="64"
+                    CornerRadius="18"
+                    Background="#FFFFFF"
+                    HorizontalAlignment="Left">
+              <TextBlock Text="TT"
+                         FontSize="24"
+                         FontWeight="Black"
+                         Foreground="{StaticResource Accent}"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Center" />
+            </Border>
+            <TextBlock Text="TanTienQR"
+                       FontSize="30"
+                       FontWeight="Black"
+                       Foreground="White" />
+            <TextBlock Text="Quét mã camera · Ghi kết quả xuống PLC Omron"
+                       FontSize="13"
+                       Foreground="#E6FFF9"
+                       TextWrapping="Wrap" />
+          </StackPanel>
+
+          <StackPanel Grid.Row="1" Spacing="12" VerticalAlignment="Center">
+            <Border Background="#FFFFFF22"
+                    CornerRadius="12"
+                    Padding="14,12">
+              <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                <Path Width="18" Height="18"
+                      VerticalAlignment="Center"
+                      Stretch="Uniform"
+                      Stroke="White"
+                      StrokeThickness="2"
+                      StrokeLineCap="Round"
+                      StrokeJoin="Round"
+                      Data="M4,12 L9,17 L20,6" />
+                <StackPanel Grid.Column="1" Spacing="2">
+                  <TextBlock Text="Nhận tín hiệu camera RD"
+                             FontSize="13"
+                             FontWeight="SemiBold"
+                             Foreground="White" />
+                  <TextBlock Text="Lọc trùng, hiển thị Pass / Fail theo thời gian thực"
+                             FontSize="11"
+                             Foreground="#E6FFF9"
+                             TextWrapping="Wrap" />
+                </StackPanel>
+              </Grid>
+            </Border>
+            <Border Background="#FFFFFF22"
+                    CornerRadius="12"
+                    Padding="14,12">
+              <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                <Path Width="18" Height="18"
+                      VerticalAlignment="Center"
+                      Stretch="Uniform"
+                      Stroke="White"
+                      StrokeThickness="2"
+                      StrokeLineCap="Round"
+                      StrokeJoin="Round"
+                      Data="M4,8 L8,8 M12,8 L20,8 M6,4 L6,12 M14,4 L14,12 M4,16 L20,16 M8,12 L8,20 M16,12 L16,20" />
+                <StackPanel Grid.Column="1" Spacing="2">
+                  <TextBlock Text="Ghi kết quả xuống PLC Omron"
+                             FontSize="13"
+                             FontWeight="SemiBold"
+                             Foreground="White" />
+                  <TextBlock Text="D12 = kết quả, D16 = trạng thái Ready"
+                             FontSize="11"
+                             Foreground="#E6FFF9"
+                             TextWrapping="Wrap" />
+                </StackPanel>
+              </Grid>
+            </Border>
+            <Border Background="#FFFFFF22"
+                    CornerRadius="12"
+                    Padding="14,12">
+              <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                <Path Width="18" Height="18"
+                      VerticalAlignment="Center"
+                      Stretch="Uniform"
+                      Stroke="White"
+                      StrokeThickness="2"
+                      StrokeLineCap="Round"
+                      StrokeJoin="Round"
+                      Data="M12,11 A4,4 0 1 0 12,3 A4,4 0 1 0 12,11 Z M4,21 C4,16.5 7.6,14 12,14 C16.4,14 20,16.5 20,21" />
+                <StackPanel Grid.Column="1" Spacing="2">
+                  <TextBlock Text="Phân quyền theo vai trò"
+                             FontSize="13"
+                             FontWeight="SemiBold"
+                             Foreground="White" />
+                  <TextBlock Text="Worker · Vận hành · Quản trị · Lập trình viên"
+                             FontSize="11"
+                             Foreground="#E6FFF9"
+                             TextWrapping="Wrap" />
+                </StackPanel>
+              </Grid>
+            </Border>
+          </StackPanel>
+
+          <StackPanel Grid.Row="2" Spacing="6">
+            <Border Height="1" Background="#FFFFFF33" />
+            <TextBlock Text="Tài khoản mặc định admin / admin — hãy đổi mật khẩu ở lần đăng nhập đầu tiên."
+                       FontSize="11"
+                       Foreground="#E6FFF9"
+                       TextWrapping="Wrap" />
+            <TextBlock Text="© Tân Tiến · Bản quyền phần mềm đã đăng ký license."
+                       FontSize="10"
+                       Foreground="#CCFFF5" />
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <!-- ===== Cột phải: form ===== -->
+      <Border Grid.Column="1" Background="{StaticResource BgBase}">
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
+          <StackPanel MaxWidth="440"
+                      Width="440"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center"
+                      Margin="0,32,0,32"
+                      Spacing="18">
+
+            <!-- Stepper -->
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10" VerticalAlignment="Center">
+              <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <Border Classes="stepDot active">
+                  <TextBlock Text="{Binding Step1Glyph}" />
+                </Border>
+                <TextBlock Text="Đăng nhập"
+                           FontSize="12"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource TextPrimary}"
+                           VerticalAlignment="Center" />
+              </StackPanel>
+              <Border Grid.Column="1"
+                      Height="2"
+                      CornerRadius="1"
+                      Background="{StaticResource LineColor}"
+                      VerticalAlignment="Center" />
+              <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <Border Classes="stepDot"
+                        Classes.active="{Binding IsChangePasswordStep}"
+                        Classes.done="{Binding IsSignInDone}">
+                  <TextBlock Text="{Binding Step2Glyph}" />
+                </Border>
+                <TextBlock Text="Đổi mật khẩu"
+                           FontSize="12"
+                           FontWeight="SemiBold"
+                           Foreground="{StaticResource TextPrimary}"
+                           VerticalAlignment="Center" />
+              </StackPanel>
+            </Grid>
+
+            <!-- ===== Bước 1: đăng nhập ===== -->
+            <StackPanel Spacing="16" IsVisible="{Binding IsSignInStep}">
+              <StackPanel Spacing="4">
+                <TextBlock Text="Chào mừng trở lại"
+                           FontSize="24"
+                           FontWeight="Black"
+                           Foreground="{StaticResource TextPrimary}" />
+                <TextBlock Text="Đăng nhập để vào hệ thống quét mã TanTienQR."
+                           FontSize="12"
+                           Foreground="{StaticResource TextMuted}"
+                           TextWrapping="Wrap" />
+              </StackPanel>
+
+              <StackPanel Spacing="6">
+                <TextBlock Classes="fieldLabel" Text="TÊN ĐĂNG NHẬP" />
+                <TextBox x:Name="UsernameBox"
+                         Classes="field"
+                         Height="44"
+                         TabIndex="0"
+                         VerticalContentAlignment="Center"
+                         PlaceholderText="Nhập tên đăng nhập"
+                         Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}">
+                  <TextBox.InnerLeftContent>
+                    <Path Width="16" Height="16"
+                          Margin="12,0,0,0"
+                          VerticalAlignment="Center"
+                          Stretch="Uniform"
+                          Stroke="{StaticResource TextMuted}"
+                          StrokeThickness="1.8"
+                          StrokeLineCap="Round"
+                          StrokeJoin="Round"
+                          Data="M12,11 A4,4 0 1 0 12,3 A4,4 0 1 0 12,11 Z M4,21 C4,16.5 7.6,14 12,14 C16.4,14 20,16.5 20,21" />
+                  </TextBox.InnerLeftContent>
+                </TextBox>
+              </StackPanel>
+
+              <StackPanel Spacing="6">
+                <TextBlock Classes="fieldLabel" Text="MẬT KHẨU" />
+                <TextBox x:Name="LoginPasswordBox"
+                         Classes="field"
+                         Height="44"
+                         TabIndex="1"
+                         VerticalContentAlignment="Center"
+                         PasswordChar="•"
+                         PlaceholderText="Nhập mật khẩu"
+                         Text="{Binding Password, UpdateSourceTrigger=PropertyChanged}">
+                  <TextBox.InnerLeftContent>
+                    <Path Width="16" Height="16"
+                          Margin="12,0,0,0"
+                          VerticalAlignment="Center"
+                          Stretch="Uniform"
+                          Stroke="{StaticResource TextMuted}"
+                          StrokeThickness="1.8"
+                          StrokeLineCap="Round"
+                          StrokeJoin="Round"
+                          Data="M5,11 L5,7 A7,7 0 0 1 19,7 L19,11 M6,11 L6,20 L18,20 L18,11 Z M12,14.5 L12,17" />
+                  </TextBox.InnerLeftContent>
+                  <TextBox.InnerRightContent>
+                    <ToggleButton Classes="reveal"
+                                  TabIndex="5"
+                                  ToolTip.Tip="Hiện / ẩn mật khẩu"
+                                  IsChecked="{Binding #LoginPasswordBox.RevealPassword, Mode=TwoWay}">
+                      <Path Width="16" Height="16"
+                            Stretch="Uniform"
+                            Stroke="{StaticResource TextMuted}"
+                            StrokeThickness="1.8"
+                            StrokeLineCap="Round"
+                            StrokeJoin="Round"
+                            Data="M2,12 C5,6 9.5,4 12,4 C14.5,4 19,6 22,12 C19,18 14.5,20 12,20 C9.5,20 5,18 2,12 Z M12,12 M12,9.5 A2.5,2.5 0 1 0 12,14.5 A2.5,2.5 0 1 0 12,9.5 Z" />
+                    </ToggleButton>
+                  </TextBox.InnerRightContent>
+                </TextBox>
+              </StackPanel>
+
+              <!-- Cảnh báo tài khoản seed -->
+              <Border IsVisible="{Binding HasWarning}"
+                      Padding="12,10"
+                      CornerRadius="10"
+                      Background="{StaticResource WarnSoft}"
+                      BorderBrush="{StaticResource Warn}"
+                      BorderThickness="1">
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                  <Path Grid.Column="0"
+                        Width="15" Height="15"
+                        VerticalAlignment="Top"
+                        Margin="0,1,0,0"
+                        Stretch="Uniform"
+                        Stroke="{StaticResource Warn}"
+                        StrokeThickness="2"
+                        StrokeLineCap="Round"
+                        StrokeJoin="Round"
+                        Data="M12,3 L22,20 L2,20 Z M12,9.5 L12,14 M12,17 L12,17.2" />
+                  <TextBlock Grid.Column="1"
+                             Text="{Binding WarningMessage}"
+                             FontSize="12"
+                             Foreground="{StaticResource Warn}"
+                             TextWrapping="Wrap" />
+                </Grid>
+              </Border>
+
+              <!-- Lỗi -->
+              <Border IsVisible="{Binding HasError}"
+                      Padding="12,10"
+                      CornerRadius="10"
+                      Background="{StaticResource DangerSoft}"
+                      BorderBrush="{StaticResource Danger}"
+                      BorderThickness="1">
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                  <Path Grid.Column="0"
+                        Width="15" Height="15"
+                        VerticalAlignment="Top"
+                        Margin="0,1,0,0"
+                        Stretch="Uniform"
+                        Stroke="{StaticResource Danger}"
+                        StrokeThickness="2"
+                        StrokeLineCap="Round"
+                        StrokeJoin="Round"
+                        Data="M12,8 L12,13 M12,16.5 L12,16.7 M10.3,3.8 L2.6,17.5 A2,2 0 0 0 4.3,20.5 L19.7,20.5 A2,2 0 0 0 21.4,17.5 L13.7,3.8 A2,2 0 0 0 10.3,3.8 Z" />
+                  <TextBlock Grid.Column="1"
+                             Text="{Binding ErrorMessage}"
+                             FontSize="12"
+                             Foreground="{StaticResource Danger}"
+                             TextWrapping="Wrap" />
+                </Grid>
+              </Border>
+
+              <Button Classes="primary"
+                      Height="46"
+                      TabIndex="2"
+                      HorizontalAlignment="Stretch"
+                      HorizontalContentAlignment="Center"
+                      VerticalContentAlignment="Center"
+                      IsDefault="True"
+                      Content="Đăng nhập"
+                      IsEnabled="{Binding CanSubmit}"
+                      Command="{Binding LoginCommand}" />
+              <Button Classes="soft"
+                      Height="42"
+                      TabIndex="3"
+                      HorizontalAlignment="Stretch"
+                      HorizontalContentAlignment="Center"
+                      VerticalContentAlignment="Center"
+                      Content="Thoát ứng dụng"
+                      Command="{Binding CancelCommand}" />
+            </StackPanel>
+
+            <!-- ===== Bước 2: đổi mật khẩu lần đầu ===== -->
+            <StackPanel Spacing="16" IsVisible="{Binding IsChangePasswordStep}">
+              <StackPanel Spacing="4">
+                <TextBlock Text="Đổi mật khẩu lần đầu"
+                           FontSize="24"
+                           FontWeight="Black"
+                           Foreground="{StaticResource TextPrimary}" />
+                <TextBlock Text="Tài khoản của bạn yêu cầu đổi mật khẩu trước khi sử dụng ứng dụng."
+                           FontSize="12"
+                           Foreground="{StaticResource TextMuted}"
+                           TextWrapping="Wrap" />
+              </StackPanel>
+
+              <Border Classes="device" Padding="14,12">
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                  <Border Grid.Column="0"
+                          Width="38" Height="38"
+                          CornerRadius="12"
+                          Background="{StaticResource AccentSoft}"
+                          VerticalAlignment="Center">
+                    <Path Width="18" Height="18"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center"
+                          Stretch="Uniform"
+                          Stroke="{StaticResource Accent}"
+                          StrokeThickness="1.8"
+                          StrokeLineCap="Round"
+                          StrokeJoin="Round"
+                          Data="M12,11 A4,4 0 1 0 12,3 A4,4 0 1 0 12,11 Z M4,21 C4,16.5 7.6,14 12,14 C16.4,14 20,16.5 20,21" />
+                  </Border>
+                  <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                    <TextBlock Classes="fieldLabel" Text="TÀI KHOẢN" />
+                    <TextBlock FontSize="14"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource TextPrimary}"
+                               TextTrimming="CharacterEllipsis">
+                      <Run Text="{Binding PendingUsername}" />
+                      <Run Text=" · " Foreground="{StaticResource TextMuted}" />
+                      <Run Text="{Binding PendingDisplayName}" Foreground="{StaticResource TextMuted}" />
+                    </TextBlock>
+                  </StackPanel>
+                </Grid>
+              </Border>
+
+              <StackPanel Spacing="6">
+                <TextBlock Classes="fieldLabel" Text="MẬT KHẨU HIỆN TẠI" />
+                <TextBox x:Name="CurrentBox"
+                         Classes="field"
+                         Height="44"
+                         TabIndex="10"
+                         VerticalContentAlignment="Center"
+                         PasswordChar="•"
+                         PlaceholderText="Nhập mật khẩu hiện tại"
+                         Text="{Binding CurrentPassword, UpdateSourceTrigger=PropertyChanged}">
+                  <TextBox.InnerRightContent>
+                    <ToggleButton Classes="reveal"
+                                  ToolTip.Tip="Hiện / ẩn mật khẩu"
+                                  IsChecked="{Binding #CurrentBox.RevealPassword, Mode=TwoWay}">
+                      <Path Width="16" Height="16"
+                            Stretch="Uniform"
+                            Stroke="{StaticResource TextMuted}"
+                            StrokeThickness="1.8"
+                            StrokeLineCap="Round"
+                            StrokeJoin="Round"
+                            Data="M2,12 C5,6 9.5,4 12,4 C14.5,4 19,6 22,12 C19,18 14.5,20 12,20 C9.5,20 5,18 2,12 Z M12,12 M12,9.5 A2.5,2.5 0 1 0 12,14.5 A2.5,2.5 0 1 0 12,9.5 Z" />
+                    </ToggleButton>
+                  </TextBox.InnerRightContent>
+                </TextBox>
+              </StackPanel>
+
+              <StackPanel Spacing="6">
+                <TextBlock Classes="fieldLabel" Text="MẬT KHẨU MỚI" />
+                <TextBox x:Name="NewBox"
+                         Classes="field"
+                         Height="44"
+                         TabIndex="11"
+                         VerticalContentAlignment="Center"
+                         PasswordChar="•"
+                         PlaceholderText="Tối thiểu 6 ký tự"
+                         Text="{Binding NewPassword, UpdateSourceTrigger=PropertyChanged}">
+                  <TextBox.InnerRightContent>
+                    <ToggleButton Classes="reveal"
+                                  ToolTip.Tip="Hiện / ẩn mật khẩu"
+                                  IsChecked="{Binding #NewBox.RevealPassword, Mode=TwoWay}">
+                      <Path Width="16" Height="16"
+                            Stretch="Uniform"
+                            Stroke="{StaticResource TextMuted}"
+                            StrokeThickness="1.8"
+                            StrokeLineCap="Round"
+                            StrokeJoin="Round"
+                            Data="M2,12 C5,6 9.5,4 12,4 C14.5,4 19,6 22,12 C19,18 14.5,20 12,20 C9.5,20 5,18 2,12 Z M12,12 M12,9.5 A2.5,2.5 0 1 0 12,14.5 A2.5,2.5 0 1 0 12,9.5 Z" />
+                    </ToggleButton>
+                  </TextBox.InnerRightContent>
+                </TextBox>
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                  <Border Height="6"
+                          CornerRadius="3"
+                          Background="{StaticResource BgRaised}"
+                          VerticalAlignment="Center">
+                    <Border Width="{Binding PasswordStrengthWidth}"
+                            HorizontalAlignment="Left"
+                            CornerRadius="3"
+                            Background="{Binding PasswordStrengthBrush}" />
+                  </Border>
+                  <TextBlock Grid.Column="1"
+                             Text="{Binding PasswordStrengthText}"
+                             FontSize="11"
+                             FontWeight="SemiBold"
+                             Foreground="{StaticResource TextMuted}"
+                             VerticalAlignment="Center" />
+                </Grid>
+              </StackPanel>
+
+              <StackPanel Spacing="6">
+                <TextBlock Classes="fieldLabel" Text="XÁC NHẬN MẬT KHẨU MỚI" />
+                <TextBox x:Name="ConfirmBox"
+                         Classes="field"
+                         Height="44"
+                         TabIndex="12"
+                         VerticalContentAlignment="Center"
+                         PasswordChar="•"
+                         PlaceholderText="Nhập lại mật khẩu mới"
+                         Text="{Binding ConfirmPassword, UpdateSourceTrigger=PropertyChanged}">
+                  <TextBox.InnerRightContent>
+                    <ToggleButton Classes="reveal"
+                                  ToolTip.Tip="Hiện / ẩn mật khẩu"
+                                  IsChecked="{Binding #ConfirmBox.RevealPassword, Mode=TwoWay}">
+                      <Path Width="16" Height="16"
+                            Stretch="Uniform"
+                            Stroke="{StaticResource TextMuted}"
+                            StrokeThickness="1.8"
+                            StrokeLineCap="Round"
+                            StrokeJoin="Round"
+                            Data="M2,12 C5,6 9.5,4 12,4 C14.5,4 19,6 22,12 C19,18 14.5,20 12,20 C9.5,20 5,18 2,12 Z M12,12 M12,9.5 A2.5,2.5 0 1 0 12,14.5 A2.5,2.5 0 1 0 12,9.5 Z" />
+                    </ToggleButton>
+                  </TextBox.InnerRightContent>
+                </TextBox>
+              </StackPanel>
+
+              <Border IsVisible="{Binding HasError}"
+                      Padding="12,10"
+                      CornerRadius="10"
+                      Background="{StaticResource DangerSoft}"
+                      BorderBrush="{StaticResource Danger}"
+                      BorderThickness="1">
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                  <Path Grid.Column="0"
+                        Width="15" Height="15"
+                        VerticalAlignment="Top"
+                        Margin="0,1,0,0"
+                        Stretch="Uniform"
+                        Stroke="{StaticResource Danger}"
+                        StrokeThickness="2"
+                        StrokeLineCap="Round"
+                        StrokeJoin="Round"
+                        Data="M12,8 L12,13 M12,16.5 L12,16.7 M10.3,3.8 L2.6,17.5 A2,2 0 0 0 4.3,20.5 L19.7,20.5 A2,2 0 0 0 21.4,17.5 L13.7,3.8 A2,2 0 0 0 10.3,3.8 Z" />
+                  <TextBlock Grid.Column="1"
+                             Text="{Binding ErrorMessage}"
+                             FontSize="12"
+                             Foreground="{StaticResource Danger}"
+                             TextWrapping="Wrap" />
+                </Grid>
+              </Border>
+
+              <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                <Button Grid.Column="0"
+                        Classes="soft"
+                        Height="44"
+                        TabIndex="14"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        Content="Quay lại"
+                        Command="{Binding BackToLoginCommand}" />
+                <Button Grid.Column="1"
+                        Classes="primary"
+                        Height="44"
+                        TabIndex="13"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        IsDefault="True"
+                        Content="Lưu mật khẩu"
+                        IsEnabled="{Binding CanSubmitPasswordChange}"
+                        Command="{Binding ConfirmPasswordChangeCommand}" />
+              </Grid>
+              <Button Classes="soft"
+                      Height="38"
+                      HorizontalAlignment="Stretch"
+                      HorizontalContentAlignment="Center"
+                      VerticalContentAlignment="Center"
+                      Content="Huỷ — thoát ứng dụng"
+                      Command="{Binding CancelCommand}" />
+            </StackPanel>
+
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+    </Grid>
+  </Grid>
+</Window>

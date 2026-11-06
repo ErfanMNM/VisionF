@@ -1,0 +1,462 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:TanTienQR.ViewModels"
+             xmlns:d="http://schemas.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1040" d:DesignHeight="700"
+             x:Class="TanTienQR.Views.PlcSettingsView"
+             x:DataType="vm:MainViewModel">
+
+    <Design.DataContext>
+        <vm:MainViewModel />
+    </Design.DataContext>
+
+    <Grid RowDefinitions="Auto,Auto,*" Margin="18,6,18,18" RowSpacing="12">
+
+        <!-- Tiêu đề + thanh công cụ -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="12">
+            <StackPanel Grid.Column="0" Spacing="4" VerticalAlignment="Center">
+                <TextBlock Text="Chỉnh PLC"
+                           FontSize="21"
+                           FontWeight="Bold"
+                           Foreground="{StaticResource TextPrimary}" />
+                <TextBlock Classes="label"
+                           FontSize="12"
+                           Text="Xem camera, quản lý ô nhớ PLC và áp dụng recipe tham số." />
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <Button Classes="soft"
+                        Height="36" MinWidth="92" Padding="14,0"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        Content="Tải lại"
+                        Command="{Binding PlcSettings.LoadCommand}" />
+                <Button Classes="soft"
+                        Height="36" MinWidth="104" Padding="14,0"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        Content="Đọc tất cả"
+                        Command="{Binding PlcSettings.ReadAllCommand}" />
+                <Button Classes="primary"
+                        Height="36" MinWidth="110" Padding="14,0"
+                        HorizontalContentAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        Content="+ Tham số"
+                        Command="{Binding PlcSettings.AddParameterCommand}" />
+            </StackPanel>
+        </Grid>
+
+        <!-- Thông báo trạng thái -->
+        <Border Grid.Row="1"
+                Padding="12,9"
+                CornerRadius="9"
+                Background="{StaticResource BgRaised}"
+                BorderBrush="{StaticResource LineColor}"
+                BorderThickness="1">
+            <TextBlock Text="{Binding PlcSettings.StatusMessage}"
+                       FontSize="12"
+                       Foreground="{StaticResource TextMuted}"
+                       TextWrapping="Wrap" />
+        </Border>
+
+        <!-- Nội dung: trái = camera + bảng tham số, phải = recipe -->
+        <Grid Grid.Row="2" ColumnDefinitions="3*,2*" ColumnSpacing="12">
+
+            <!-- ============ CỘT TRÁI ============ -->
+            <Grid Grid.Column="0" RowDefinitions="*,Auto" RowSpacing="12">
+
+                <!-- Webview camera -->
+                <Border Grid.Row="0" Classes="panel" Padding="0">
+                    <Grid RowDefinitions="Auto,Auto,*">
+                        <!-- Thanh địa chỉ -->
+                        <Grid Grid.Row="0"
+                              ColumnDefinitions="Auto,*,Auto,Auto"
+                              ColumnSpacing="8"
+                              Margin="12,10,12,0">
+                            <TextBlock Grid.Column="0"
+                                       Classes="fieldLabel"
+                                       Text="CAMERA"
+                                       VerticalAlignment="Center" />
+                            <Border Grid.Column="1"
+                                    Background="{StaticResource BgRaised}"
+                                    BorderBrush="{StaticResource LineColor}"
+                                    BorderThickness="1"
+                                    CornerRadius="8"
+                                    MinHeight="32"
+                                    Padding="10,0">
+                                <TextBlock Classes="mono"
+                                           FontSize="11"
+                                           Text="{Binding PlcSettings.CameraMonitorUrl}"
+                                           TextTrimming="CharacterEllipsis"
+                                           VerticalAlignment="Center" />
+                            </Border>
+                            <Button Grid.Column="2"
+                                    Classes="soft"
+                                    Height="32" MinWidth="74" Padding="10,0"
+                                    FontSize="11"
+                                    HorizontalContentAlignment="Center"
+                                    VerticalContentAlignment="Center"
+                                    Content="Tải lại"
+                                    Click="OnReloadCameraClick" />
+                            <Button Grid.Column="3"
+                                    Classes="soft"
+                                    Height="32" MinWidth="124" Padding="10,0"
+                                    FontSize="11"
+                                    HorizontalContentAlignment="Center"
+                                    VerticalContentAlignment="Center"
+                                    Content="Mở trình duyệt"
+                                    Click="OnOpenCameraExternalClick" />
+                        </Grid>
+
+                        <!-- Vùng webview -->
+                        <Border Grid.Row="1"
+                                Margin="12,0"
+                                Background="{StaticResource BgPanel}"
+                                BorderBrush="{StaticResource LineColor}"
+                                BorderThickness="1"
+                                CornerRadius="10"
+                                ClipToBounds="True">
+                            <Grid>
+                                <NativeWebView x:Name="CameraBrowser"
+                                               Source="{Binding PlcSettings.CameraMonitorUri}"
+                                               IsVisible="{Binding PlcSettings.IsCameraWebEnabled}"
+                                               NavigationStarted="OnCameraNavigationStarted"
+                                               NavigationCompleted="OnCameraNavigationCompleted" />
+
+                                <!-- Chưa cấu hình IP camera -->
+                                <StackPanel HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            Spacing="8"
+                                            IsVisible="{Binding !PlcSettings.HasCameraUrl}">
+                                    <TextBlock Text="Chưa cấu hình IP camera"
+                                               FontSize="15"
+                                               FontWeight="Bold"
+                                               Foreground="{StaticResource TextMuted}"
+                                               HorizontalAlignment="Center" />
+                                    <TextBlock Classes="label"
+                                               FontSize="11"
+                                               HorizontalAlignment="Center"
+                                               Text="Đặt Camera.Ip trong tab Cấu hình để xem hình." />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <!-- Trạng thái webview -->
+                        <Border Grid.Row="2"
+                                Margin="12,10,12,12"
+                                Padding="10,7"
+                                CornerRadius="8"
+                                Background="{StaticResource BgRaised}"
+                                BorderBrush="{StaticResource LineColor}"
+                                BorderThickness="1">
+                            <TextBlock Classes="label"
+                                       FontSize="11"
+                                       Text="{Binding PlcSettings.StatusMessage}"
+                                       TextTrimming="CharacterEllipsis" />
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- Bảng tham số PLC -->
+                <Border Grid.Row="1" Classes="panel" Padding="0">
+                    <Grid RowDefinitions="Auto,*,Auto">
+
+                        <!-- Header -->
+                        <Border Grid.Row="0"
+                                BorderBrush="{StaticResource LineColor}"
+                                BorderThickness="0,0,0,1"
+                                Padding="14,10"
+                                Background="{StaticResource BgRaised}">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <TextBlock Classes="fieldLabel" Text="THÔNG SỐ PLC" />
+                                <TextBlock Classes="label"
+                                           FontSize="10"
+                                           Text="(tùy chỉnh ô nhớ cần đọc / ghi)" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Header cột -->
+                        <Border Grid.Row="1"
+                                BorderBrush="{StaticResource LineColor}"
+                                BorderThickness="0,0,0,1"
+                                Padding="14,7"
+                                Background="{StaticResource BgBase}">
+                            <Grid ColumnDefinitions="150,90,80,95,90,110,auto" ColumnSpacing="8">
+                                <TextBlock Grid.Column="0" Classes="fieldLabel" Text="TÊN" />
+                                <TextBlock Grid.Column="1" Classes="fieldLabel" Text="Ô NHỚ" />
+                                <TextBlock Grid.Column="2" Classes="fieldLabel" Text="KIỂU" />
+                                <TextBlock Grid.Column="3" Classes="fieldLabel" Text="TRUY CẬP" />
+                                <TextBlock Grid.Column="4" Classes="fieldLabel" Text="GIÁ TRỊ" />
+                                <TextBlock Grid.Column="5" Classes="fieldLabel" Text="NHẬP" />
+                                <TextBlock Grid.Column="6" Classes="fieldLabel" Text="THAO TÁC" />
+                            </Grid>
+                        </Border>
+
+                        <!-- Các dòng tham số -->
+                        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding PlcSettings.ParameterRows}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:PlcParamRowViewModel">
+                                        <Border BorderBrush="{StaticResource LineColor}"
+                                                BorderThickness="0,0,0,1"
+                                                Padding="14,8">
+                                            <Grid ColumnDefinitions="150,90,80,95,90,110,auto"
+                                                  ColumnSpacing="8">
+
+                                                <!-- Tên -->
+                                                <StackPanel Grid.Column="0" Spacing="1" VerticalAlignment="Center">
+                                                    <TextBlock FontSize="12"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{StaticResource TextPrimary}"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               Text="{Binding Name}" />
+                                                    <TextBlock Classes="label"
+                                                               FontSize="10"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               Text="{Binding Description}" />
+                                                </StackPanel>
+
+                                                <!-- Ô nhớ -->
+                                                <TextBlock Grid.Column="1"
+                                                           Classes="mono"
+                                                           FontSize="11"
+                                                           Foreground="{StaticResource TextPrimary}"
+                                                           VerticalAlignment="Center"
+                                                           Text="{Binding Address}" />
+
+                                                <!-- Kiểu -->
+                                                <TextBlock Grid.Column="2"
+                                                           FontSize="11"
+                                                           Foreground="{StaticResource TextMuted}"
+                                                           VerticalAlignment="Center"
+                                                           Text="{Binding ValueTypeText}" />
+
+                                                <!-- Chế độ -->
+                                                <TextBlock Grid.Column="3"
+                                                           FontSize="11"
+                                                           Foreground="{StaticResource TextMuted}"
+                                                           VerticalAlignment="Center"
+                                                           Text="{Binding AccessModeText}" />
+
+                                                <!-- Giá trị đọc được -->
+                                                <TextBlock Grid.Column="4"
+                                                           Classes="mono"
+                                                           FontSize="11"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{StaticResource Accent}"
+                                                           VerticalAlignment="Center"
+                                                           Text="{Binding CurrentValue}" />
+
+                                                <!-- Ô nhập giá trị -->
+                                                <TextBox Grid.Column="5"
+                                                         Classes="field"
+                                                         Height="30"
+                                                         FontSize="11"
+                                                         VerticalAlignment="Center"
+                                                         PlaceholderText="Nhập giá trị"
+                                                         Text="{Binding InputValue}" />
+
+                                                <!-- Thao tác -->
+                                                <StackPanel Grid.Column="6"
+                                                            Orientation="Horizontal"
+                                                            Spacing="5"
+                                                            VerticalAlignment="Center">
+                                                    <Button Classes="soft"
+                                                            Height="28" MinWidth="48" Padding="8,0"
+                                                            FontSize="11"
+                                                            HorizontalContentAlignment="Center"
+                                                            VerticalContentAlignment="Center"
+                                                            Content="Đọc"
+                                                            IsVisible="{Binding CanRead}"
+                                                            Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).PlcSettings.ReadParameterCommand}"
+                                                            CommandParameter="{Binding}" />
+                                                    <Button Classes="soft"
+                                                            Height="28" MinWidth="48" Padding="8,0"
+                                                            FontSize="11"
+                                                            HorizontalContentAlignment="Center"
+                                                            VerticalContentAlignment="Center"
+                                                            Content="Ghi"
+                                                            IsVisible="{Binding CanWrite}"
+                                                            Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).PlcSettings.WriteParameterCommand}"
+                                                            CommandParameter="{Binding}" />
+                                                    <Button Classes="soft"
+                                                            Height="28" MinWidth="44" Padding="8,0"
+                                                            FontSize="11"
+                                                            HorizontalContentAlignment="Center"
+                                                            VerticalContentAlignment="Center"
+                                                            Content="Sửa"
+                                                            Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).PlcSettings.EditParameterCommand}"
+                                                            CommandParameter="{Binding}" />
+                                                    <Button Classes="soft"
+                                                            Height="28" MinWidth="48" Padding="8,0"
+                                                            FontSize="11"
+                                                            HorizontalContentAlignment="Center"
+                                                            VerticalContentAlignment="Center"
+                                                            Content="Xoá"
+                                                            Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).PlcSettings.DeleteParameterCommand}"
+                                                            CommandParameter="{Binding}" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+
+                        <!-- Thông báo khi chưa có tham số -->
+                        <StackPanel Grid.Row="2"
+                                    VerticalAlignment="Center"
+                                    HorizontalAlignment="Center"
+                                    Spacing="6"
+                                    IsVisible="{Binding !PlcSettings.HasParameters}">
+                            <TextBlock Text="Chưa có tham số PLC nào"
+                                       FontSize="14"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextMuted}"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock Classes="label"
+                                       FontSize="11"
+                                       Text="Bấm “+ Tham số” để thêm ô nhớ cần đọc hoặc ghi."
+                                       HorizontalAlignment="Center" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- ============ CỘT PHẢI: KHUNG RECIPE ============ -->
+            <Border Grid.Column="1" Classes="panel" Padding="16">
+                <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="12">
+
+                    <!-- Tiêu đề -->
+                    <StackPanel Grid.Row="0" Spacing="4">
+                        <TextBlock Text="Khung Recipe"
+                                   FontSize="15"
+                                   FontWeight="Bold"
+                                   Foreground="{StaticResource TextPrimary}" />
+                        <TextBlock Classes="label"
+                                   FontSize="11"
+                                   Text="Lưu bộ giá trị ô nhớ rồi áp dụng xuống PLC." />
+                    </StackPanel>
+
+                    <!-- Chọn / tạo recipe -->
+                    <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                        <ComboBox Grid.Column="0"
+                                  Classes="field"
+                                  Height="38"
+                                  PlaceholderText="Chọn recipe"
+                                  ItemsSource="{Binding PlcSettings.Recipes}"
+                                  SelectedItem="{Binding PlcSettings.SelectedRecipe}" />
+                        <Button Grid.Column="1"
+                                Classes="soft"
+                                Height="38" MinWidth="62" Padding="10,0"
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center"
+                                Content="Xoá"
+                                Command="{Binding PlcSettings.DeleteRecipeCommand}" />
+                        <Button Grid.Column="2"
+                                Classes="soft"
+                                Height="38" MinWidth="62" Padding="10,0"
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center"
+                                Content="Tạo"
+                                Command="{Binding PlcSettings.CreateRecipeCommand}" />
+                    </Grid>
+
+                    <!-- Tên recipe mới -->
+                    <StackPanel Grid.Row="2" Spacing="8">
+                        <TextBlock Classes="fieldLabel" Text="TÊN RECIPE MỚI" />
+                        <TextBox Classes="field"
+                                 Height="36"
+                                 PlaceholderText="Ví dụ: Line 1 - San pham A"
+                                 Text="{Binding PlcSettings.NewRecipeName}" />
+
+                        <!-- Danh sách giá trị trong recipe -->
+                        <Border Classes="panel"
+                                Padding="0"
+                                Margin="0,4,0,0">
+                            <Grid RowDefinitions="Auto,Auto,*">
+                                <Border Grid.Row="0"
+                                        BorderBrush="{StaticResource LineColor}"
+                                        BorderThickness="0,0,0,1"
+                                        Padding="12,8"
+                                        Background="{StaticResource BgRaised}">
+                                    <TextBlock Classes="fieldLabel"
+                                               Text="GIÁ TRỊ THAM SỐ THEO RECIPE" />
+                                </Border>
+
+                                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                              MaxHeight="320">
+                                    <ItemsControl ItemsSource="{Binding PlcSettings.ParameterRows}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:PlcParamRowViewModel">
+                                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8"
+                                                      Margin="12,6">
+                                                    <StackPanel Grid.Column="0" Spacing="1" VerticalAlignment="Center">
+                                                        <TextBlock FontSize="11"
+                                                                   FontWeight="SemiBold"
+                                                                   Foreground="{StaticResource TextPrimary}"
+                                                                   TextTrimming="CharacterEllipsis"
+                                                                   Text="{Binding Name}" />
+                                                        <TextBlock Classes="mono"
+                                                                   FontSize="10"
+                                                                   Foreground="{StaticResource TextMuted}"
+                                                                   Text="{Binding Address}" />
+                                                    </StackPanel>
+                                                    <TextBox Grid.Column="1"
+                                                             Classes="field"
+                                                             Width="110"
+                                                             Height="30"
+                                                             FontSize="11"
+                                                             VerticalAlignment="Center"
+                                                             PlaceholderText="Giá trị"
+                                                             Text="{Binding InputValue}" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+
+                                <StackPanel Grid.Row="2"
+                                            VerticalAlignment="Center"
+                                            HorizontalAlignment="Center"
+                                            Spacing="4"
+                                            Margin="0,16"
+                                            IsVisible="{Binding !PlcSettings.HasParameters}">
+                                    <TextBlock Text="Chưa có tham số"
+                                               FontSize="13"
+                                               Foreground="{StaticResource TextMuted}"
+                                               HorizontalAlignment="Center" />
+                                    <TextBlock Classes="label"
+                                               FontSize="10"
+                                               Text="Thêm tham số ở bảng bên trái."
+                                               HorizontalAlignment="Center" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Nút hành động -->
+                    <Grid Grid.Row="3" ColumnDefinitions="*,*" ColumnSpacing="10">
+                        <Button Grid.Column="0"
+                                Classes="soft"
+                                Height="40"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center"
+                                Content="Lưu vào recipe"
+                                Command="{Binding PlcSettings.SaveRecipeValuesCommand}" />
+                        <Button Grid.Column="1"
+                                Classes="primary"
+                                Height="40"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center"
+                                Content="Áp dụng xuống PLC"
+                                Command="{Binding PlcSettings.ApplyRecipeCommand}" />
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

@@ -32,6 +32,7 @@ internal partial class MainViewModel
     [NotifyPropertyChangedFor(nameof(IsConfigVisible))]
     [NotifyPropertyChangedFor(nameof(IsHistoryVisible))]
     [NotifyPropertyChangedFor(nameof(IsAccountsVisible))]
+    [NotifyPropertyChangedFor(nameof(IsPlcSettingsVisible))]
     [NotifyPropertyChangedFor(nameof(PageTitle))]
     [NotifyPropertyChangedFor(nameof(PageSubtitle))]
     public partial AppSection CurrentSection { get; set; } = AppSection.Info;
@@ -55,6 +56,10 @@ internal partial class MainViewModel
     public bool IsAccountsVisible =>
         CurrentSection == AppSection.Accounts && CanManageUsers;
 
+    /// <summary>True khi đang ở tab Chỉnh PLC (và có quyền sửa cấu hình).</summary>
+    public bool IsPlcSettingsVisible =>
+        CurrentSection == AppSection.PlcSettings && CanEditPlc;
+
     /// <summary>Tiêu đề trên thanh header, đổi theo tab.</summary>
     public string PageTitle => CurrentSection switch
     {
@@ -62,6 +67,7 @@ internal partial class MainViewModel
         AppSection.Configuration => "Cấu hình",
         AppSection.History => "Lịch sử thao tác",
         AppSection.Accounts => "Tài khoản",
+        AppSection.PlcSettings => "Chỉnh PLC",
         _ => "Thông tin",
     };
 
@@ -72,6 +78,7 @@ internal partial class MainViewModel
         AppSection.Configuration => "Tham số camera, PLC và web — áp dụng sau khi khởi động lại",
         AppSection.History => "Nhật ký thao tác của người dùng — dành cho nhà phát triển",
         AppSection.Accounts => "Quản lý tài khoản người dùng và phân quyền truy cập",
+        AppSection.PlcSettings => "Đọc/ghi ô nhớ PLC Omron, quản lý tham số và áp dụng recipe",
         _ => "Nhận tín hiệu camera và gửi kết quả xuống PLC Omron (D12 = kết quả, D16 = Ready)",
     };
 
@@ -89,6 +96,9 @@ internal partial class MainViewModel
     /// <summary>True khi người dùng có quyền mở tab Lịch sử.</summary>
     public bool CanViewHistory => _session.Can(Permission.ViewHistory);
 
+    /// <summary>True khi người dùng có quyền mở tab Chỉnh PLC.</summary>
+    public bool CanEditPlc => _session.Can(Permission.EditConfig);
+
     /// <summary>
     /// Cập nhật lại tất cả cờ quyền (gọi khi phiên đăng nhập thay đổi).
     /// </summary>
@@ -99,11 +109,13 @@ internal partial class MainViewModel
         OnPropertyChanged(nameof(CanEditConfig));
         OnPropertyChanged(nameof(CanViewHistory));
         OnPropertyChanged(nameof(CanManageUsers));
+        OnPropertyChanged(nameof(CanEditPlc));
         OnPropertyChanged(nameof(IsInfoVisible));
         OnPropertyChanged(nameof(IsProductionVisible));
         OnPropertyChanged(nameof(IsConfigVisible));
         OnPropertyChanged(nameof(IsHistoryVisible));
         OnPropertyChanged(nameof(IsAccountsVisible));
+        OnPropertyChanged(nameof(IsPlcSettingsVisible));
     }
 
     // ---------- Lệnh chuyển tab ----------
@@ -183,6 +195,23 @@ internal partial class MainViewModel
 
         SwitchTo(AppSection.Accounts, "Tài khoản");
         AccountsView?.LoadCommand.Execute(null);
+    }
+
+    /// <summary>Chuyển sang tab Chỉnh PLC (webview camera + tham số PLC + recipe).</summary>
+    [RelayCommand]
+    private void ShowPlcSettingsTab()
+    {
+        if (!CanEditPlc)
+        {
+            return;
+        }
+
+        SwitchTo(AppSection.PlcSettings, "Chỉnh PLC");
+
+        // Chỉ khởi tạo WebView2 camera khi người dùng thực sự mở tab.
+        PlcSettings?.EnableCameraWeb();
+
+        PlcSettings?.LoadCommand.Execute(null);
     }
 
     /// <summary>

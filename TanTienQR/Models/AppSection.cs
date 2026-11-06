@@ -26,4 +26,10 @@ public enum AppSection
     /// Tài khoản: quản lý tài khoản người dùng (chỉ Quản trị / Lập trình viên).
     /// </summary>
     Accounts = 4,
+
+    /// <summary>
+    /// Chỉnh PLC: webview camera, bảng tham số ô nhớ và khung recipe
+    /// (Operator trở lên — dùng quyền EditConfig).
+    /// </summary>
+    PlcSettings = 5,
 }
