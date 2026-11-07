@@ -3,7 +3,9 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Input.TextInput;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
+using TanTienQR.Controls;
 using TanTienQR.ViewModels;
 
 namespace TanTienQR.Services;
@@ -15,6 +17,14 @@ namespace TanTienQR.Services;
 /// - Gắn handler <c>GotFocus</c> / <c>LostFocus</c> (routing Bubble) lên
 ///   <see cref="TopLevel"/> của mỗi cửa sổ (cả cửa sổ chính, cửa sổ đăng nhập
 ///   và các hộp thoại con).
+/// - Gắn thêm handler <c>PointerPressed</c>: khi người dùng CHẠM vào một ô
+///   nhập thì mở bàn phím NGAY, kể cả khi ô đó đã có focus sẵn.
+///
+///   Đây là điểm mấu chốt: nhiều cửa sổ tự focus vào ô nhập đầu tiên khi
+///   mở (xem <c>LoginShellWindow.FocusStepInput</c>). Nếu chỉ dựa vào
+///   <c>GotFocus</c> thì lần chạm đầu tiên sẽ KHÔNG sinh sự kiện focus mới
+///   (focus không đổi) -> bàn phím không mở -> người dùng phải nhấn đúp.
+///   Bắt <c>PointerPressed</c> giải quyết đúng trường hợp này.
 /// - Khi focus rơi vào một <see cref="TextBox"/>, mở bàn phím ảo với layout
 ///   phù hợp: bàn phím số nếu ô đó khai báo
 ///   <see cref="Avalonia.Input.TextInput.TextInputOptions.ContentType"/> là
@@ -68,7 +78,42 @@ public sealed class KeyboardService
             OnLostFocus,
             RoutingStrategies.Bubble | RoutingStrategies.Direct);
 
+        // Bắt thao tác CHẠM vào ô nhập -> mở bàn phím ngay (fix nhấn đúp).
+        topLevel.AddHandler(
+            InputElement.PointerPressedEvent,
+            OnPointerPressed,
+            RoutingStrategies.Bubble | RoutingStrategies.Direct);
+
         _hooked.Add(topLevel);
+    }
+
+    /// <summary>
+    /// Gỡ handler của một cửa sổ (gọi khi cửa sổ con đóng).
+    ///
+    /// Cần thiết vì <see cref="DetachAll"/> chỉ chạy 1 lần lúc tắt app — nếu
+    /// không gỡ ở đây thì handler của các hộp thoại đã đóng vẫn còn trong
+    /// bộ nhớ (rò) và có thể bắt sự kiện nhầm.
+    /// </summary>
+    /// <param name="topLevel">Cửa sổ cần gỡ.</param>
+    public void Detach(TopLevel topLevel)
+    {
+        ArgumentNullException.ThrowIfNull(topLevel);
+
+        if (!_hooked.Remove(topLevel))
+        {
+            return;
+        }
+
+        topLevel.RemoveHandler(InputElement.GotFocusEvent, OnGotFocus);
+        topLevel.RemoveHandler(InputElement.LostFocusEvent, OnLostFocus);
+        topLevel.RemoveHandler(InputElement.PointerPressedEvent, OnPointerPressed);
+
+        // Nếu ô đang focus thuộc cửa sổ vừa đóng -> đóng bàn phím.
+        if (_focused is not null && TopLevel.GetTopLevel(_focused) == topLevel)
+        {
+            _focused = null;
+            _keyboard.Close();
+        }
     }
 
     /// <summary>Gỡ toàn bộ handler (khi app đóng).</summary>
@@ -78,6 +123,7 @@ public sealed class KeyboardService
         {
             top.RemoveHandler(InputElement.GotFocusEvent, OnGotFocus);
             top.RemoveHandler(InputElement.LostFocusEvent, OnLostFocus);
+            top.RemoveHandler(InputElement.PointerPressedEvent, OnPointerPressed);
         }
 
         _hooked.Clear();
@@ -87,6 +133,13 @@ public sealed class KeyboardService
 
     private void OnGotFocus(object? sender, RoutedEventArgs e)
     {
+        // Bỏ qua focus nằm trong bàn phím ảo (ô mirror) — bàn phím đã mở
+        // rồi, không cần mở lại cho chính nó.
+        if (e.Source is Visual source && FindAncestor<VirtualKeyboard>(source) is not null)
+        {
+            return;
+        }
+
         // e.Source là phần tử vừa nhận focus -> tìm TextBox trong cây.
         var textBox = FindTextBox(e.Source as Visual);
         if (textBox is null)
@@ -95,11 +148,51 @@ public sealed class KeyboardService
         }
 
         _focused = textBox;
+        OpenKeyboard(textBox, sender as TopLevel);
+    }
+
+    /// <summary>
+    /// Người dùng CHẠM vào ô nhập -> mở bàn phím ngay lập tức.
+    ///
+    /// Xử lý trường hợp ô đã có focus sẵn (focus không đổi nên không có
+    /// <c>GotFocus</c>): bàn phím vẫn phải hiện sau một lần chạm.
+    /// </summary>
+    private void OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        // Bỏ qua chạm vào BÀN PHÍM ảo (nút phím, ô mirror) — nếu không sẽ
+        // đóng/mở bàn phím lung tung khi người dùng gõ.
+        if (e.Source is Visual source && FindAncestor<VirtualKeyboard>(source) is not null)
+        {
+            return;
+        }
+
+        var textBox = FindTextBox(e.Source as Visual);
+        if (textBox is null)
+        {
+            return;
+        }
+
+        // Đã mở đúng ô này rồi -> không cần mở lại (giữ nguyên layout và
+        // trạng thái Shift đang bật).
+        if (ReferenceEquals(_focused, textBox) && _keyboard.IsVisible)
+        {
+            return;
+        }
+
+        _focused = textBox;
+        OpenKeyboard(textBox, sender as TopLevel);
+    }
+
+    /// <summary>
+    /// Mở bàn phím cho ô nhập (dùng chung cho GotFocus và PointerPressed).
+    /// </summary>
+    private void OpenKeyboard(TextBox textBox, TopLevel? owner)
+    {
         _keyboard.Open(
             textBox,
             ResolveLayout(textBox),
             BuildHint(textBox),
-            (sender as TopLevel) ?? TopLevel.GetTopLevel(textBox));
+            owner ?? TopLevel.GetTopLevel(textBox));
     }
 
     private void OnLostFocus(object? sender, RoutedEventArgs e)
@@ -111,20 +204,58 @@ public sealed class KeyboardService
             return;
         }
 
-        // Nếu focus mới vẫn nằm bên trong cùng ô nhập (ví dụ bấm vào nút
-        // hiện/ẩn mật khẩu nằm trong TextBox) -> giữ bàn phím.
-        var manager = (sender as TopLevel)?.FocusManager;
-        var newFocus = manager?.GetFocusedElement();
+        // Chỉ xử lý ô nhập đang là target của bàn phím (bỏ qua ô mirror —
+        // mirror là TextBox nhưng không phải target).
+        if (!ReferenceEquals(_focused, textBox))
+        {
+            return;
+        }
+
+        // Focus MỚI chưa ổn định tại thời điểm LostFocus: Avalonia raise
+        // LostFocus TRƯỚC khi focus thực sự chuyển sang phần tử mới. Nếu
+        // kiểm tra ngay, chuyển focus sang Ô MIRROR sẽ bị hiểu nhầm là
+        // "rời khỏi ô nhập" -> đóng bàn phím -> ô mirror biến mất giữa chừng.
+        //
+        // Vì vậy đợi tới lượt dispatcher kế tiếp rồi mới quyết định.
+        Dispatcher.UIThread.Post(
+            () => CloseIfFocusLeft(sender as TopLevel, textBox),
+            DispatcherPriority.Input);
+    }
+
+    /// <summary>
+    /// Kiểm tra focus sau khi đã ổn định: nếu focus đã rời hẳn khỏi ô nhập
+    /// (và không nằm trong bàn phím ảo) thì đóng bàn phím.
+    /// </summary>
+    /// <param name="topLevel">Cửa sổ chứa ô nhập.</param>
+    /// <param name="textBox">Ô nhập vừa mất focus.</param>
+    private void CloseIfFocusLeft(TopLevel? topLevel, TextBox textBox)
+    {
+        // Trong lúc chờ, bàn phím có thể đã đóng/chuyển ô -> không làm gì.
+        if (!ReferenceEquals(_focused, textBox))
+        {
+            return;
+        }
+
+        var newFocus = topLevel?.FocusManager?.GetFocusedElement();
+
+        // Focus vẫn nằm bên trong cùng ô nhập (ví dụ bấm nút hiện/ẩn mật
+        // khẩu nằm trong TextBox) -> giữ bàn phím.
         if (newFocus is Visual v && textBox.IsVisualAncestorOf(v))
         {
             return;
         }
 
-        if (ReferenceEquals(_focused, textBox))
+        // Focus chuyển vào Ô NHẬP MIRROR của bàn phím -> GIỮ bàn phím mở.
+        // Ô mirror là nơi người dùng gõ trực tiếp, đóng bàn phím lúc này
+        // sẽ khiến ô mirror biến mất giữa chừng.
+        if (newFocus is Visual focusVisual
+            && FindAncestor<VirtualKeyboard>(focusVisual) is not null)
         {
-            _focused = null;
-            _keyboard.Close();
+            return;
         }
+
+        _focused = null;
+        _keyboard.Close();
     }
 
     /// <summary>
@@ -193,6 +324,23 @@ public sealed class KeyboardService
             if (visual is TextBox box)
             {
                 return box;
+            }
+
+            visual = visual.GetVisualParent();
+        }
+
+        return null;
+    }
+
+    /// <summary>Tìm ancestor kiểu T (đi ngược cây Visual).</summary>
+    private static T? FindAncestor<T>(Visual? visual)
+        where T : Visual
+    {
+        while (visual is not null)
+        {
+            if (visual is T match)
+            {
+                return match;
             }
 
             visual = visual.GetVisualParent();

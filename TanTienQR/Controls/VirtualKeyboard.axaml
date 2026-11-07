@@ -117,6 +117,22 @@
       <Setter Property="Background" Value="{StaticResource Accent}" />
     </Style>
 
+    <!-- Phím nguyên âm KHÔNG dấu ở hàng tiêu đề bảng tiếng Việt:
+         nền trung tính để phân biệt với các phím có dấu. -->
+    <Style Selector="Button.key.mark.base">
+      <Setter Property="Background" Value="{StaticResource BgRaised}" />
+      <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+      <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+    <Style Selector="Button.key.mark.base /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource BgRaised}" />
+      <Setter Property="BorderBrush" Value="{StaticResource LineColor}" />
+    </Style>
+    <Style Selector="Button.key.mark.base:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource BgPanel}" />
+      <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+    </Style>
+
     <!-- ===== Nút nhỏ trên thanh trên cùng (dạng "pill") ===== -->
     <Style Selector="Button.key.pill">
       <Setter Property="FontSize" Value="12" />
@@ -126,6 +142,122 @@
       <Setter Property="CornerRadius" Value="16" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="BoxShadow" Value="none" />
+    </Style>
+
+    <!-- ===== Ô nhập mirror (ô nhập trên bàn phím) =====
+         Hiển thị nội dung đang nhập để người dùng không bị mất dõi khi
+         bàn phím che mất ô nhập gốc. Gõ trực tiếp được. -->
+    <Style Selector="TextBox.kbmirror">
+      <Setter Property="Background" Value="{StaticResource BgPanel}" />
+      <Setter Property="BorderBrush" Value="{StaticResource LineAccent}" />
+      <Setter Property="BorderThickness" Value="1.5" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="Padding" Value="12,0" />
+      <Setter Property="MinHeight" Value="44" />
+      <Setter Property="FontSize" Value="15" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+      <Setter Property="CaretBrush" Value="{StaticResource Accent}" />
+    </Style>
+    <Style Selector="TextBox.kbmirror:focus /template/ Border#PART_BorderElement">
+      <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+      <Setter Property="BorderThickness" Value="1.5" />
+    </Style>
+    <Style Selector="TextBox.kbmirror /template/ Border#PART_BorderElement">
+      <Setter Property="Background" Value="{StaticResource BgPanel}" />
+      <Setter Property="BorderBrush" Value="{StaticResource LineAccent}" />
+      <Setter Property="BorderThickness" Value="1.5" />
+      <Setter Property="CornerRadius" Value="10" />
+    </Style>
+
+    <!-- ===== Nút bật/tắt hàng phím tiếng Việt =====
+         Hàng phím tiếng Việt rất nhiều phím nên mặc định ẨN cho gọn;
+         người dùng bấm nút này để bật/tắt. -->
+    <Style Selector="ToggleButton.kbvn">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
+      <Setter Property="Background" Value="{StaticResource BgRaised}" />
+      <Setter Property="BorderBrush" Value="{StaticResource LineColor}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Padding" Value="12,0" />
+      <Setter Property="MinWidth" Value="92" />
+      <Setter Property="Height" Value="32" />
+      <Setter Property="CornerRadius" Value="16" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Focusable" Value="False" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="ToggleButton.kbvn:pointerover">
+      <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+      <Setter Property="Foreground" Value="{StaticResource Accent}" />
+    </Style>
+    <Style Selector="ToggleButton.kbvn:checked">
+      <Setter Property="Background" Value="{StaticResource Accent}" />
+      <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="ToggleButton.kbvn:checked:pointerover">
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="Opacity" Value="0.9" />
+    </Style>
+
+    <!-- Nhãn nhóm trong bảng phím tiếng Việt -->
+    <Style Selector="TextBlock.kbgroup">
+      <Setter Property="FontSize" Value="10" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="HorizontalAlignment" Value="Right" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+
+    <!-- Nút "con mắt" hiện/ẩn mật khẩu trong ô mirror -->
+    <Style Selector="ToggleButton.kbeye">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="10,0" />
+      <Setter Property="Width" Value="38" />
+      <Setter Property="VerticalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Opacity" Value="0.55" />
+    </Style>
+    <Style Selector="ToggleButton.kbeye:pointerover">
+      <Setter Property="Opacity" Value="0.9" />
+    </Style>
+    <Style Selector="ToggleButton.kbeye:checked">
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="ToggleButton.kbeye /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="ToggleButton.kbeye:checked /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <!-- Nút xoá nhanh trong ô mirror -->
+    <Style Selector="Button.kbclear">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="10,0" />
+      <Setter Property="Width" Value="38" />
+      <Setter Property="VerticalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="Opacity" Value="0.7" />
+    </Style>
+    <Style Selector="Button.kbclear:pointerover">
+      <Setter Property="Opacity" Value="1" />
+      <Setter Property="Foreground" Value="{StaticResource Danger}" />
+    </Style>
+    <Style Selector="Button.kbclear /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
     </Style>
   </UserControl.Styles>
 
@@ -137,7 +269,7 @@
           BoxShadow="0 -4 16 0 #1A000000"
           Padding="12,8,12,12">
 
-    <Grid RowDefinitions="Auto,Auto" RowSpacing="8">
+    <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
 
       <!-- ===== Thanh trên: gợi ý ô đang nhập + nút chức năng ===== -->
       <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="10" Margin="2,0">
@@ -161,6 +293,16 @@
         </StackPanel>
 
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+          <!-- Bật/tắt hàng phím tiếng Việt (mặc định ẩn).
+               IsChecked OneWay + Click handler: tránh vòng lặp hai chiều
+               (ToggleButton tự lật IsChecked rồi binding ghi đè ngược lại). -->
+          <ToggleButton Classes="kbvn"
+                        IsVisible="{Binding IsAlphaLayout}"
+                        IsChecked="{Binding IsVietnameseKeysVisible, Mode=OneWay}"
+                        Click="OnVietnameseToggleClick"
+                        ToolTip.Tip="Bật / tắt hàng phím tiếng Việt">
+            <TextBlock Text="Tiếng Việt" />
+          </ToggleButton>
           <Button Classes="key fn pill"
                   Height="32" MinWidth="64"
                   Click="OnLayoutClick"
@@ -176,8 +318,97 @@
         </StackPanel>
       </Grid>
 
+      <!-- ===== Ô nhập mirror: hiển thị nội dung đang nhập =====
+           Bàn phím có thể che mất ô nhập gốc, nên ô này cho người dùng
+           nhìn thấy mình đang gõ gì. Gõ trực tiếp được.
+
+           Dùng 2 TextBox chồng nhau vì PasswordChar là kiểu char (không
+           bind được):
+           - kbmirrorMask : hiện khi ô gốc là mật khẩu và chưa bật con mắt
+           - kbmirrorPlain: hiện khi ô gốc không phải mật khẩu, hoặc đã bật con mắt -->
+      <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+
+        <!-- Bản hiển thị rõ (ô thường hoặc đã bật con mắt) -->
+        <TextBox x:Name="MirrorPlainBox"
+                 Grid.Column="0"
+                 Classes="kbmirror"
+                 Height="44"
+                 PlaceholderText="{Binding TargetHint}"
+                 Text="{Binding MirrorText, Mode=OneWay}"
+                 IsVisible="{Binding IsMirrorPlainVisible}"
+                 TextChanged="OnMirrorTextChanged"
+                 GotFocus="OnMirrorGotFocus">
+          <TextBox.InnerRightContent>
+            <Grid ColumnDefinitions="Auto,Auto">
+              <!-- Con mắt: chỉ hiện với ô mật khẩu -->
+              <ToggleButton Grid.Column="0"
+                            Classes="kbeye"
+                            IsVisible="{Binding CanReveal}"
+                            IsChecked="{Binding IsRevealed, Mode=OneWay}"
+                            Command="{Binding ToggleRevealCommand}"
+                            ToolTip.Tip="Hiện / ẩn mật khẩu">
+                <Path Width="16" Height="16"
+                      Stretch="Uniform"
+                      Stroke="{StaticResource TextMuted}"
+                      StrokeThickness="1.8"
+                      StrokeLineCap="Round"
+                      StrokeJoin="Round"
+                      Data="M2,12 C5,6 9.5,4 12,4 C14.5,4 19,6 22,12 C19,18 14.5,20 12,20 C9.5,20 5,18 2,12 Z M12,12 M12,9.5 A2.5,2.5 0 1 0 12,14.5 A2.5,2.5 0 1 0 12,9.5 Z" />
+              </ToggleButton>
+
+              <!-- Xoá nhanh -->
+              <Button Grid.Column="1"
+                      Classes="kbclear"
+                      ToolTip.Tip="Xoá nội dung"
+                      Click="OnClearClick">
+                <TextBlock Text="✕" FontSize="15" />
+              </Button>
+            </Grid>
+          </TextBox.InnerRightContent>
+        </TextBox>
+
+        <!-- Bản mask (ô mật khẩu, chưa bật con mắt) -->
+        <TextBox x:Name="MirrorMaskBox"
+                 Grid.Column="0"
+                 Classes="kbmirror"
+                 Height="44"
+                 PasswordChar="•"
+                 PlaceholderText="{Binding TargetHint}"
+                 Text="{Binding MirrorText, Mode=OneWay}"
+                 IsVisible="{Binding IsMirrorMaskVisible}"
+                 TextChanged="OnMirrorTextChanged"
+                 GotFocus="OnMirrorGotFocus">
+          <TextBox.InnerRightContent>
+            <Grid ColumnDefinitions="Auto,Auto">
+              <!-- Con mắt: bật để hiện rõ mật khẩu -->
+              <ToggleButton Grid.Column="0"
+                            Classes="kbeye"
+                            IsChecked="{Binding IsRevealed, Mode=OneWay}"
+                            Command="{Binding ToggleRevealCommand}"
+                            ToolTip.Tip="Hiện / ẩn mật khẩu">
+                <Path Width="16" Height="16"
+                      Stretch="Uniform"
+                      Stroke="{StaticResource TextMuted}"
+                      StrokeThickness="1.8"
+                      StrokeLineCap="Round"
+                      StrokeJoin="Round"
+                      Data="M2,12 C5,6 9.5,4 12,4 C14.5,4 19,6 22,12 C19,18 14.5,20 12,20 C9.5,20 5,18 2,12 Z M12,12 M12,9.5 A2.5,2.5 0 1 0 12,14.5 A2.5,2.5 0 1 0 12,9.5 Z" />
+              </ToggleButton>
+
+              <!-- Xoá nhanh -->
+              <Button Grid.Column="1"
+                      Classes="kbclear"
+                      ToolTip.Tip="Xoá nội dung"
+                      Click="OnClearClick">
+                <TextBlock Text="✕" FontSize="15" />
+              </Button>
+            </Grid>
+          </TextBox.InnerRightContent>
+        </TextBox>
+      </Grid>
+
       <!-- ===== Bàn phím chữ ===== -->
-      <Grid Grid.Row="1" IsVisible="{Binding IsAlphaLayout}"
+      <Grid Grid.Row="2" IsVisible="{Binding IsAlphaLayout}"
             RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="5">
 
         <!-- Hàng số -->
@@ -241,74 +472,141 @@
           <Button Grid.Column="8" Classes="key fn" Height="48" Click="OnBackspaceClick" FontSize="20" Content="⌫" />
         </Grid>
 
-        <!-- Hàng 4: phím tổ hợp tiếng Việt (3 hàng x 15 cột, đều nhau) -->
+        <!-- ===== Hàng 4: bảng phím tiếng Việt (mặc định ẨN) =====
+             Bố cục dạng bảng: CỘT = nguyên âm, HÀNG = dấu thanh
+             (huyền, sắc, hỏi, ngã, nặng). Hàng tiêu đề là chính các nguyên
+             âm (bấm được để gõ nguyên âm không dấu).
+
+             Cách này nhớ dễ hơn lưới phẳng 39 phím, và đầy đủ mọi tổ hợp
+             a/ă/â, e/ê, i, o/ô/ơ, u/ư, y.
+
+             Bảng có chiều rộng cố định + cuộn ngang: trong hộp thoại hẹp
+             thì cuộn thay vì bóp méo phím.
+
+             Chỉ hiện khi người dùng bấm nút "Tiếng Việt" trên thanh trên cùng. -->
         <Border Grid.Row="4"
+                IsVisible="{Binding IsVietnameseRowVisible}"
                 Background="{StaticResource BgPanel}"
                 BorderBrush="{StaticResource LineColor}"
                 BorderThickness="1"
                 CornerRadius="12"
-                Padding="4,3">
-          <UniformGrid Columns="15">
-            <Button Classes="key mark" Height="34" Content="ă" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="â" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ê" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ô" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="đ" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ơ" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ư" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="à" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="á" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ả" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ã" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ạ" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ằ" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ắ" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ẳ" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ẵ" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ặ" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ầ" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ấ" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ẩ" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ẫ" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ậ" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ề" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ế" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ể" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ễ" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ệ" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ỉ" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ị" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ọ" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ỏ" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ố" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ổ" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ỗ" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ộ" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ờ" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ớ" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ở" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ỡ" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ợ" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ừ" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ứ" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ử" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ữ" Click="OnKeyClick" />
-            <Button Classes="key mark" Height="34" Content="ự" Click="OnKeyClick" />
-          </UniformGrid>
+                Padding="6,4">
+          <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                        VerticalScrollBarVisibility="Disabled"
+                        HorizontalContentAlignment="Center">
+            <Grid Width="454"
+                  ColumnDefinitions="46,34,34,34,34,34,34,34,34,34,34,34,34"
+                  RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto"
+                  RowSpacing="3">
+
+              <!-- Cột nhãn dấu -->
+              <TextBlock Grid.Row="0" Grid.Column="0" Classes="kbgroup" Text="Dấu" />
+
+              <!-- Hàng tiêu đề: 12 nguyên âm (bấm để gõ không dấu) -->
+              <Button Grid.Row="0" Grid.Column="1" Classes="key mark base" Height="30" Content="a" Click="OnKeyClick" />
+              <Button Grid.Row="0" Grid.Column="2" Classes="key mark base" Height="30" Content="ă" Click="OnKeyClick" />
+              <Button Grid.Row="0" Grid.Column="3" Classes="key mark base" Height="30" Content="â" Click="OnKeyClick" />
+              <Button Grid.Row="0" Grid.Column="4" Classes="key mark base" Height="30" Content="e" Click="OnKeyClick" />
+              <Button Grid.Row="0" Grid.Column="5" Classes="key mark base" Height="30" Content="ê" Click="OnKeyClick" />
+              <Button Grid.Row="0" Grid.Column="6" Classes="key mark base" Height="30" Content="i" Click="OnKeyClick" />
+              <Button Grid.Row="0" Grid.Column="7" Classes="key mark base" Height="30" Content="o" Click="OnKeyClick" />
+              <Button Grid.Row="0" Grid.Column="8" Classes="key mark base" Height="30" Content="ô" Click="OnKeyClick" />
+              <Button Grid.Row="0" Grid.Column="9" Classes="key mark base" Height="30" Content="ơ" Click="OnKeyClick" />
+              <Button Grid.Row="0" Grid.Column="10" Classes="key mark base" Height="30" Content="u" Click="OnKeyClick" />
+              <Button Grid.Row="0" Grid.Column="11" Classes="key mark base" Height="30" Content="ư" Click="OnKeyClick" />
+              <Button Grid.Row="0" Grid.Column="12" Classes="key mark base" Height="30" Content="y" Click="OnKeyClick" />
+
+              <!-- Huyền -->
+              <TextBlock Grid.Row="1" Grid.Column="0" Classes="kbgroup" Text="Huyền" />
+              <Button Grid.Row="1" Grid.Column="1" Classes="key mark" Height="30" Content="à" Click="OnKeyClick" />
+              <Button Grid.Row="1" Grid.Column="2" Classes="key mark" Height="30" Content="ằ" Click="OnKeyClick" />
+              <Button Grid.Row="1" Grid.Column="3" Classes="key mark" Height="30" Content="ầ" Click="OnKeyClick" />
+              <Button Grid.Row="1" Grid.Column="4" Classes="key mark" Height="30" Content="è" Click="OnKeyClick" />
+              <Button Grid.Row="1" Grid.Column="5" Classes="key mark" Height="30" Content="ề" Click="OnKeyClick" />
+              <Button Grid.Row="1" Grid.Column="6" Classes="key mark" Height="30" Content="ì" Click="OnKeyClick" />
+              <Button Grid.Row="1" Grid.Column="7" Classes="key mark" Height="30" Content="ò" Click="OnKeyClick" />
+              <Button Grid.Row="1" Grid.Column="8" Classes="key mark" Height="30" Content="ồ" Click="OnKeyClick" />
+              <Button Grid.Row="1" Grid.Column="9" Classes="key mark" Height="30" Content="ờ" Click="OnKeyClick" />
+              <Button Grid.Row="1" Grid.Column="10" Classes="key mark" Height="30" Content="ù" Click="OnKeyClick" />
+              <Button Grid.Row="1" Grid.Column="11" Classes="key mark" Height="30" Content="ừ" Click="OnKeyClick" />
+              <Button Grid.Row="1" Grid.Column="12" Classes="key mark" Height="30" Content="ỳ" Click="OnKeyClick" />
+
+              <!-- Sắc -->
+              <TextBlock Grid.Row="2" Grid.Column="0" Classes="kbgroup" Text="Sắc" />
+              <Button Grid.Row="2" Grid.Column="1" Classes="key mark" Height="30" Content="á" Click="OnKeyClick" />
+              <Button Grid.Row="2" Grid.Column="2" Classes="key mark" Height="30" Content="ắ" Click="OnKeyClick" />
+              <Button Grid.Row="2" Grid.Column="3" Classes="key mark" Height="30" Content="ấ" Click="OnKeyClick" />
+              <Button Grid.Row="2" Grid.Column="4" Classes="key mark" Height="30" Content="é" Click="OnKeyClick" />
+              <Button Grid.Row="2" Grid.Column="5" Classes="key mark" Height="30" Content="ế" Click="OnKeyClick" />
+              <Button Grid.Row="2" Grid.Column="6" Classes="key mark" Height="30" Content="í" Click="OnKeyClick" />
+              <Button Grid.Row="2" Grid.Column="7" Classes="key mark" Height="30" Content="ó" Click="OnKeyClick" />
+              <Button Grid.Row="2" Grid.Column="8" Classes="key mark" Height="30" Content="ố" Click="OnKeyClick" />
+              <Button Grid.Row="2" Grid.Column="9" Classes="key mark" Height="30" Content="ớ" Click="OnKeyClick" />
+              <Button Grid.Row="2" Grid.Column="10" Classes="key mark" Height="30" Content="ú" Click="OnKeyClick" />
+              <Button Grid.Row="2" Grid.Column="11" Classes="key mark" Height="30" Content="ứ" Click="OnKeyClick" />
+              <Button Grid.Row="2" Grid.Column="12" Classes="key mark" Height="30" Content="ý" Click="OnKeyClick" />
+
+              <!-- Hỏi -->
+              <TextBlock Grid.Row="3" Grid.Column="0" Classes="kbgroup" Text="Hỏi" />
+              <Button Grid.Row="3" Grid.Column="1" Classes="key mark" Height="30" Content="ả" Click="OnKeyClick" />
+              <Button Grid.Row="3" Grid.Column="2" Classes="key mark" Height="30" Content="ẳ" Click="OnKeyClick" />
+              <Button Grid.Row="3" Grid.Column="3" Classes="key mark" Height="30" Content="ẩ" Click="OnKeyClick" />
+              <Button Grid.Row="3" Grid.Column="4" Classes="key mark" Height="30" Content="ẻ" Click="OnKeyClick" />
+              <Button Grid.Row="3" Grid.Column="5" Classes="key mark" Height="30" Content="ể" Click="OnKeyClick" />
+              <Button Grid.Row="3" Grid.Column="6" Classes="key mark" Height="30" Content="ỉ" Click="OnKeyClick" />
+              <Button Grid.Row="3" Grid.Column="7" Classes="key mark" Height="30" Content="ỏ" Click="OnKeyClick" />
+              <Button Grid.Row="3" Grid.Column="8" Classes="key mark" Height="30" Content="ổ" Click="OnKeyClick" />
+              <Button Grid.Row="3" Grid.Column="9" Classes="key mark" Height="30" Content="ở" Click="OnKeyClick" />
+              <Button Grid.Row="3" Grid.Column="10" Classes="key mark" Height="30" Content="ủ" Click="OnKeyClick" />
+              <Button Grid.Row="3" Grid.Column="11" Classes="key mark" Height="30" Content="ử" Click="OnKeyClick" />
+              <Button Grid.Row="3" Grid.Column="12" Classes="key mark" Height="30" Content="ỷ" Click="OnKeyClick" />
+
+              <!-- Ngã -->
+              <TextBlock Grid.Row="4" Grid.Column="0" Classes="kbgroup" Text="Ngã" />
+              <Button Grid.Row="4" Grid.Column="1" Classes="key mark" Height="30" Content="ã" Click="OnKeyClick" />
+              <Button Grid.Row="4" Grid.Column="2" Classes="key mark" Height="30" Content="ẵ" Click="OnKeyClick" />
+              <Button Grid.Row="4" Grid.Column="3" Classes="key mark" Height="30" Content="ẫ" Click="OnKeyClick" />
+              <Button Grid.Row="4" Grid.Column="4" Classes="key mark" Height="30" Content="ẽ" Click="OnKeyClick" />
+              <Button Grid.Row="4" Grid.Column="5" Classes="key mark" Height="30" Content="ễ" Click="OnKeyClick" />
+              <Button Grid.Row="4" Grid.Column="6" Classes="key mark" Height="30" Content="ĩ" Click="OnKeyClick" />
+              <Button Grid.Row="4" Grid.Column="7" Classes="key mark" Height="30" Content="õ" Click="OnKeyClick" />
+              <Button Grid.Row="4" Grid.Column="8" Classes="key mark" Height="30" Content="ỗ" Click="OnKeyClick" />
+              <Button Grid.Row="4" Grid.Column="9" Classes="key mark" Height="30" Content="ỡ" Click="OnKeyClick" />
+              <Button Grid.Row="4" Grid.Column="10" Classes="key mark" Height="30" Content="ũ" Click="OnKeyClick" />
+              <Button Grid.Row="4" Grid.Column="11" Classes="key mark" Height="30" Content="ữ" Click="OnKeyClick" />
+              <Button Grid.Row="4" Grid.Column="12" Classes="key mark" Height="30" Content="ỹ" Click="OnKeyClick" />
+
+              <!-- Nặng -->
+              <TextBlock Grid.Row="5" Grid.Column="0" Classes="kbgroup" Text="Nặng" />
+              <Button Grid.Row="5" Grid.Column="1" Classes="key mark" Height="30" Content="ạ" Click="OnKeyClick" />
+              <Button Grid.Row="5" Grid.Column="2" Classes="key mark" Height="30" Content="ặ" Click="OnKeyClick" />
+              <Button Grid.Row="5" Grid.Column="3" Classes="key mark" Height="30" Content="ậ" Click="OnKeyClick" />
+              <Button Grid.Row="5" Grid.Column="4" Classes="key mark" Height="30" Content="ẹ" Click="OnKeyClick" />
+              <Button Grid.Row="5" Grid.Column="5" Classes="key mark" Height="30" Content="ệ" Click="OnKeyClick" />
+              <Button Grid.Row="5" Grid.Column="6" Classes="key mark" Height="30" Content="ị" Click="OnKeyClick" />
+              <Button Grid.Row="5" Grid.Column="7" Classes="key mark" Height="30" Content="ọ" Click="OnKeyClick" />
+              <Button Grid.Row="5" Grid.Column="8" Classes="key mark" Height="30" Content="ộ" Click="OnKeyClick" />
+              <Button Grid.Row="5" Grid.Column="9" Classes="key mark" Height="30" Content="ợ" Click="OnKeyClick" />
+              <Button Grid.Row="5" Grid.Column="10" Classes="key mark" Height="30" Content="ụ" Click="OnKeyClick" />
+              <Button Grid.Row="5" Grid.Column="11" Classes="key mark" Height="30" Content="ự" Click="OnKeyClick" />
+              <Button Grid.Row="5" Grid.Column="12" Classes="key mark" Height="30" Content="ỵ" Click="OnKeyClick" />
+            </Grid>
+          </ScrollViewer>
         </Border>
 
         <!-- Hàng 5: ký tự đặc biệt + Space -->
-        <Grid Grid.Row="5" ColumnDefinitions="*,*,*,*,6*" ColumnSpacing="5">
+        <Grid Grid.Row="5" ColumnDefinitions="*,*,*,*,*,6*" ColumnSpacing="5">
           <Button Grid.Column="0" Classes="key" Height="44" Content="." Click="OnKeyClick" />
           <Button Grid.Column="1" Classes="key" Height="44" Content="-" Click="OnKeyClick" />
           <Button Grid.Column="2" Classes="key" Height="44" Content="/" Click="OnKeyClick" />
           <Button Grid.Column="3" Classes="key" Height="44" Content="_" Click="OnKeyClick" />
-          <Button Grid.Column="4" Classes="key fn" Height="44" Click="OnSpaceClick" Content="Khoảng trắng" />
+          <Button Grid.Column="4" Classes="key" Height="44" Content="đ" Click="OnKeyClick" />
+          <Button Grid.Column="5" Classes="key fn" Height="44" Click="OnSpaceClick" Content="Khoảng trắng" />
         </Grid>
       </Grid>
 
       <!-- ===== Bàn phím số (dạng máy POS) ===== -->
-      <Grid Grid.Row="1" IsVisible="{Binding IsNumericLayout}"
+      <Grid Grid.Row="2" IsVisible="{Binding IsNumericLayout}"
             ColumnDefinitions="*,Auto" ColumnSpacing="8"
             HorizontalAlignment="Center" MaxWidth="560">
 

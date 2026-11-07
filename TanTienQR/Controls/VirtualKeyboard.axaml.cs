@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using TanTienQR.ViewModels;
@@ -13,6 +14,10 @@ namespace TanTienQR.Controls;
 /// Hiển thị ở đáy cửa sổ khi người dùng chạm vào một ô nhập. Có 2 bố cục:
 /// - <b>Alpha</b>: QWERTY + hàng phụ phím tổ hợp tiếng Việt (ă ê ô đ + dấu).
 /// - <b>Numeric</b>: bàn phím số thuần dạng máy POS.
+///
+/// Trên thanh trên cùng có Ô NHẬP MIRROR hiển thị nội dung đang nhập —
+/// gõ trực tiếp được. Ô này tồn tại vì bàn phím có thể che mất ô nhập
+/// gốc, người dùng cần nhìn thấy mình đang gõ gì.
 ///
 /// Bàn phím ghi ký tự thẳng vào ô đang nhập qua
 /// <see cref="VirtualKeyboardViewModel"/> (không dùng converter).
@@ -81,19 +86,22 @@ public partial class VirtualKeyboard : UserControl
     /// <summary>
     /// Bàn phím chỉ hiện khi: VM đang bật hiển thị VÀ cửa sổ chứa control là
     /// cửa sổ sở hữu ô nhập đang focus.
+    ///
+    /// Bàn phím là singleton dùng chung cho MỌI cửa sổ, nên mỗi cửa sổ có
+    /// một bản control riêng nhưng cùng chung một ViewModel. Control của cửa
+    /// sổ cha sẽ tự ẩn khi hộp thoại con đang mở (vì <c>Owner</c> của VM
+    /// lúc đó là hộp thoại con, không phải cửa sổ cha).
+    ///
+    /// Vì control nằm ở hàng riêng của layout "push", ẩn đi thì hàng đó co
+    /// về 0 và nội dung phía trên lấy lại toàn bộ chỗ.
     /// </summary>
     private void UpdateVisibility()
     {
         var vm = Vm;
-        if (vm is null)
+        if (vm is null || !vm.IsVisible)
         {
             IsVisible = false;
-            return;
-        }
-
-        if (!vm.IsVisible)
-        {
-            IsVisible = false;
+            IsHitTestVisible = false;
             return;
         }
 
@@ -102,10 +110,14 @@ public partial class VirtualKeyboard : UserControl
         if (top is null)
         {
             IsVisible = false;
+            IsHitTestVisible = false;
             return;
         }
 
-        IsVisible = vm.Owner is null || ReferenceEquals(vm.Owner, top);
+        // Chỉ cửa sổ đang sở hữu ô nhập mới hiện bàn phím.
+        var owned = vm.Owner is not null && ReferenceEquals(vm.Owner, top);
+        IsVisible = owned;
+        IsHitTestVisible = owned;
     }
 
     /// <summary>
@@ -157,6 +169,17 @@ public partial class VirtualKeyboard : UserControl
     /// <param name="e">Tham số sự kiện.</param>
     private void OnLayoutClick(object? sender, RoutedEventArgs e) => Vm?.ToggleLayout();
 
+    /// <summary>
+    /// Bật/tắt hàng phím tiếng Việt.
+    ///
+    /// Nút dùng <c>IsChecked</c> binding OneWay nên giá trị hiển thị luôn
+    /// lấy từ VM; handler này chỉ đảo trạng thái trong VM.
+    /// </summary>
+    /// <param name="sender">Nút bật/tắt.</param>
+    /// <param name="e">Tham số sự kiện.</param>
+    private void OnVietnameseToggleClick(object? sender, RoutedEventArgs e) =>
+        Vm?.ToggleVietnameseKeys();
+
     /// <summary>Bấm phím Xoá hết.</summary>
     /// <param name="sender">Nút phím.</param>
     /// <param name="e">Tham số sự kiện.</param>
@@ -166,4 +189,48 @@ public partial class VirtualKeyboard : UserControl
     /// <param name="sender">Nút phím.</param>
     /// <param name="e">Tham số sự kiện.</param>
     private void OnCloseClick(object? sender, RoutedEventArgs e) => Vm?.Close();
-}
+
+    /// <summary>
+    /// Người dùng chạm vào ô mirror -> theo dõi ô này để lấy vị trí con trỏ.
+    /// </summary>
+    /// <param name="sender">Ô mirror.</param>
+    /// <param name="e">Tham số sự kiện.</param>
+    private void OnMirrorGotFocus(object? sender, FocusChangedEventArgs e)
+    {
+        if (sender is not TextBox box)
+        {
+            return;
+        }
+
+        // VM tự theo dõi con trỏ / vùng chọn của ô mirror.
+        Vm?.AttachMirrorBox(box);
+    }
+
+    /// <summary>
+    /// Người dùng gõ trực tiếp vào ô mirror -> ghi ngược vào ô gốc.
+    ///
+    /// Dùng <c>TextChanged</c> (OneWay binding) thay vì TwoWay để tránh
+    /// race condition: khi binding TwoWay ghi ngược, giá trị cũ có thể ghi
+    /// đè lên ký tự vừa gõ (mất ký tự đầu tiên khi mở bàn phím).
+    ///
+    /// Lưu ý: ô mask và ô plain cùng bind vào một giá trị nên khi người dùng
+    /// gõ vào ô nào, ô kia cũng đổi -> <c>TextChanged</c> của ô kia sẽ fire
+    /// với cùng nội dung -> không sao (nội dung đã bằng nhau).
+    /// </summary>
+    /// <param name="sender">Ô mirror.</param>
+    /// <param name="e">Tham số sự kiện.</param>
+    private void OnMirrorTextChanged(object? sender, TextChangedEventArgs e)
+    {
+        if (sender is not TextBox box)
+        {
+            return;
+        }
+
+        var vm = Vm;
+        if (vm is null || vm.MirrorText == box.Text)
+        {
+            return;
+        }
+
+        vm.SetMirrorTextFromUser(box.Text);
+    }}

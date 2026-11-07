@@ -41,4 +41,10 @@ public static class VirtualKeyboardHost
     /// </summary>
     /// <param name="topLevel">Cửa sổ cần theo dõi.</param>
     public static void Attach(TopLevel topLevel) => _service?.Attach(topLevel);
+
+    /// <summary>
+    /// Gỡ theo dõi focus cho một cửa sổ (gọi khi hộp thoại con đóng).
+    /// </summary>
+    /// <param name="topLevel">Cửa sổ cần gỡ.</param>
+    public static void Detach(TopLevel topLevel) => _service?.Detach(topLevel);
 }

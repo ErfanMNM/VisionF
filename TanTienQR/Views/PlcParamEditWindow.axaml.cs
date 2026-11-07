@@ -7,6 +7,9 @@ namespace TanTienQR.Views;
 
 /// <summary>
 /// Hộp thoại thêm / sửa tham số PLC tùy chỉnh.
+///
+/// Bàn phím ảo nằm ở hàng riêng phía dưới (không phủ lên form). Khi bàn phím
+/// mở, cửa sổ tự giãn chiều cao để vừa bàn phím mà form vẫn nhìn thấy.
 /// </summary>
 public partial class PlcParamEditWindow : Window
 {
@@ -27,12 +30,19 @@ public partial class PlcParamEditWindow : Window
 
         // Bàn phím ảo: theo dõi ô nhập đang focus trong hộp thoại này.
         VirtualKeyboardHost.Attach(this);
+
+        // Tự giãn / thu cửa sổ theo trạng thái bàn phím.
+        KeyboardDialogSizer.Attach(this, VirtualKeyboardHost.ViewModel);
     }
 
     protected override void OnClosed(EventArgs e)
     {
         Unhook(DataContext as PlcParamEditViewModel);
         DataContextChanged -= OnDataContextChanged;
+
+        // Gỡ handler bàn phím + trả chiều cao cửa sổ về ban đầu.
+        KeyboardDialogSizer.Detach(VirtualKeyboardHost.ViewModel);
+        VirtualKeyboardHost.Detach(this);
 
         base.OnClosed(e);
     }

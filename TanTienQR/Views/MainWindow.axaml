@@ -24,7 +24,7 @@
         <vm:MainViewModel />
     </Design.DataContext>
 
-    <Grid RowDefinitions="Auto,Auto,*">
+    <Grid RowDefinitions="Auto,Auto,*,Auto">
 
         <!-- Viền accent trên cùng của custom chrome -->
         <Border Grid.Row="0" Height="3" Background="{StaticResource Accent}" />
@@ -728,9 +728,13 @@
 
         <!-- ===== Bàn phím ảo (máy cảm ứng) =====
              Hiện ở đáy cửa sổ khi người dùng chạm vào một ô nhập.
-             Grid.Row="2" -> phủ lên vùng nội dung tab. -->
-        <controls:VirtualKeyboard Grid.Row="2"
-                                 VerticalAlignment="Bottom"
+             Nằm ở HÀNG RIÊNG (Grid.Row="3") -> bàn phím "đẩy" nội dung
+             tab lên thay vì phủ lên, để ô nhập gốc luôn nhìn thấy.
+
+             Control tự quản lý IsVisible: chỉ cửa sổ đang sở hữu ô nhập
+             mới hiện bàn phím. Khi ẩn, hàng này co về 0 và nội dung lấy
+             lại toàn bộ chỗ. -->
+        <controls:VirtualKeyboard Grid.Row="3"
                                  DataContext="{Binding Keyboard}" />
     </Grid>
 </Window>

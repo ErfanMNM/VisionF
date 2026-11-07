@@ -289,10 +289,14 @@
         </Grid>
       </Border>
 
-      <!-- ===== Cột phải: form ===== -->
+      <!-- ===== Cột phải: form =====
+           Grid 2 hàng: hàng 0 = form (co lại khi bàn phím mở),
+           hàng 1 = bàn phím ảo (chiếm hàng thật, KHÔNG phủ lên form). -->
       <Border Grid.Column="1" Background="{StaticResource BgBase}">
-        <ScrollViewer HorizontalScrollBarVisibility="Disabled"
-                      VerticalScrollBarVisibility="Auto">
+        <Grid RowDefinitions="*,Auto">
+          <ScrollViewer Grid.Row="0"
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollBarVisibility="Auto">
           <StackPanel MaxWidth="440"
                       Width="440"
                       HorizontalAlignment="Center"
@@ -674,14 +678,19 @@
             </StackPanel>
 
           </StackPanel>
-        </ScrollViewer>
-      </Border>
+          </ScrollViewer>
 
-      <!-- ===== Bàn phím ảo (máy cảm ứng) =====
-           Phủ lên cột phải (form đăng nhập), hiện khi chạm vào ô nhập. -->
-      <controls:VirtualKeyboard Grid.Column="1"
-                               VerticalAlignment="Bottom"
-                               DataContext="{Binding Keyboard}" />
+          <!-- ===== Bàn phím ảo (máy cảm ứng) =====
+               Nằm ở HÀNG RIÊNG (Grid.Row="1") -> "đẩy" form lên thay vì
+               phủ lên, để ô "Tên đăng nhập" / "Mật khẩu" luôn nhìn thấy.
+
+               Control tự quản lý IsVisible: chỉ cửa sổ đang sở hữu ô nhập
+               mới hiện bàn phím. Khi ẩn, hàng này co về 0 và form lấy lại
+               toàn bộ chỗ. -->
+          <controls:VirtualKeyboard Grid.Row="1"
+                                   DataContext="{Binding Keyboard}" />
+        </Grid>
+      </Border>
     </Grid>
   </Grid>
 </Window>

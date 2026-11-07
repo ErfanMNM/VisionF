@@ -20,13 +20,7 @@
     </Design.DataContext>
 
     <Border Background="{StaticResource BgBase}" Padding="26">
-        <Grid RowDefinitions="Auto,*,Auto">
-
-            <!-- Bàn phím ảo (máy cảm ứng): phủ lên đáy hộp thoại -->
-            <controls:VirtualKeyboard Grid.Row="0" Grid.RowSpan="3"
-                                     Grid.Column="0"
-                                     VerticalAlignment="Bottom"
-                                     DataContext="{Binding Keyboard}" />
+        <Grid RowDefinitions="Auto,*,Auto,Auto">
 
             <!-- Tiêu đề -->
             <StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,16">
@@ -123,6 +117,17 @@
                         IsEnabled="{Binding CanSubmit}"
                         Command="{Binding SaveCommand}" />
             </Grid>
+
+            <!-- ===== Bàn phím ảo (máy cảm ứng) =====
+                 HÀNG RIÊNG (Grid.Row="3") -> không phủ lên form.
+                 Khi mở, code-behind tự giãn cao cửa sổ (xem UserEditWindow.axaml.cs).
+
+                 Control tự quản lý IsVisible: chỉ cửa sổ đang sở hữu ô nhập
+                 mới hiện bàn phím. Khi ẩn, hàng này co về 0 và form lấy lại
+                 toàn bộ chỗ. -->
+            <controls:VirtualKeyboard Grid.Row="3"
+                                     Margin="0,12,0,-26"
+                                     DataContext="{Binding Keyboard}" />
         </Grid>
     </Border>
 </Window>
