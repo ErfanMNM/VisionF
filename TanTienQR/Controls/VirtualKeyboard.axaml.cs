@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -61,6 +62,7 @@ public partial class VirtualKeyboard : UserControl
         }
 
         UpdateVisibility();
+        UpdateShiftLabels();
     }
 
     /// <summary>Khi control được gắn vào cây hình ảnh -> cập nhật trạng thái hiển thị.</summary>
@@ -69,6 +71,7 @@ public partial class VirtualKeyboard : UserControl
     private void OnAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
     {
         UpdateVisibility();
+        UpdateShiftLabels();
     }
 
     /// <summary>VM đổi trạng thái -> cập nhật hiển thị.</summary>
@@ -81,7 +84,54 @@ public partial class VirtualKeyboard : UserControl
         {
             UpdateVisibility();
         }
+
+        // Đổi trạng thái Shift -> cập nhật nhãn phím (chữ thường <-> hoa).
+        if (e.PropertyName == nameof(VirtualKeyboardViewModel.IsShiftOn))
+        {
+            UpdateShiftLabels();
+        }
     }
+
+    /// <summary>
+    /// Cập nhật nhãn các phím chữ theo trạng thái Shift.
+    ///
+    /// Các phím chữ được khai báo với <c>Tag</c> là ký tự gốc (chữ thường).
+    /// Khi Shift bật -> hiển thị hoa; khi tắt -> hiển thị thường. Nhờ vậy
+    /// người dùng thấy ngay phím sẽ gõ chữ hoa hay thường.
+    /// </summary>
+    private void UpdateShiftLabels()
+    {
+        var shiftOn = Vm?.IsShiftOn ?? false;
+
+        foreach (var button in FindKeyButtons(this))
+        {
+            // Chỉ các phím chữ Latin mới đổi nhãn (phím tiếng Việt giữ nguyên).
+            if (button.Tag is not string letter
+                || letter.Length != 1
+                || !IsLatinLetter(letter[0]))
+            {
+                continue;
+            }
+
+            button.Content = shiftOn
+                ? letter.ToUpperInvariant()
+                : letter.ToLowerInvariant();
+        }
+    }
+
+    /// <summary>Kiểm tra ký tự có phải chữ Latin Latin A-Z / a-z không.</summary>
+    /// <param name="c">Ký tự cần kiểm tra.</param>
+    /// <returns>True nếu là chữ Latin.</returns>
+    private static bool IsLatinLetter(char c) =>
+        c is >= 'a' and <= 'z' or >= 'A' and <= 'Z';
+
+    /// <summary>
+    /// Duyệt toàn bộ các nút phím bàn phím (bỏ qua ô mirror và nút chức năng).
+    /// </summary>
+    /// <param name="root">Gốc cây trực quan.</param>
+    /// <returns>Các nút phím tìm được.</returns>
+    private static IEnumerable<Button> FindKeyButtons(Visual root) =>
+        root.GetVisualDescendants().OfType<Button>();
 
     /// <summary>
     /// Bàn phím chỉ hiện khi: VM đang bật hiển thị VÀ cửa sổ chứa control là
@@ -153,16 +203,7 @@ public partial class VirtualKeyboard : UserControl
     /// <summary>Bấm phím Shift (bật/tắt chữ in hoa).</summary>
     /// <param name="sender">Nút phím.</param>
     /// <param name="e">Tham số sự kiện.</param>
-    private void OnShiftClick(object? sender, RoutedEventArgs e)
-    {
-        Vm?.ToggleShift();
-
-        // Đổi giao diện phím Shift để phản ánh trạng thái đang bật.
-        if (ShiftButton is not null)
-        {
-            ShiftButton.Classes.Set("active", Vm?.IsShiftOn == true);
-        }
-    }
+    private void OnShiftClick(object? sender, RoutedEventArgs e) => Vm?.ToggleShift();
 
     /// <summary>Bấm phím đổi bố cục chữ / số.</summary>
     /// <param name="sender">Nút phím.</param>

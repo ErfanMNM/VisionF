@@ -312,6 +312,10 @@
             <Setter Property="MinHeight" Value="38" />
             <Setter Property="FontSize" Value="12.5" />
             <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <!-- Canh giữa theo chiều dọc: mặc định của Avalonia là Top ->
+                 chữ nằm lệch lên trên, lệch với placeholder / icon bên trong ô. -->
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
         </Style>
         <Style Selector="TextBox.field:pointerover /template/ Border#PART_BorderElement">
             <Setter Property="BorderBrush" Value="{StaticResource LineAccent}" />
@@ -336,6 +340,8 @@
             <Setter Property="MinHeight" Value="38" />
             <Setter Property="FontSize" Value="12.5" />
             <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <!-- Canh giữa theo chiều dọc (mặc định Avalonia là Top -> lệch). -->
+            <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
         <Style Selector="ComboBox.field /template/ Border#PART_BorderElement">
             <Setter Property="Background" Value="{StaticResource BgPanel}" />

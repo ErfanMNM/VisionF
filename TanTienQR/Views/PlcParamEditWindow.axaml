@@ -123,6 +123,7 @@
                         Height="44"
                         HorizontalAlignment="Stretch"
                         HorizontalContentAlignment="Center"
+                        IsDefault="True"
                         Content="Lưu"
                         IsEnabled="{Binding CanSubmit}"
                         Command="{Binding SaveCommand}" />

@@ -158,6 +158,9 @@
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
       <Setter Property="CaretBrush" Value="{StaticResource Accent}" />
+      <!-- Canh giữa theo chiều dọc (mặc định Avalonia là Top -> lệch). -->
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
     </Style>
     <Style Selector="TextBox.kbmirror:focus /template/ Border#PART_BorderElement">
       <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
@@ -425,31 +428,31 @@
           <Button Grid.Column="9" Classes="key" Height="42" Content="0" Click="OnKeyClick" />
         </Grid>
 
-        <!-- Hàng 1: QWERTY -->
+        <!-- Hàng 1: QWERTY (hiển thị chữ thường, phím Shift sẽ hoa khi bật) -->
         <Grid Grid.Row="1" ColumnDefinitions="*,*,*,*,*,*,*,*,*,*" ColumnSpacing="5">
-          <Button Grid.Column="0" Classes="key" Height="48" Content="Q" Click="OnKeyClick" />
-          <Button Grid.Column="1" Classes="key" Height="48" Content="W" Click="OnKeyClick" />
-          <Button Grid.Column="2" Classes="key" Height="48" Content="E" Click="OnKeyClick" />
-          <Button Grid.Column="3" Classes="key" Height="48" Content="R" Click="OnKeyClick" />
-          <Button Grid.Column="4" Classes="key" Height="48" Content="T" Click="OnKeyClick" />
-          <Button Grid.Column="5" Classes="key" Height="48" Content="Y" Click="OnKeyClick" />
-          <Button Grid.Column="6" Classes="key" Height="48" Content="U" Click="OnKeyClick" />
-          <Button Grid.Column="7" Classes="key" Height="48" Content="I" Click="OnKeyClick" />
-          <Button Grid.Column="8" Classes="key" Height="48" Content="O" Click="OnKeyClick" />
-          <Button Grid.Column="9" Classes="key" Height="48" Content="P" Click="OnKeyClick" />
+          <Button Grid.Column="0" Classes="key" Height="48" Tag="q" Content="q" Click="OnKeyClick" />
+          <Button Grid.Column="1" Classes="key" Height="48" Tag="w" Content="w" Click="OnKeyClick" />
+          <Button Grid.Column="2" Classes="key" Height="48" Tag="e" Content="e" Click="OnKeyClick" />
+          <Button Grid.Column="3" Classes="key" Height="48" Tag="r" Content="r" Click="OnKeyClick" />
+          <Button Grid.Column="4" Classes="key" Height="48" Tag="t" Content="t" Click="OnKeyClick" />
+          <Button Grid.Column="5" Classes="key" Height="48" Tag="y" Content="y" Click="OnKeyClick" />
+          <Button Grid.Column="6" Classes="key" Height="48" Tag="u" Content="u" Click="OnKeyClick" />
+          <Button Grid.Column="7" Classes="key" Height="48" Tag="i" Content="i" Click="OnKeyClick" />
+          <Button Grid.Column="8" Classes="key" Height="48" Tag="o" Content="o" Click="OnKeyClick" />
+          <Button Grid.Column="9" Classes="key" Height="48" Tag="p" Content="p" Click="OnKeyClick" />
         </Grid>
 
         <!-- Hàng 2: ASDF + Enter (10 cột: 9 chữ + Enter) -->
         <Grid Grid.Row="2" ColumnDefinitions="*,*,*,*,*,*,*,*,*,*" ColumnSpacing="5">
-          <Button Grid.Column="0" Classes="key" Height="48" Content="A" Click="OnKeyClick" />
-          <Button Grid.Column="1" Classes="key" Height="48" Content="S" Click="OnKeyClick" />
-          <Button Grid.Column="2" Classes="key" Height="48" Content="D" Click="OnKeyClick" />
-          <Button Grid.Column="3" Classes="key" Height="48" Content="F" Click="OnKeyClick" />
-          <Button Grid.Column="4" Classes="key" Height="48" Content="G" Click="OnKeyClick" />
-          <Button Grid.Column="5" Classes="key" Height="48" Content="H" Click="OnKeyClick" />
-          <Button Grid.Column="6" Classes="key" Height="48" Content="J" Click="OnKeyClick" />
-          <Button Grid.Column="7" Classes="key" Height="48" Content="K" Click="OnKeyClick" />
-          <Button Grid.Column="8" Classes="key" Height="48" Content="L" Click="OnKeyClick" />
+          <Button Grid.Column="0" Classes="key" Height="48" Tag="a" Content="a" Click="OnKeyClick" />
+          <Button Grid.Column="1" Classes="key" Height="48" Tag="s" Content="s" Click="OnKeyClick" />
+          <Button Grid.Column="2" Classes="key" Height="48" Tag="d" Content="d" Click="OnKeyClick" />
+          <Button Grid.Column="3" Classes="key" Height="48" Tag="f" Content="f" Click="OnKeyClick" />
+          <Button Grid.Column="4" Classes="key" Height="48" Tag="g" Content="g" Click="OnKeyClick" />
+          <Button Grid.Column="5" Classes="key" Height="48" Tag="h" Content="h" Click="OnKeyClick" />
+          <Button Grid.Column="6" Classes="key" Height="48" Tag="j" Content="j" Click="OnKeyClick" />
+          <Button Grid.Column="7" Classes="key" Height="48" Tag="k" Content="k" Click="OnKeyClick" />
+          <Button Grid.Column="8" Classes="key" Height="48" Tag="l" Content="l" Click="OnKeyClick" />
           <Button Grid.Column="9" Classes="key enter" Height="48" Click="OnEnterClick" Content="⏎" />
         </Grid>
 
@@ -458,17 +461,18 @@
           <Button Grid.Column="0"
                   x:Name="ShiftButton"
                   Classes="key fn"
+                  Classes.active="{Binding IsShiftOn}"
                   Height="48"
                   Click="OnShiftClick"
                   FontSize="20"
                   Content="⇧" />
-          <Button Grid.Column="1" Classes="key" Height="48" Content="Z" Click="OnKeyClick" />
-          <Button Grid.Column="2" Classes="key" Height="48" Content="X" Click="OnKeyClick" />
-          <Button Grid.Column="3" Classes="key" Height="48" Content="C" Click="OnKeyClick" />
-          <Button Grid.Column="4" Classes="key" Height="48" Content="V" Click="OnKeyClick" />
-          <Button Grid.Column="5" Classes="key" Height="48" Content="B" Click="OnKeyClick" />
-          <Button Grid.Column="6" Classes="key" Height="48" Content="N" Click="OnKeyClick" />
-          <Button Grid.Column="7" Classes="key" Height="48" Content="M" Click="OnKeyClick" />
+          <Button Grid.Column="1" Classes="key" Height="48" Tag="z" Content="z" Click="OnKeyClick" />
+          <Button Grid.Column="2" Classes="key" Height="48" Tag="x" Content="x" Click="OnKeyClick" />
+          <Button Grid.Column="3" Classes="key" Height="48" Tag="c" Content="c" Click="OnKeyClick" />
+          <Button Grid.Column="4" Classes="key" Height="48" Tag="v" Content="v" Click="OnKeyClick" />
+          <Button Grid.Column="5" Classes="key" Height="48" Tag="b" Content="b" Click="OnKeyClick" />
+          <Button Grid.Column="6" Classes="key" Height="48" Tag="n" Content="n" Click="OnKeyClick" />
+          <Button Grid.Column="7" Classes="key" Height="48" Tag="m" Content="m" Click="OnKeyClick" />
           <Button Grid.Column="8" Classes="key fn" Height="48" Click="OnBackspaceClick" FontSize="20" Content="⌫" />
         </Grid>
 
@@ -503,18 +507,18 @@
               <TextBlock Grid.Row="0" Grid.Column="0" Classes="kbgroup" Text="Dấu" />
 
               <!-- Hàng tiêu đề: 12 nguyên âm (bấm để gõ không dấu) -->
-              <Button Grid.Row="0" Grid.Column="1" Classes="key mark base" Height="30" Content="a" Click="OnKeyClick" />
-              <Button Grid.Row="0" Grid.Column="2" Classes="key mark base" Height="30" Content="ă" Click="OnKeyClick" />
-              <Button Grid.Row="0" Grid.Column="3" Classes="key mark base" Height="30" Content="â" Click="OnKeyClick" />
-              <Button Grid.Row="0" Grid.Column="4" Classes="key mark base" Height="30" Content="e" Click="OnKeyClick" />
-              <Button Grid.Row="0" Grid.Column="5" Classes="key mark base" Height="30" Content="ê" Click="OnKeyClick" />
-              <Button Grid.Row="0" Grid.Column="6" Classes="key mark base" Height="30" Content="i" Click="OnKeyClick" />
-              <Button Grid.Row="0" Grid.Column="7" Classes="key mark base" Height="30" Content="o" Click="OnKeyClick" />
-              <Button Grid.Row="0" Grid.Column="8" Classes="key mark base" Height="30" Content="ô" Click="OnKeyClick" />
-              <Button Grid.Row="0" Grid.Column="9" Classes="key mark base" Height="30" Content="ơ" Click="OnKeyClick" />
-              <Button Grid.Row="0" Grid.Column="10" Classes="key mark base" Height="30" Content="u" Click="OnKeyClick" />
-              <Button Grid.Row="0" Grid.Column="11" Classes="key mark base" Height="30" Content="ư" Click="OnKeyClick" />
-              <Button Grid.Row="0" Grid.Column="12" Classes="key mark base" Height="30" Content="y" Click="OnKeyClick" />
+              <Button Grid.Row="0" Grid.Column="1" Classes="key mark base" Height="30" Tag="a" Content="a" Click="OnKeyClick" />
+              <Button Grid.Row="0" Grid.Column="2" Classes="key mark base" Height="30" Tag="ă" Content="ă" Click="OnKeyClick" />
+              <Button Grid.Row="0" Grid.Column="3" Classes="key mark base" Height="30" Tag="â" Content="â" Click="OnKeyClick" />
+              <Button Grid.Row="0" Grid.Column="4" Classes="key mark base" Height="30" Tag="e" Content="e" Click="OnKeyClick" />
+              <Button Grid.Row="0" Grid.Column="5" Classes="key mark base" Height="30" Tag="ê" Content="ê" Click="OnKeyClick" />
+              <Button Grid.Row="0" Grid.Column="6" Classes="key mark base" Height="30" Tag="i" Content="i" Click="OnKeyClick" />
+              <Button Grid.Row="0" Grid.Column="7" Classes="key mark base" Height="30" Tag="o" Content="o" Click="OnKeyClick" />
+              <Button Grid.Row="0" Grid.Column="8" Classes="key mark base" Height="30" Tag="ô" Content="ô" Click="OnKeyClick" />
+              <Button Grid.Row="0" Grid.Column="9" Classes="key mark base" Height="30" Tag="ơ" Content="ơ" Click="OnKeyClick" />
+              <Button Grid.Row="0" Grid.Column="10" Classes="key mark base" Height="30" Tag="u" Content="u" Click="OnKeyClick" />
+              <Button Grid.Row="0" Grid.Column="11" Classes="key mark base" Height="30" Tag="ư" Content="ư" Click="OnKeyClick" />
+              <Button Grid.Row="0" Grid.Column="12" Classes="key mark base" Height="30" Tag="y" Content="y" Click="OnKeyClick" />
 
               <!-- Huyền -->
               <TextBlock Grid.Row="1" Grid.Column="0" Classes="kbgroup" Text="Huyền" />

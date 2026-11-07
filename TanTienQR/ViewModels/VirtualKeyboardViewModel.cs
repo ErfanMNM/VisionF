@@ -1,4 +1,8 @@
+using System.Linq;
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -476,6 +480,13 @@ public sealed partial class VirtualKeyboardViewModel : ObservableObject
 
     /// <summary>
     /// Gửi giá trị hiện tại của ô đang nhập (phím Enter).
+    ///
+    /// Trong Avalonia, <c>IsDefault="True"</c> của Button chỉ được kích hoạt
+    /// khi nhấn Enter VẬT LÝ trên TextBox. Bàn phím ảo không đi qua đường
+    /// đó nên phải tự tìm nút default trong cửa sổ và bấm nó.
+    ///
+    /// Nếu không tìm thấy nút default -> fallback: gửi sự kiện Enter thật
+    /// vào ô đang nhập để form nào cũng nhận được phím Enter.
     /// </summary>
     public void Submit()
     {
@@ -484,8 +495,67 @@ public sealed partial class VirtualKeyboardViewModel : ObservableObject
             return;
         }
 
-        // Mô phỏng Enter: bỏ focus để binding cập nhật & form gửi đi.
+        // Ô gốc dùng binding nên cần đẩy giá trị hiện tại về nguồn trước
+        // khi submit (gán Text đã tự cập nhật binding trong lúc gõ).
+        var top = _owner ?? TopLevel.GetTopLevel(_target);
+
+        // 1) Tìm nút mặc định (IsDefault) trong cửa sổ và kích hoạt nó.
+        var defaultButton = FindDefaultButton(top);
+        if (defaultButton is not null && defaultButton.IsEnabled)
+        {
+            // Ưu tiên gọi Command trực tiếp: đây là cách chắc chắn chạy
+            // được logic của nút (RaiseEvent không kích hoạt command).
+            if (defaultButton.Command is { } command
+                && command.CanExecute(defaultButton.CommandParameter))
+            {
+                command.Execute(defaultButton.CommandParameter);
+                return;
+            }
+
+            // Không có Command -> phát sự kiện Click để handler trong XAML chạy.
+            defaultButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            return;
+        }
+
+        // 2) Fallback: gửi phím Enter thật vào ô đang nhập.
         _target.Focus();
+        RaiseEnterKey(target: _target);
+    }
+
+    /// <summary>
+    /// Tìm nút mặc định (IsDefault) đầu tiên trong cây cửa sổ.
+    /// </summary>
+    /// <param name="top">Cửa sổ cần tìm.</param>
+    /// <returns>Nút mặc định, null nếu không có.</returns>
+    private static Button? FindDefaultButton(TopLevel? top)
+    {
+        if (top is null)
+        {
+            return null;
+        }
+
+        // GetVisualDescendants đi xuyên qua cả ContentPresenter / template
+        // nên tìm được nút nằm sâu trong ScrollViewer, Grid, StackPanel...
+        return top.GetVisualDescendants()
+            .OfType<Button>()
+            .FirstOrDefault(b => b.IsDefault);
+    }
+
+    /// <summary>
+    /// Gửi sự kiện phím Enter vào một control (fallback khi không có nút default).
+    /// </summary>
+    /// <param name="target">Control nhận phím.</param>
+    private static void RaiseEnterKey(Control target)
+    {
+        var keyEvent = new KeyEventArgs
+        {
+            RoutedEvent = InputElement.KeyDownEvent,
+            Key = Key.Enter,
+            KeySymbol = "Enter",
+            Source = target,
+        };
+
+        target.RaiseEvent(keyEvent);
     }
 
     // ---------- Đồng bộ hai chiều ----------
