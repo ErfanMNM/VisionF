@@ -15,6 +15,7 @@ internal sealed partial class PlcParamRowViewModel : ObservableObject
     private string _inputValue = string.Empty;
     private string _statusText = string.Empty;
     private bool _isError;
+    private bool _isExpanded;
 
     /// <summary>
     /// Khởi tạo dòng từ tham số trong database.
@@ -94,4 +95,16 @@ internal sealed partial class PlcParamRowViewModel : ObservableObject
 
     /// <summary>True nếu dòng đang có giá trị (dùng để ẩn placeholder).</summary>
     public bool HasCurrentValue => !string.IsNullOrWhiteSpace(CurrentValue);
+
+    /// <summary>True khi dòng đang được mở rộng để xem chi tiết (ô nhớ / kiểu / R-W).</summary>
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        set => SetProperty(ref _isExpanded, value);
+    }
+
+    /// <summary>
+    /// Bật/tắt mở rộng dòng để xem chi tiết.
+    /// </summary>
+    public void ToggleExpanded() => IsExpanded = !IsExpanded;
 }

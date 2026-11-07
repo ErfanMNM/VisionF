@@ -50,8 +50,27 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
     /// <summary>Danh sách tham số hiển thị trên bảng.</summary>
     public ObservableCollection<PlcParamRowViewModel> ParameterRows { get; } = [];
 
+    /// <summary>
+    /// Các dòng tham số đang soạn (nhấn "+" để thêm nhanh, chưa lưu vào DB).
+    /// </summary>
+    public ObservableCollection<NewParamRowViewModel> DraftRows { get; } = [];
+
+    /// <summary>True khi đang có dòng soạn dở dang.</summary>
+    public bool HasDraftRows => DraftRows.Count > 0;
+
+    /// <summary>
+    /// True khi bảng hoàn toàn trống (không có dòng đã lưu lẫn dòng đang soạn).
+    /// </summary>
+    public bool IsTableEmpty => ParameterRows.Count == 0 && DraftRows.Count == 0;
+
     /// <summary>True khi đã có ít nhất một tham số trong bảng.</summary>
     public bool HasParameters => ParameterRows.Count > 0;
+
+    /// <summary>Số lượng tham số hiện có (dùng cho badge trên tiêu đề).</summary>
+    public int ParameterCount => ParameterRows.Count;
+
+    /// <summary>Số lượng recipe hiện có (dùng cho badge trên tiêu đề).</summary>
+    public int RecipeCount => Recipes.Count;
 
     /// <summary>Danh sách recipe.</summary>
     public ObservableCollection<PlcRecipe> Recipes { get; } = [];
@@ -93,8 +112,20 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
         _actionLog = actionLog;
         _cameraOptions = cameraOptions.Value;
 
-        // Cập nhật cờ "đã có tham số" mỗi khi danh sách thay đổi.
-        ParameterRows.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasParameters));
+        // Cập nhật cờ "đã có tham số" + số lượng mỗi khi danh sách thay đổi.
+        ParameterRows.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasParameters));
+            OnPropertyChanged(nameof(ParameterCount));
+            OnPropertyChanged(nameof(IsTableEmpty));
+        };
+
+        // Cập nhật cờ "đang soạn" mỗi khi có thêm/bớt dòng draft.
+        DraftRows.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasDraftRows));
+            OnPropertyChanged(nameof(IsTableEmpty));
+        };
     }
 
     /// <summary>
@@ -141,6 +172,8 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
                 Recipes.Add(recipe);
             }
 
+            OnPropertyChanged(nameof(RecipeCount));
+
             // Giữ recipe đang chọn nếu vẫn tồn tại, nếu không thì chọn cái đầu.
             if (SelectedRecipe is not null)
             {
@@ -171,17 +204,126 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
     // ------------------------------------------------------------------
 
     /// <summary>
-    /// Mở hộp thoại thêm tham số mới.
+    /// Thêm một dòng tham số mới (chưa lưu) ngay trong bảng.
+    ///
+    /// Thay vì mở hộp thoại, dòng mới được thêm trực tiếp vào bảng để người
+    /// dùng điền tên + ô nhớ ngay tại chỗ, rồi bấm ✓ để lưu.
     /// </summary>
     [RelayCommand]
-    private async Task AddParameterAsync()
+    private void AddParameter()
     {
-        var saved = await ShowEditDialogAsync(null).ConfigureAwait(true);
-
-        if (saved)
+        var draft = new NewParamRowViewModel
         {
-            await LoadAsync().ConfigureAwait(true);
+            IsExpanded = true,
+        };
+
+        DraftRows.Insert(0, draft);
+    }
+
+    /// <summary>
+    /// Lưu dòng đang soạn vào database.
+    /// </summary>
+    /// <param name="draft">Dòng cần lưu.</param>
+    [RelayCommand]
+    private async Task SaveDraftParameterAsync(NewParamRowViewModel? draft)
+    {
+        if (draft is null || draft.IsSaving)
+        {
+            return;
         }
+
+        if (string.IsNullOrWhiteSpace(draft.Name))
+        {
+            draft.IsError = true;
+            draft.StatusText = "Vui lòng nhập tên tham số.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(draft.Address))
+        {
+            draft.IsError = true;
+            draft.StatusText = "Vui lòng nhập ô nhớ (ví dụ D12 hoặc D12.05).";
+            return;
+        }
+
+        draft.IsSaving = true;
+        draft.IsError = false;
+        draft.StatusText = string.Empty;
+
+        try
+        {
+            // Thứ tự sắp xếp: đưa dòng mới lên đầu danh sách.
+            var sortOrder = ParameterRows.Count > 0
+                ? ParameterRows.Min(r => r.Parameter.SortOrder) - 1
+                : 0;
+
+            var parameter = draft.ToParameter(sortOrder);
+
+            var result = await _plc.SaveParameterAsync(parameter).ConfigureAwait(true);
+
+            if (!result.Ok)
+            {
+                draft.IsError = true;
+                draft.StatusText = result.Message;
+                return;
+            }
+
+            _actionLog.Log(
+                "Plc.Param.Create",
+                "PlcParam",
+                $"Them tham so {parameter.Name} ({parameter.Address})",
+                UserActionResults.Success);
+
+            DraftRows.Remove(draft);
+
+            await LoadAsync().ConfigureAwait(true);
+
+            SetStatus($"Đã thêm tham số \"{parameter.Name}\".");
+        }
+        catch (Exception ex)
+        {
+            draft.IsError = true;
+            draft.StatusText = "Lỗi khi lưu tham số: " + ex.Message;
+        }
+        finally
+        {
+            draft.IsSaving = false;
+        }
+    }
+
+    /// <summary>
+    /// Huỷ dòng đang soạn (không lưu).
+    /// </summary>
+    /// <param name="draft">Dòng cần huỷ.</param>
+    [RelayCommand]
+    private void CancelDraftParameter(NewParamRowViewModel? draft)
+    {
+        if (draft is null)
+        {
+            return;
+        }
+
+        DraftRows.Remove(draft);
+    }
+
+    /// <summary>
+    /// Bật/tắt mở rộng dòng để xem chi tiết (ô nhớ / kiểu / R-W).
+    /// </summary>
+    /// <param name="row">Dòng cần xổ / thu.</param>
+    [RelayCommand]
+    private void ToggleRowExpanded(PlcParamRowViewModel? row)
+    {
+        row?.ToggleExpanded();
+    }
+
+    /// <summary>
+    /// Bật/tắt mở rộng dòng đang soạn để xem chi tiết.
+    /// </summary>
+    /// <param name="draft">Dòng cần xổ / thu.</param>
+    [RelayCommand]
+    private void ToggleDraftExpanded(NewParamRowViewModel? draft)
+    {
+        draft?.ToggleExpanded();
     }
 
     /// <summary>
