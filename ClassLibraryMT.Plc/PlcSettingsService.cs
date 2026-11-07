@@ -281,13 +281,16 @@ internal sealed class PlcSettingsService : IPlcSettingsService
 
         if (!parameter.CanRead)
         {
-            return PlcReadResult.Fail("ARG", $"Tham so '{parameter.Name}' chi ghi, khong doc duoc.");
+            return PlcReadResult.Fail(
+                parameter.Id,
+                "ARG",
+                $"Tham so '{parameter.Name}' chi ghi, khong doc duoc.");
         }
 
         var validation = ValidateParameter(parameter);
         if (!validation.Ok)
         {
-            return PlcReadResult.Fail("ARG", validation.Message);
+            return PlcReadResult.Fail(parameter.Id, "ARG", validation.Message);
         }
 
         await _gate.WaitAsync(ct).ConfigureAwait(false);
@@ -309,10 +312,18 @@ internal sealed class PlcSettingsService : IPlcSettingsService
                 _logger.LogWarning(
                     "Doc o nho PLC that bai ({Name} = {Address}): {Code} - {Message}",
                     parameter.Name, parameter.Address, result.ErrorCode, result.Message);
-                return PlcReadResult.Fail(result.ErrorCode, result.Message, result.ProcessTime);
+                return PlcReadResult.Fail(
+                    parameter.Id,
+                    result.ErrorCode,
+                    result.Message,
+                    result.ProcessTime);
             }
 
-            return PlcReadResult.Ok(result.Value ?? string.Empty, "OK", result.ProcessTime);
+            return PlcReadResult.Ok(
+                parameter.Id,
+                result.Value ?? string.Empty,
+                "OK",
+                result.ProcessTime);
         }
         finally
         {

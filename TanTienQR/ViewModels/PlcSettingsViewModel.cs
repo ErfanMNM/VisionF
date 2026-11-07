@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using Avalonia.Controls;
+using ClassLibraryMT.Auth;
 using ClassLibraryMT.Logging;
 using ClassLibraryMT.Plc;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -23,6 +24,8 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
     private readonly IPlcSettingsService _plc;
     private readonly IUserActionLogger _actionLog;
     private readonly CameraOptions _cameraOptions;
+    private readonly IUserService _users;
+    private readonly ISessionContext _session;
     /// <summary>Cửa sổ chính — dùng để mở hộp thoại.</summary>
     private Window? _window;
 
@@ -46,6 +49,23 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
     /// </summary>
     [ObservableProperty]
     public partial bool IsCameraWebEnabled { get; set; }
+
+    /// <summary>
+    /// True khi bảng tham số / recipe đang hiển thị.
+    ///
+    /// Khi False thì cột trái ẩn lại và camera chiếm trọn màn hình — tiện
+    /// cho người vận hành theo dõi camera mà không bị bảng che khuất.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ParameterPanelWidth))]
+    public partial bool IsParameterPanelVisible { get; set; } = true;
+
+    /// <summary>
+    /// Chiều rộng cột trái (bảng ô nhớ + recipe).
+    ///
+    /// Khi bảng bị ẩn thì chiều rộng = 0 để camera chiếm trọn màn hình.
+    /// </summary>
+    public double ParameterPanelWidth => IsParameterPanelVisible ? 430 : 0;
 
     /// <summary>Danh sách tham số hiển thị trên bảng.</summary>
     public ObservableCollection<PlcParamRowViewModel> ParameterRows { get; } = [];
@@ -103,14 +123,20 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
     /// <param name="plc">Service quản lý tham số PLC.</param>
     /// <param name="actionLog">Logger thao tác người dùng.</param>
     /// <param name="cameraOptions">Cấu hình đầu đọc mã (lấy IP camera).</param>
+    /// <param name="users">Service quản lý tài khoản (xác thực mật khẩu khi xoá recipe).</param>
+    /// <param name="session">Ngữ cảnh phiên đăng nhập.</param>
     public PlcSettingsViewModel(
         IPlcSettingsService plc,
         IUserActionLogger actionLog,
-        IOptions<CameraOptions> cameraOptions)
+        IOptions<CameraOptions> cameraOptions,
+        IUserService users,
+        ISessionContext session)
     {
         _plc = plc;
         _actionLog = actionLog;
         _cameraOptions = cameraOptions.Value;
+        _users = users;
+        _session = session;
 
         // Cập nhật cờ "đã có tham số" + số lượng mỗi khi danh sách thay đổi.
         ParameterRows.CollectionChanged += (_, _) =>
@@ -142,7 +168,15 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
     public void EnableCameraWeb() => IsCameraWebEnabled = true;
 
     /// <summary>
-    /// Tải lại toàn bộ tham số và recipe.
+    /// Bật/tắt bảng tham số + recipe.
+    ///
+    /// Khi tắt, camera chiếm toàn bộ chiều rộng để xem cho to.
+    /// </summary>
+    [RelayCommand]
+    private void ToggleParameterPanel() => IsParameterPanelVisible = !IsParameterPanelVisible;
+
+    /// <summary>
+    /// Tải lại toàn bộ tham số và recipe (KHÔNG đọc giá trị PLC).
     /// </summary>
     [RelayCommand]
     public async Task LoadAsync()
@@ -156,36 +190,7 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
 
         try
         {
-            var parameters = await _plc.GetParametersAsync().ConfigureAwait(true);
-
-            ParameterRows.Clear();
-            foreach (var parameter in parameters)
-            {
-                ParameterRows.Add(new PlcParamRowViewModel(parameter));
-            }
-
-            var recipes = await _plc.GetRecipesAsync().ConfigureAwait(true);
-
-            Recipes.Clear();
-            foreach (var recipe in recipes)
-            {
-                Recipes.Add(recipe);
-            }
-
-            OnPropertyChanged(nameof(RecipeCount));
-
-            // Giữ recipe đang chọn nếu vẫn tồn tại, nếu không thì chọn cái đầu.
-            if (SelectedRecipe is not null)
-            {
-                var stillThere = Recipes.FirstOrDefault(r => r.Id == SelectedRecipe.Id);
-                SelectedRecipe = stillThere ?? Recipes.FirstOrDefault();
-            }
-            else
-            {
-                SelectedRecipe = Recipes.FirstOrDefault();
-            }
-
-            await LoadRecipeValuesAsync().ConfigureAwait(true);
+            await LoadDefinitionsAsync().ConfigureAwait(true);
 
             SetStatus($"Đã tải {ParameterRows.Count} tham số và {Recipes.Count} recipe.");
         }
@@ -197,6 +202,125 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>
+    /// Tải lại toàn bộ: định nghĩa (tham số + recipe) và giá trị thực tế từ PLC.
+    ///
+    /// Đây là lệnh được gọi khi mở tab "Chỉnh PLC" và khi người dùng bấm
+    /// nút "Cập nhật" — đảm bảo bảng luôn hiển thị giá trị mới nhất.
+    /// </summary>
+    [RelayCommand]
+    public async Task RefreshAllAsync()
+    {
+        if (IsBusy)
+        {
+            return;
+        }
+
+        IsBusy = true;
+
+        try
+        {
+            await LoadDefinitionsAsync().ConfigureAwait(true);
+            await ReadAllValuesAsync().ConfigureAwait(true);
+            await LoadRecipeValuesIntoInputsAsync().ConfigureAwait(true);
+
+            SetStatus(
+                $"Đã cập nhật {ParameterRows.Count} ô nhớ từ PLC và {Recipes.Count} recipe.");
+        }
+        catch (Exception ex)
+        {
+            SetStatus("Lỗi khi cập nhật dữ liệu PLC: " + ex.Message, isError: true);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Nạp định nghĩa từ DB: danh sách tham số + danh sách recipe.
+    /// </summary>
+    private async Task LoadDefinitionsAsync()
+    {
+        var parameters = await _plc.GetParametersAsync().ConfigureAwait(true);
+
+        ParameterRows.Clear();
+        foreach (var parameter in parameters)
+        {
+            ParameterRows.Add(new PlcParamRowViewModel(parameter));
+        }
+
+        var recipes = await _plc.GetRecipesAsync().ConfigureAwait(true);
+
+        Recipes.Clear();
+        foreach (var recipe in recipes)
+        {
+            Recipes.Add(recipe);
+        }
+
+        OnPropertyChanged(nameof(RecipeCount));
+
+        // Giữ recipe đang chọn nếu vẫn tồn tại, nếu không thì chọn cái đầu.
+        if (SelectedRecipe is not null)
+        {
+            var stillThere = Recipes.FirstOrDefault(r => r.Id == SelectedRecipe.Id);
+            SelectedRecipe = stillThere ?? Recipes.FirstOrDefault();
+        }
+        else
+        {
+            SelectedRecipe = Recipes.FirstOrDefault();
+        }
+    }
+
+    /// <summary>
+    /// Đọc giá trị thực tế của tất cả ô nhớ từ PLC, điền vào cột "Giá trị".
+    /// </summary>
+    private async Task ReadAllValuesAsync()
+    {
+        var results = await _plc.ReadAllAsync().ConfigureAwait(true);
+
+        // Khớp theo ParameterId (không theo chỉ số) để không gán nhầm ô nhớ
+        // khi thứ tự trong DB khác thứ tự hiển thị.
+        // Dùng vòng lặp ghi đè thay vì ToDictionary để không ném lỗi nếu DB
+        // có dữ liệu trùng Id.
+        var byId = new Dictionary<long, PlcReadResult>();
+        foreach (var item in results)
+        {
+            byId[item.ParameterId] = item;
+        }
+
+        var okCount = 0;
+        foreach (var row in ParameterRows)
+        {
+            if (!byId.TryGetValue(row.Id, out var result))
+            {
+                continue;
+            }
+
+            if (result.IsSuccess)
+            {
+                row.CurrentValue = result.Value ?? string.Empty;
+                row.StatusText = "Đọc OK";
+                row.IsError = false;
+                okCount++;
+            }
+            else
+            {
+                row.CurrentValue = string.Empty;
+                row.StatusText = result.Message;
+                row.IsError = true;
+            }
+        }
+
+        SetStatus($"Đọc {okCount}/{results.Count} ô nhớ từ PLC thành công.");
+
+        _actionLog.Log(
+            "Plc.Read",
+            "PlcParam",
+            $"Doc tat ca {results.Count} o nho",
+            okCount == results.Count ? UserActionResults.Success : UserActionResults.Failed);
     }
 
     // ------------------------------------------------------------------
@@ -459,7 +583,7 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Đọc tất cả tham số từ PLC.
+    /// Đọc tất cả tham số từ PLC (nút "Cập nhật" ở footer bảng ô nhớ).
     /// </summary>
     [RelayCommand]
     private async Task ReadAllAsync()
@@ -473,39 +597,149 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
 
         try
         {
-            var results = await _plc.ReadAllAsync().ConfigureAwait(true);
+            await ReadAllValuesAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            SetStatus("Lỗi khi đọc PLC: " + ex.Message, isError: true);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 
-            var okCount = 0;
-            for (var i = 0; i < ParameterRows.Count && i < results.Count; i++)
+    /// <summary>
+    /// Nạp giá trị của recipe đang chọn vào các ô nhập (nút "Tải lên").
+    /// </summary>
+    [RelayCommand]
+    private async Task LoadRecipeValuesAsync()
+    {
+        if (IsBusy)
+        {
+            return;
+        }
+
+        IsBusy = true;
+
+        try
+        {
+            await LoadRecipeValuesIntoInputsAsync().ConfigureAwait(true);
+
+            SetStatus(
+                SelectedRecipe is null
+                    ? "Chưa chọn recipe nào để tải lên."
+                    : $"Đã tải giá trị recipe \"{SelectedRecipe.Name}\" vào ô nhập.");
+        }
+        catch (Exception ex)
+        {
+            SetStatus("Lỗi khi tải giá trị recipe: " + ex.Message, isError: true);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Áp dụng: ghi giá trị đang nhập xuống PLC, rồi lưu vào recipe (nút "Áp dụng").
+    ///
+    /// Khác với <c>ApplyRecipeAsync</c> (dùng giá trị đã lưu trong DB),
+    /// lệnh này gửi đúng giá trị người đang nhập trên bảng.
+    /// </summary>
+    [RelayCommand]
+    private async Task ApplyAndSaveRecipeAsync()
+    {
+        if (SelectedRecipe is null)
+        {
+            SetStatus("Chưa chọn recipe nào.", isError: true);
+            return;
+        }
+
+        if (IsBusy)
+        {
+            return;
+        }
+
+        IsBusy = true;
+
+        try
+        {
+            // 1) Gom gia tri nguoi dang nhap.
+            var values = new Dictionary<long, string>();
+            foreach (var row in ParameterRows)
             {
-                var row = ParameterRows[i];
-                var result = results[i];
-
-                if (result.IsSuccess)
+                if (!string.IsNullOrWhiteSpace(row.InputValue))
                 {
-                    row.CurrentValue = result.Value ?? string.Empty;
-                    row.StatusText = "Đọc OK";
+                    values[row.Id] = row.InputValue.Trim();
+                }
+            }
+
+            if (values.Count == 0)
+            {
+                SetStatus("Chưa nhập giá trị nào để áp dụng.", isError: true);
+                return;
+            }
+
+            // 2) Ghi xuong PLC.
+            var okCount = 0;
+            foreach (var row in ParameterRows)
+            {
+                if (!values.TryGetValue(row.Id, out var value))
+                {
+                    continue;
+                }
+
+                var writeResult = await _plc
+                    .WriteParameterAsync(row.Parameter, value)
+                    .ConfigureAwait(true);
+
+                if (writeResult.IsSuccess)
+                {
+                    row.CurrentValue = writeResult.Value ?? string.Empty;
+                    row.StatusText = "Ghi OK";
                     row.IsError = false;
                     okCount++;
                 }
                 else
                 {
-                    row.StatusText = result.Message;
+                    row.StatusText = writeResult.Message;
                     row.IsError = true;
                 }
             }
 
-            SetStatus($"Đọc {okCount}/{results.Count} tham số thành công.");
+            // 3) Luu bo gia tri vao recipe.
+            var saveResult = await _plc
+                .SaveRecipeValuesAsync(SelectedRecipe.Id, values)
+                .ConfigureAwait(true);
+
+            if (!saveResult.Ok)
+            {
+                SetStatus(saveResult.Message, isError: true);
+            }
+            else if (okCount == values.Count)
+            {
+                SetStatus(
+                    $"Đã áp dụng {okCount} ô nhớ xuống PLC và lưu vào recipe \"{SelectedRecipe.Name}\".");
+            }
+            else
+            {
+                SetStatus(
+                    $"Áp dụng xuống PLC: {okCount}/{values.Count} ô nhớ thành công; "
+                    + $"đã lưu vào recipe \"{SelectedRecipe.Name}\".",
+                    isError: true);
+            }
 
             _actionLog.Log(
-                "Plc.Read",
-                "PlcParam",
-                $"Doc tat ca {results.Count} tham so",
-                okCount == results.Count ? UserActionResults.Success : UserActionResults.Failed);
+                "Plc.ApplyRecipe",
+                "PlcRecipe",
+                $"Ap dung gia tri vao PLC va luu recipe {SelectedRecipe.Name}: "
+                + $"{okCount}/{values.Count} thanh cong",
+                okCount == values.Count ? UserActionResults.Success : UserActionResults.Failed);
         }
         catch (Exception ex)
         {
-            SetStatus("Lỗi khi đọc PLC: " + ex.Message, isError: true);
+            SetStatus("Lỗi khi áp dụng: " + ex.Message, isError: true);
         }
         finally
         {
@@ -548,7 +782,7 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Xoá recipe đang chọn.
+    /// Xoá recipe đang chọn (yêu cầu xác nhận mật khẩu).
     /// </summary>
     [RelayCommand]
     private async Task DeleteRecipeAsync()
@@ -560,6 +794,15 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
         }
 
         var recipe = SelectedRecipe;
+
+        // Bắt buộc xác nhận mật khẩu trước khi xoá.
+        var confirmed = await ShowDeleteConfirmAsync(recipe.Name).ConfigureAwait(true);
+
+        if (!confirmed)
+        {
+            SetStatus("Đã huỷ xoá recipe.");
+            return;
+        }
 
         var result = await _plc.DeleteRecipeAsync(recipe.Id).ConfigureAwait(true);
 
@@ -679,7 +922,7 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
     /// <summary>
     /// Nạp giá trị của recipe đang chọn vào các ô nhập.
     /// </summary>
-    private async Task LoadRecipeValuesAsync()
+    private async Task LoadRecipeValuesIntoInputsAsync()
     {
         foreach (var row in ParameterRows)
         {
@@ -723,12 +966,46 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
         }
 
         // Fire-and-forget: nạp giá trị recipe vào các ô nhập.
-        _ = LoadRecipeValuesAsync();
+        _ = LoadRecipeValuesIntoInputsAsync();
     }
 
     // ------------------------------------------------------------------
     // Dialog
     // ------------------------------------------------------------------
+
+    /// <summary>
+    /// Mở hộp thoại xác nhận xoá recipe bằng mật khẩu.
+    /// </summary>
+    /// <param name="recipeName">Tên recipe sắp xoá.</param>
+    /// <returns>True nếu người dùng xác nhận đúng mật khẩu.</returns>
+    private async Task<bool> ShowDeleteConfirmAsync(string recipeName)
+    {
+        var owner = _window;
+
+        // Owner phải đã hiển thị mới mở được dialog.
+        if (owner is null || !owner.IsVisible)
+        {
+            SetStatus("Không mở được hộp thoại: cửa sổ chưa sẵn sàng.", isError: true);
+            return false;
+        }
+
+        var vm = new RecipeDeleteConfirmViewModel(_users, _session, recipeName);
+        var dialog = new RecipeDeleteConfirmWindow
+        {
+            DataContext = vm,
+        };
+
+        try
+        {
+            await dialog.ShowDialog(owner).ConfigureAwait(true);
+            return dialog.IsConfirmed;
+        }
+        catch (InvalidOperationException ex)
+        {
+            SetStatus("Không mở được hộp thoại: " + ex.Message, isError: true);
+            return false;
+        }
+    }
 
     /// <summary>
     /// Mở hộp thoại thêm / sửa tham số.

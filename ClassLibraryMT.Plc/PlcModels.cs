@@ -94,6 +94,16 @@ public sealed class PlcRecipe
 
     /// <summary>Thoi diem cap nhat gan nhat (UTC).</summary>
     public DateTime UpdatedUtc { get; set; }
+
+    /// <summary>
+    /// Ten hien thi khi gan vao ComboBox / TextBlock.
+    ///
+    /// mac dinh <see cref="object.ToString"/> se tra ve ten lop day du
+    /// ("ClassLibraryMT.Plc.PlcRecipe") -> phai override de hien thi
+    /// ten recipe that su cho nguoi dung.
+    /// </summary>
+    public override string ToString() =>
+        string.IsNullOrWhiteSpace(Name) ? $"Recipe #{Id}" : Name;
 }
 
 /// <summary>
@@ -115,6 +125,9 @@ public readonly record struct Result(bool Ok, string Message)
 /// </summary>
 public sealed class PlcReadResult
 {
+    /// <summary>Id cua tham so da doc (dung de khop ket qua voi danh sach).</summary>
+    public long ParameterId { get; init; }
+
     /// <summary>True neu doc thanh cong.</summary>
     public bool IsSuccess { get; init; }
 
@@ -131,12 +144,34 @@ public sealed class PlcReadResult
     public TimeSpan ProcessTime { get; init; }
 
     /// <summary>Tao ket qua thanh cong.</summary>
-    public static PlcReadResult Ok(string value, string message = "OK", TimeSpan processTime = default) =>
-        new() { IsSuccess = true, Value = value, Message = message, ProcessTime = processTime };
+    public static PlcReadResult Ok(
+        long parameterId,
+        string value,
+        string message = "OK",
+        TimeSpan processTime = default) =>
+        new()
+        {
+            ParameterId = parameterId,
+            IsSuccess = true,
+            Value = value,
+            Message = message,
+            ProcessTime = processTime,
+        };
 
     /// <summary>Tao ket qua that bai.</summary>
-    public static PlcReadResult Fail(string errorCode, string message, TimeSpan processTime = default) =>
-        new() { IsSuccess = false, ErrorCode = errorCode, Message = message, ProcessTime = processTime };
+    public static PlcReadResult Fail(
+        long parameterId,
+        string errorCode,
+        string message,
+        TimeSpan processTime = default) =>
+        new()
+        {
+            ParameterId = parameterId,
+            IsSuccess = false,
+            ErrorCode = errorCode,
+            Message = message,
+            ProcessTime = processTime,
+        };
 }
 
 /// <summary>

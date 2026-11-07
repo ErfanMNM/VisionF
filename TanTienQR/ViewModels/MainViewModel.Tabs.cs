@@ -243,7 +243,9 @@ internal partial class MainViewModel
         // Chỉ khởi tạo WebView2 camera khi người dùng thực sự mở tab.
         PlcSettings?.EnableCameraWeb();
 
-        PlcSettings?.LoadCommand.Execute(null);
+        // Luôn đọc lại giá trị thực tế từ PLC khi mở tab, để bảng ô nhớ
+        // hiển thị đúng trạng thái máy đang chạy.
+        PlcSettings?.RefreshAllCommand.Execute(null);
     }
 
     /// <summary>

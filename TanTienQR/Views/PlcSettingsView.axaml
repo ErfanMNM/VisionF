@@ -125,29 +125,38 @@
                            Text="Quản lý ô nhớ PLC và áp dụng bộ tham số (recipe) xuống máy." />
             </StackPanel>
 
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                <Button Classes="soft"
-                        Height="34" MinWidth="88" Padding="12,0"
-                        FontSize="12"
-                        HorizontalContentAlignment="Center"
-                        VerticalContentAlignment="Center"
-                        Content="Tải lại"
-                        Command="{Binding PlcSettings.LoadCommand}" />
-                <Button Classes="soft"
-                        Height="34" MinWidth="98" Padding="12,0"
-                        FontSize="12"
-                        HorizontalContentAlignment="Center"
-                        VerticalContentAlignment="Center"
-                        Content="Đọc tất cả"
-                        Command="{Binding PlcSettings.ReadAllCommand}" />
-                <Button Classes="primary"
-                        Height="34" MinWidth="106" Padding="12,0"
-                        FontSize="12"
-                        HorizontalContentAlignment="Center"
-                        VerticalContentAlignment="Center"
-                        Content="+ Tham số"
-                        Command="{Binding PlcSettings.AddParameterCommand}" />
-            </StackPanel>
+            <!-- Nút bật/tắt bảng tham số (chế độ chỉ xem camera) -->
+            <Button Grid.Column="1"
+                    Classes="soft"
+                    Width="34" Height="34"
+                    MinWidth="34" MinHeight="34"
+                    Padding="0"
+                    CornerRadius="8"
+                    ToolTip.Tip="Ẩn / hiện bảng tham số PLC"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    Command="{Binding PlcSettings.ToggleParameterPanelCommand}">
+                <Panel>
+                    <!-- Mũi tên trái: ẩn bảng -->
+                    <Path Width="14" Height="14"
+                          Stretch="Uniform"
+                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                          StrokeThickness="1.8"
+                          StrokeLineCap="Round"
+                          StrokeJoin="Round"
+                          IsVisible="{Binding PlcSettings.IsParameterPanelVisible}"
+                          Data="M9,3 L4,7 L9,11" />
+                    <!-- Mũi tên phải: hiện bảng -->
+                    <Path Width="14" Height="14"
+                          Stretch="Uniform"
+                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                          StrokeThickness="1.8"
+                          StrokeLineCap="Round"
+                          StrokeJoin="Round"
+                          IsVisible="{Binding !PlcSettings.IsParameterPanelVisible}"
+                          Data="M5,3 L10,7 L5,11" />
+                </Panel>
+            </Button>
         </Grid>
 
         <!-- ================= THÔNG BÁO TRẠNG THÁI ================= -->
@@ -176,11 +185,17 @@
             </Grid>
         </Border>
 
-        <!-- ================= NỘI DUNG ================= -->
-        <Grid Grid.Row="2" ColumnDefinitions="1.15*,1.85*" ColumnSpacing="14">
+        <!-- ================= NỘI DUNG =================
+             Cột trái (bảng ô nhớ + recipe) bị ẩn khi bấm nút toggle ở header ->
+             camera chiếm trọn phần chiều rộng còn lại. -->
+        <Grid Grid.Row="2" ColumnDefinitions="Auto,*" ColumnSpacing="14">
 
             <!-- ============ CỘT TRÁI: RECIPE + BẢNG Ô NHỚ ============ -->
-            <Grid Grid.Column="0" RowDefinitions="Auto,*" RowSpacing="12">
+            <Grid Grid.Column="0"
+                  Width="{Binding PlcSettings.ParameterPanelWidth}"
+                  RowDefinitions="Auto,*"
+                  RowSpacing="12"
+                  IsVisible="{Binding PlcSettings.IsParameterPanelVisible}">
 
                 <!-- Card Recipe (gọn, 2 hàng) -->
                 <Border Grid.Row="0" Classes="panel" Padding="12">
@@ -278,7 +293,8 @@
 
                         <!-- Header panel -->
                         <Grid Grid.Row="0"
-                              ColumnDefinitions="*,Auto"
+                              ColumnDefinitions="*,Auto,Auto"
+                              ColumnSpacing="8"
                               Margin="14,11,14,10">
                             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                                 <TextBlock Classes="sectionTitle" Text="Ô nhớ PLC" />
@@ -291,6 +307,16 @@
                                        FontSize="10.5"
                                        VerticalAlignment="Center"
                                        Text="Nhấn ▼ để xem chi tiết" />
+                            <!-- Thêm tham số mới -->
+                            <Button Grid.Column="2"
+                                    Classes="primary"
+                                    Height="28" MinWidth="98" Padding="10,0"
+                                    FontSize="11.5"
+                                    CornerRadius="7"
+                                    HorizontalContentAlignment="Center"
+                                    VerticalContentAlignment="Center"
+                                    Content="+ Tham số"
+                                    Command="{Binding PlcSettings.AddParameterCommand}" />
                         </Grid>
 
                         <!-- Header cột -->
@@ -652,7 +678,7 @@
                                        Text="Bấm “+ Tham số” để thêm ô nhớ cần đọc hoặc ghi." />
                         </StackPanel>
 
-                        <!-- Footer: lưu giá trị vào recipe -->
+                        <!-- Footer: các thao tác đọc / ghi / áp dụng -->
                         <Border Grid.Row="3"
                                 BorderBrush="{StaticResource LineColor}"
                                 BorderThickness="0,1,0,0"
@@ -663,15 +689,43 @@
                                            Classes="label"
                                            FontSize="10.5"
                                            VerticalAlignment="Center"
-                                           Text="Nhập giá trị ở cột “Nhập”, rồi lưu thành bộ tham số cho recipe." />
-                                <Button Grid.Column="1"
-                                        Classes="soft"
-                                        Height="32" MinWidth="124" Padding="12,0"
-                                        FontSize="11.5"
-                                        HorizontalContentAlignment="Center"
-                                        VerticalContentAlignment="Center"
-                                        Content="Lưu vào recipe"
-                                        Command="{Binding PlcSettings.SaveRecipeValuesCommand}" />
+                                           TextWrapping="Wrap"
+                                           Text="Nhập giá trị ở cột “Nhập”, rồi bấm Áp dụng để ghi xuống PLC và lưu vào recipe." />
+
+                                <!-- 3 nút thao tác: Tải lên / Cập nhật / Áp dụng -->
+                                <StackPanel Grid.Column="1"
+                                            Orientation="Horizontal"
+                                            Spacing="8">
+                                    <!-- Tải lên: nạp giá trị recipe vào ô nhập -->
+                                    <Button Classes="soft"
+                                            Height="32" MinWidth="86" Padding="12,0"
+                                            FontSize="11.5"
+                                            HorizontalContentAlignment="Center"
+                                            VerticalContentAlignment="Center"
+                                            Content="Tải lên"
+                                            ToolTip.Tip="Tải giá trị của recipe đang chọn vào ô nhập"
+                                            Command="{Binding PlcSettings.LoadRecipeValuesCommand}" />
+
+                                    <!-- Cập nhật: đọc lại giá trị thực tế từ PLC -->
+                                    <Button Classes="soft"
+                                            Height="32" MinWidth="86" Padding="12,0"
+                                            FontSize="11.5"
+                                            HorizontalContentAlignment="Center"
+                                            VerticalContentAlignment="Center"
+                                            Content="Cập nhật"
+                                            ToolTip.Tip="Đọc lại giá trị thực tế từ PLC"
+                                            Command="{Binding PlcSettings.ReadAllCommand}" />
+
+                                    <!-- Áp dụng: ghi xuống PLC + lưu vào recipe -->
+                                    <Button Classes="primary"
+                                            Height="32" MinWidth="86" Padding="12,0"
+                                            FontSize="11.5"
+                                            HorizontalContentAlignment="Center"
+                                            VerticalContentAlignment="Center"
+                                            Content="Áp dụng"
+                                            ToolTip.Tip="Ghi giá trị đang nhập xuống PLC và lưu vào recipe"
+                                            Command="{Binding PlcSettings.ApplyAndSaveRecipeCommand}" />
+                                </StackPanel>
                             </Grid>
                         </Border>
                     </Grid>

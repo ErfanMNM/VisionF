@@ -130,6 +130,39 @@ internal sealed class UserService : IUserService
         return AuthResult.Success(user);
     }
 
+    /// <inheritdoc />
+    public async Task<Result> VerifyPasswordAsync(
+        string username,
+        string password,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrEmpty(password))
+        {
+            return Result.Fail("Vui lòng nhập mật khẩu.");
+        }
+
+        await using var connection = await _store.OpenAsync(ct).ConfigureAwait(false);
+
+        var user = await AuthStore
+            .ReadUserAsync(connection, "Username = $u COLLATE NOCASE", "$u", username.Trim(), ct)
+            .ConfigureAwait(false);
+
+        // Thông báo chung cho mọi trường hợp thất bại -> không lộ tài khoản nào tồn tại.
+        if (user is null)
+        {
+            return Result.Fail("Mật khẩu không đúng.");
+        }
+
+        var hash = await ReadHashAsync(connection, user.Id, ct).ConfigureAwait(false);
+
+        if (!PasswordHasher.Verify(password, hash))
+        {
+            return Result.Fail("Mật khẩu không đúng.");
+        }
+
+        return Result.Success("Mật khẩu chính xác.");
+    }
+
     public async Task<IReadOnlyList<UserAccount>> GetAllAsync(CancellationToken ct = default)
     {
         await using var connection = await _store.OpenAsync(ct).ConfigureAwait(false);

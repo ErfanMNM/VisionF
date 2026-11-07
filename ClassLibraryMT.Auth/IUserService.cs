@@ -42,6 +42,23 @@ public interface IUserService
     Task<UserAccount?> GetByUsernameAsync(string username, CancellationToken ct = default);
 
     /// <summary>
+    /// Kiểm tra mật khẩu của một tài khoản mà KHÔNG gây ra hậu quả đăng nhập.
+    ///
+    /// Dùng cho các thao tác nhạy cảm cần xác nhận thêm (vd xoá recipe).
+    /// Khác với <see cref="AuthenticateAsync"/>: không ghi nhật lần đăng nhập
+    /// thất bại, không khoá tài khoản và không sửa bộ đếm — chỉ trả về kết quả
+    /// đúng / sai.
+    /// </summary>
+    /// <param name="username">Tên đăng nhập.</param>
+    /// <param name="password">Mật khẩu cần kiểm tra.</param>
+    /// <param name="ct">Token hủy.</param>
+    /// <returns>Kết quả kiểm tra.</returns>
+    Task<Result> VerifyPasswordAsync(
+        string username,
+        string password,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Tạo tài khoản mới.
     /// </summary>
     /// <param name="username">Tên đăng nhập (duy nhất, không phân biệt hoa thường).</param>
