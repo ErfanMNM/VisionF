@@ -43,4 +43,9 @@ public enum AppSection
     /// Tra cứu mã: tra cứu mã đã quét qua hệ thống (nhập tay hoặc handheld).
     /// </summary>
     CodeLookup = 7,
+
+    /// <summary>
+    /// Truy xuất Sản xuất (Local): quản lý các lệnh sản xuất (PO) tại máy.
+    /// </summary>
+    ProductionOrders = 8,
 }

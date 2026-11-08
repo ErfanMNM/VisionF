@@ -1,0 +1,164 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:TanTienQR.ViewModels"
+             xmlns:d="http://schemas.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1040" d:DesignHeight="700"
+             x:Class="TanTienQR.Views.ProductionOrdersView"
+             x:DataType="vm:MainViewModel">
+
+    <Grid RowDefinitions="Auto,Auto,*" Margin="18,6,18,18" RowSpacing="12">
+
+        <!-- Tiêu đề -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="12">
+            <StackPanel Spacing="3">
+                <TextBlock Text="Truy xuất Sản xuất (Local)"
+                           FontSize="21"
+                           FontWeight="Bold"
+                           Foreground="{StaticResource TextPrimary}" />
+                <TextBlock Classes="label"
+                           FontSize="12"
+                           Text="Quản lý lệnh sản xuất (PO) tải từ server — bắt đầu, hoàn tất và gửi mã kích hoạt." />
+            </StackPanel>
+
+            <Button Grid.Column="1"
+                    Classes="primary"
+                    Height="42" MinWidth="150" Padding="18,0"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    Content="Tải PO từ server"
+                    IsEnabled="{Binding !ProductionOrders.IsBusy}"
+                    Command="{Binding ProductionOrders.DownloadOrdersCommand}" />
+        </Grid>
+
+        <!-- Card PO đang chạy + thanh thao tác -->
+        <Border Grid.Row="1" Classes="panel" Padding="14,12">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+
+                <StackPanel Spacing="6">
+                    <StackPanel Orientation="Horizontal" Spacing="14">
+                        <TextBlock Classes="sectionTitle" Text="PO ĐANG CHẠY" />
+                        <TextBlock Classes="mono" FontSize="13" FontWeight="Bold"
+                                   Foreground="{StaticResource TextPrimary}"
+                                   VerticalAlignment="Center"
+                                   Text="{Binding ProductionOrders.RunningOrderNoText}" />
+                        <TextBlock Classes="label" VerticalAlignment="Center"
+                                   Text="{Binding ProductionOrders.RunningProgressText, StringFormat='Đã quét: {0}'}" />
+                    </StackPanel>
+                    <TextBlock Classes="label" FontSize="11"
+                               TextWrapping="Wrap"
+                               Text="{Binding ProductionOrders.StatusMessage}" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Button Classes="primary"
+                            Height="38" MinWidth="140" Padding="16,0"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            Content="Bắt đầu sản xuất"
+                            IsEnabled="{Binding ProductionOrders.CanStart}"
+                            Command="{Binding ProductionOrders.StartProductionCommand}" />
+
+                    <Button Classes="soft"
+                            Height="38" MinWidth="140" Padding="16,0"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            Content="Hoàn tất sản xuất"
+                            IsEnabled="{Binding ProductionOrders.CanComplete}"
+                            Command="{Binding ProductionOrders.CompleteProductionCommand}" />
+
+                    <Button Classes="soft"
+                            Height="38" MinWidth="130" Padding="14,0"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            Content="Gửi kích hoạt"
+                            IsEnabled="{Binding ProductionOrders.CanActivate}"
+                            Command="{Binding ProductionOrders.ActivatePendingCommand}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Bảng danh sách PO -->
+        <Border Grid.Row="2" Classes="panel" Padding="0">
+            <Grid RowDefinitions="Auto,Auto,*">
+
+                <!-- Header -->
+                <Grid Grid.Row="0" ColumnDefinitions="Auto,*" ColumnSpacing="10" Margin="12,10">
+                    <TextBlock Classes="sectionTitle" Text="DANH SÁCH LỆNH SẢN XUẤT" />
+                    <TextBlock Grid.Column="1"
+                               Classes="label"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               Text="{Binding ProductionOrders.StatusMessage}" />
+                </Grid>
+
+                <!-- Chọn PO -->
+                <Grid Grid.Row="1" ColumnDefinitions="Auto,*" ColumnSpacing="10" Margin="12,0,12,8">
+                    <TextBlock Classes="label" FontSize="11"
+                               VerticalAlignment="Center"
+                               Text="CHỌN LỆNH SẢN XUẤT" />
+                    <ComboBox Grid.Column="1"
+                              MinHeight="38"
+                              HorizontalAlignment="Stretch"
+                              ItemsSource="{Binding ProductionOrders.Orders}"
+                              SelectedItem="{Binding ProductionOrders.SelectedOrder}"
+                              PlaceholderText="Chọn PO để bắt đầu sản xuất...">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ProductionOrderRowViewModel">
+                                <TextBlock Text="{Binding OrderNo}" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                </Grid>
+
+                <!-- Dữ liệu -->
+                <Grid Grid.Row="2" RowDefinitions="Auto,*" RowSpacing="6">
+                    <Grid Grid.Row="0" ColumnDefinitions="200,110,140,130,180" ColumnSpacing="8"
+                          Margin="16,0,16,0">
+                        <TextBlock Classes="label" FontSize="10" Text="MÃ PO" />
+                        <TextBlock Grid.Column="1" Classes="label" FontSize="10" Text="SỐ LƯỢNG" />
+                        <TextBlock Grid.Column="2" Classes="label" FontSize="10" Text="ĐÃ QUÉT" />
+                        <TextBlock Grid.Column="3" Classes="label" FontSize="10" Text="TRẠNG THÁI" />
+                        <TextBlock Grid.Column="4" Classes="label" FontSize="10" Text="THỜI ĐIỂM TẠO" />
+                    </Grid>
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding ProductionOrders.Orders}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ProductionOrderRowViewModel">
+                                    <Border BorderBrush="{StaticResource LineColor}"
+                                            BorderThickness="0,0,0,1"
+                                            Padding="16,7">
+                                        <Grid ColumnDefinitions="200,110,140,130,180" ColumnSpacing="8">
+                                            <TextBlock Classes="mono" FontSize="12" FontWeight="SemiBold"
+                                                       Foreground="{StaticResource TextPrimary}"
+                                                       VerticalAlignment="Center"
+                                                       Text="{Binding OrderNo}" />
+                                            <TextBlock Grid.Column="1" Classes="mono" FontSize="11"
+                                                       VerticalAlignment="Center"
+                                                       Text="{Binding OrderQty}" />
+                                            <TextBlock Grid.Column="2" Classes="mono" FontSize="11"
+                                                       VerticalAlignment="Center"
+                                                       Text="{Binding ProgressText}" />
+                                            <Border Grid.Column="3" Classes="badge"
+                                                    HorizontalAlignment="Left"
+                                                    Classes.running="{Binding IsRunning}"
+                                                    Classes.warning="{Binding IsCompleted}">
+                                                <TextBlock Text="{Binding StatusText}" />
+                                            </Border>
+                                            <TextBlock Grid.Column="4" Classes="label mono" FontSize="11"
+                                                       VerticalAlignment="Center"
+                                                       Text="{Binding CreatedText}" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

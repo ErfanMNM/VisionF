@@ -21,4 +21,16 @@ public enum ScanOutcome
     /// KHÔNG gửi xuống PLC — mã bị bỏ qua hoàn toàn.
     /// </summary>
     Overload = 4,
+
+    /// <summary>
+    /// Chưa bắt đầu sản xuất (chưa chọn PO đang chạy) → mã bị loại bỏ.
+    ///
+    /// KHÔNG gửi xuống PLC — mã bị loại bỏ hoàn toàn.
+    /// </summary>
+    NoProductionOrder = 5,
+
+    /// <summary>
+    /// Mã không thuộc tập mã hợp lệ của PO đang chạy → Fail (gửi D12 = 0).
+    /// </summary>
+    InvalidForOrder = 6,
 }

@@ -35,6 +35,7 @@ internal partial class MainViewModel
     [NotifyPropertyChangedFor(nameof(IsPlcSettingsVisible))]
     [NotifyPropertyChangedFor(nameof(IsDevVisible))]
     [NotifyPropertyChangedFor(nameof(IsCodeLookupVisible))]
+    [NotifyPropertyChangedFor(nameof(IsProductionOrdersVisible))]
     [NotifyPropertyChangedFor(nameof(PageTitle))]
     [NotifyPropertyChangedFor(nameof(PageSubtitle))]
     public partial AppSection CurrentSection { get; set; } = AppSection.Info;
@@ -75,6 +76,15 @@ internal partial class MainViewModel
     public bool IsCodeLookupVisible =>
         CurrentSection == AppSection.CodeLookup;
 
+    /// <summary>
+    /// True khi đang ở tab Truy xuất Sản xuất (Local).
+    ///
+    /// Dùng chung quyền <see cref="Permission.ViewProduction"/> — mọi vai trò
+    /// đều xem được, không thêm quyền mới vào <c>ClassLibraryMT.Auth</c>.
+    /// </summary>
+    public bool IsProductionOrdersVisible =>
+        CurrentSection == AppSection.ProductionOrders && CanViewProduction;
+
     /// <summary>Tiêu đề trên thanh header, đổi theo tab.</summary>
     public string PageTitle => CurrentSection switch
     {
@@ -85,6 +95,7 @@ internal partial class MainViewModel
         AppSection.PlcSettings => "Chỉnh PLC",
         AppSection.Dev => "Dev",
         AppSection.CodeLookup => "Tra cứu mã",
+        AppSection.ProductionOrders => "Truy xuất Sản xuất (Local)",
         _ => "Thông tin",
     };
 
@@ -98,6 +109,7 @@ internal partial class MainViewModel
         AppSection.PlcSettings => "Đọc/ghi ô nhớ PLC Omron, quản lý tham số và áp dụng recipe",
         AppSection.Dev => "Trạng thái runtime, bộ đếm, bộ nhớ, log kỹ thuật — dành cho nhà phát triển",
         AppSection.CodeLookup => "Tra cứu mã đã quét qua hệ thống — nhập tay hoặc quét bằng handheld cầm tay",
+        AppSection.ProductionOrders => "Quản lý lệnh sản xuất (PO) tải từ server — bắt đầu / hoàn tất sản xuất",
         _ => "Nhận tín hiệu camera và gửi kết quả xuống PLC Omron (D12 = kết quả, D16 = Ready)",
     };
 
@@ -148,6 +160,7 @@ internal partial class MainViewModel
         OnPropertyChanged(nameof(IsPlcSettingsVisible));
         OnPropertyChanged(nameof(IsDevVisible));
         OnPropertyChanged(nameof(IsCodeLookupVisible));
+        OnPropertyChanged(nameof(IsProductionOrdersVisible));
     }
 
     // ---------- Lệnh chuyển tab ----------
@@ -275,6 +288,23 @@ internal partial class MainViewModel
 
         // Nạp danh sách mã quét gần đây (không ghi đè kết quả đang tra cứu).
         CodeLookup.LoadCommand.Execute(null);
+    }
+
+    /// <summary>
+    /// Chuyển sang tab Truy xuất Sản xuất (Local) — quản lý PO.
+    /// </summary>
+    [RelayCommand]
+    private void ShowProductionOrdersTab()
+    {
+        if (!CanViewProduction)
+        {
+            return;
+        }
+
+        SwitchTo(AppSection.ProductionOrders, "Truy xuất Sản xuất (Local)");
+
+        // Nạp danh sách PO (nếu chưa có) khi mở tab.
+        ProductionOrders.Load();
     }
 
     /// <summary>

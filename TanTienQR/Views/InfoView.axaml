@@ -125,28 +125,118 @@
                 </Grid>
             </Border>
 
-            <!-- Sự kiện gần đây -->
-            <Border Grid.Column="1" Classes="panel" Padding="14,12">
-                <Grid RowDefinitions="Auto,*" RowSpacing="10">
-                    <TextBlock Classes="sectionTitle" Text="SỰ KIỆN GẦN ĐÂY" />
-                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                        <ItemsControl ItemsSource="{Binding Events}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:ScanEvent">
-                                    <Border Classes="event" Margin="0,2" Padding="9,7">
-                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
-                                            <Border Classes="stripe" Classes.warning="{Binding IsWarning}" Classes.critical="{Binding IsCritical}" />
-                                            <TextBlock Grid.Column="1" FontSize="11" TextWrapping="Wrap" MaxLines="2"
-                                                       VerticalAlignment="Center" Text="{Binding Message}" />
-                                            <TextBlock Grid.Column="2" Classes="label mono" FontSize="10"
-                                                       VerticalAlignment="Center" Text="{Binding TimeText}" />
+            <!-- Sự kiện gần đây + Thông tin sản xuất -->
+            <Border Grid.Column="1" Classes="panel" Padding="8,10">
+                <TabControl>
+                    <TabItem Header="Sự kiện gần đây">
+                        <Grid RowDefinitions="Auto,*" RowSpacing="10" Margin="6,8,6,4">
+                            <TextBlock Classes="sectionTitle" Text="SỰ KIỆN GẦN ĐÂY" />
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{Binding Events}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:ScanEvent">
+                                            <Border Classes="event" Margin="0,2" Padding="9,7">
+                                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
+                                                    <Border Classes="stripe" Classes.warning="{Binding IsWarning}" Classes.critical="{Binding IsCritical}" />
+                                                    <TextBlock Grid.Column="1" FontSize="11" TextWrapping="Wrap" MaxLines="2"
+                                                               VerticalAlignment="Center" Text="{Binding Message}" />
+                                                    <TextBlock Grid.Column="2" Classes="label mono" FontSize="10"
+                                                               VerticalAlignment="Center" Text="{Binding TimeText}" />
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Grid>
+                    </TabItem>
+
+                    <TabItem Header="Thông tin sản xuất">
+                        <Grid RowDefinitions="Auto,*" RowSpacing="10" Margin="6,8,6,4">
+                            <TextBlock Classes="sectionTitle" Text="THÔNG TIN SẢN XUẤT" />
+
+                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                                <StackPanel Spacing="10">
+
+                                    <!-- Mã PO + trạng thái -->
+                                    <Border Classes="device" Padding="12">
+                                        <Grid RowDefinitions="Auto,Auto" RowSpacing="8">
+                                            <Grid ColumnDefinitions="*,Auto">
+                                                <StackPanel Spacing="2">
+                                                    <TextBlock Classes="label" FontSize="10" Text="LỆNH SẢN XUẤT" />
+                                                    <TextBlock Classes="mono" FontSize="15" FontWeight="Bold"
+                                                               Foreground="{StaticResource TextPrimary}"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               Text="{Binding ProductionInfo.OrderNoText}" />
+                                                </StackPanel>
+                                                <Border Grid.Column="1" Classes="badge"
+                                                        VerticalAlignment="Center"
+                                                        Classes.running="{Binding ProductionInfo.IsRunning}">
+                                                    <TextBlock Text="{Binding ProductionInfo.StatusText}" />
+                                                </Border>
+                                            </Grid>
+
+                                            <Grid Grid.Row="1" ColumnDefinitions="*,*" ColumnSpacing="10">
+                                                <StackPanel Grid.Column="0" Spacing="2">
+                                                    <TextBlock Classes="label" FontSize="10" Text="SỐ LƯỢNG ĐƠN" />
+                                                    <TextBlock Classes="mono" FontSize="14" FontWeight="SemiBold"
+                                                               Foreground="{StaticResource TextPrimary}"
+                                                               Text="{Binding ProductionInfo.OrderQtyText}" />
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="1" Spacing="2">
+                                                    <TextBlock Classes="label" FontSize="10" Text="ĐÃ QUÉT / TỔNG" />
+                                                    <TextBlock Classes="mono" FontSize="14" FontWeight="SemiBold"
+                                                               Foreground="{StaticResource TextPrimary}"
+                                                               Text="{Binding ProductionInfo.ProgressText}" />
+                                                </StackPanel>
+                                            </Grid>
                                         </Grid>
                                     </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
-                </Grid>
+
+                                    <!-- Tiến trình -->
+                                    <Border Classes="device" Padding="12">
+                                        <StackPanel Spacing="6">
+                                            <Grid ColumnDefinitions="*,Auto">
+                                                <TextBlock Classes="label" FontSize="10" Text="TIẾN TRÌNH SẢN XUẤT" />
+                                                <TextBlock Grid.Column="1" Classes="mono" FontSize="11"
+                                                           Foreground="{StaticResource TextPrimary}"
+                                                           Text="{Binding ProductionInfo.ProgressPercentText}" />
+                                            </Grid>
+                                            <ProgressBar Minimum="0" Maximum="100"
+                                                         Value="{Binding ProductionInfo.ProgressPercent}"
+                                                         Height="8" />
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- Mốc thời gian -->
+                                    <Border Classes="device" Padding="12">
+                                        <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
+                                            <Grid ColumnDefinitions="96,*">
+                                                <TextBlock Classes="label" FontSize="10" Text="TẠO PO" VerticalAlignment="Center" />
+                                                <TextBlock Grid.Column="1" Classes="mono" FontSize="11"
+                                                           Foreground="{StaticResource TextPrimary}"
+                                                           Text="{Binding ProductionInfo.CreatedText}" />
+                                            </Grid>
+                                            <Grid Grid.Row="1" ColumnDefinitions="96,*">
+                                                <TextBlock Classes="label" FontSize="10" Text="BẮT ĐẦU" VerticalAlignment="Center" />
+                                                <TextBlock Grid.Column="1" Classes="mono" FontSize="11"
+                                                           Foreground="{StaticResource TextPrimary}"
+                                                           Text="{Binding ProductionInfo.StartedText}" />
+                                            </Grid>
+                                            <Grid Grid.Row="2" ColumnDefinitions="96,*">
+                                                <TextBlock Classes="label" FontSize="10" Text="HOÀN TẤT" VerticalAlignment="Center" />
+                                                <TextBlock Grid.Column="1" Classes="mono" FontSize="11"
+                                                           Foreground="{StaticResource TextPrimary}"
+                                                           Text="{Binding ProductionInfo.CompletedText}" />
+                                            </Grid>
+                                        </Grid>
+                                    </Border>
+
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+                    </TabItem>
+                </TabControl>
             </Border>
         </Grid>
     </Grid>

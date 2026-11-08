@@ -4,6 +4,7 @@ using ClassLibraryMT.Communications.Plc;
 using ClassLibraryMT.Configuration;
 using ClassLibraryMT.Logging;
 using ClassLibraryMT.Plc;
+using ClassLibraryMT.Po;
 using ClassLibraryMT.Scans;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -43,6 +44,11 @@ public static class TanTienAppServices
 
         // ---- Quản lý tham số PLC & recipe (tab "Chỉnh PLC") ----
         services.AddPlcSettings(configuration);
+
+        // ---- Quản lý Production Order (PO) ----
+        // Đăng ký TRƯỚC CameraSignalWorker vì worker này cần
+        // ProductionOrderService để gate mã quét theo PO đang chạy.
+        services.AddProductionOrders(configuration);
 
         // ---- Camera: bind cấu hình thủ công (tương thích Native AOT) ----
         services.AddOptions<CameraOptions>()
@@ -155,6 +161,9 @@ public static class TanTienAppServices
         // Heartbeat PLC: ghi trạng thái Ready xuống D16 mỗi chu kỳ.
         services.AddHostedService<PlcHeartbeatService>();
 
+        // Worker gửi mã kích hoạt PO định kỳ (>2s/lần).
+        services.AddHostedService<PoActivationWorker>();
+
         // ---- Bộ đếm runtime (tab Dev) ----
         // Singleton: gom số liệu từ nhiều service, dùng Interlocked.
         services.AddSingleton<RuntimeCounters>();
@@ -171,6 +180,8 @@ public static class TanTienAppServices
         services.AddSingleton<PlcSettingsViewModel>();
         services.AddSingleton<DevViewModel>();
         services.AddSingleton<CodeLookupViewModel>();
+        services.AddSingleton<ProductionInfoViewModel>();
+        services.AddSingleton<ProductionOrdersViewModel>();
 
         // ---- Bàn phím ảo cho máy cảm ứng ----
         // VM bàn phím là singleton để mọi cửa sổ dùng chung một trạng thái

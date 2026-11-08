@@ -53,6 +53,16 @@ internal partial class MainViewModel
             case ScanOutcome.Duplicate:
                 AddEvent($"Mã trùng với lần quét gần đây · {record.Serial}", EventLevel.Warning);
                 break;
+            case ScanOutcome.NoProductionOrder:
+                AddEvent(
+                    "Chưa bắt đầu sản xuất — mã bị loại bỏ (không ghi PLC)",
+                    EventLevel.Warning);
+                break;
+            case ScanOutcome.InvalidForOrder:
+                AddEvent(
+                    $"Mã không thuộc PO đang chạy · {record.Serial}",
+                    EventLevel.Warning);
+                break;
             case ScanOutcome.Overload:
                 AddEvent(
                     $"Hệ thống đang xử lý mã trước, bỏ qua mã mới · {record.Raw}",
@@ -63,9 +73,13 @@ internal partial class MainViewModel
                 break;
         }
 
-        // Mã bị từ chối do quá tải thì KHÔNG ghi PLC -> không phải lỗi PLC.
-        if (!record.PlcWritten && record.Outcome != ScanOutcome.Overload)
+        // Mã bị từ chối do quá tải / chưa bắt đầu sản xuất thì KHÔNG ghi PLC
+        // -> không phải lỗi PLC.
+        if (!record.PlcWritten
+            && record.Outcome is not (ScanOutcome.Overload or ScanOutcome.NoProductionOrder))
+        {
             AddEvent("Ghi kết quả xuống PLC thất bại", EventLevel.Critical);
+        }
     }
 
     private void AddEvent(string message, EventLevel level)

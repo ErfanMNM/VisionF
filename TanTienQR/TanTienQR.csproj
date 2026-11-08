@@ -73,6 +73,7 @@
     <ProjectReference Include="..\ClassLibraryMT.Auth\ClassLibraryMT.Auth.csproj" />
     <ProjectReference Include="..\ClassLibraryMT.Plc\ClassLibraryMT.Plc.csproj" />
     <ProjectReference Include="..\ClassLibraryMT.Scans\ClassLibraryMT.Scans.csproj" />
+    <ProjectReference Include="..\ClassLibraryMT.Po\ClassLibraryMT.Po.csproj" />
   </ItemGroup>
 
 </Project>

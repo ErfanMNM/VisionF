@@ -36,6 +36,8 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     private readonly PlcSettingsViewModel _plcSettingsView;
     private readonly DevViewModel _devView;
     private readonly CodeLookupViewModel _codeLookupView;
+    private readonly ProductionInfoViewModel _productionInfo;
+    private readonly ProductionOrdersViewModel _productionOrders;
     private readonly VirtualKeyboardViewModel _keyboard;
     private readonly IUserActionLogger _actionLog;
     private readonly ISessionContext _session;
@@ -59,6 +61,8 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         PlcSettingsViewModel plcSettingsView,
         DevViewModel devView,
         CodeLookupViewModel codeLookupView,
+        ProductionInfoViewModel productionInfo,
+        ProductionOrdersViewModel productionOrders,
         VirtualKeyboardViewModel keyboard,
         IUserActionLogger actionLog,
         ISessionContext session,
@@ -72,6 +76,8 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         _plcSettingsView = plcSettingsView;
         _devView = devView;
         _codeLookupView = codeLookupView;
+        _productionInfo = productionInfo;
+        _productionOrders = productionOrders;
         _keyboard = keyboard;
         _actionLog = actionLog;
         _session = session;
@@ -266,6 +272,16 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     /// Trang tra cứu mã (tab Tra cứu mã: nhập tay / handheld cầm tay).
     /// </summary>
     public CodeLookupViewModel CodeLookup => _codeLookupView;
+
+    /// <summary>
+    /// Bảng thông tin sản xuất (tab Thông tin sản xuất trong InfoView).
+    /// </summary>
+    public ProductionInfoViewModel ProductionInfo => _productionInfo;
+
+    /// <summary>
+    /// Trang truy xuất sản xuất (tab Truy xuất Sản xuất Local: quản lý PO).
+    /// </summary>
+    public ProductionOrdersViewModel ProductionOrders => _productionOrders;
 
     /// <summary>
     /// Bàn phím ảo cho máy cảm ứng (hiện khi chạm vào ô nhập).

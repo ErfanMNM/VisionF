@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Threading.Channels;
 using ClassLibraryMT.Communications.CodeReaderProtocol;
 using ClassLibraryMT.DeviceStatus;
+using ClassLibraryMT.Po;
 using ClassLibraryMT.Scans;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -33,6 +34,13 @@ namespace TanTienQR.Services;
 /// qua <see cref="IScanRecordWriter"/> — hàng đợi bất đồng bộ nên không ảnh
 /// hưởng tới luồng xử lý.
 /// </para>
+///
+/// <para>
+/// <b>Gate Production Order:</b> trước khi quyết định Pass/Fail, mỗi mã
+/// được kiểm tra với PO đang chạy qua <see cref="ProductionOrderService"/>:
+/// chưa bắt đầu sản xuất → loại mã (không ghi PLC); mã ngoài PO hoặc trùng
+/// PO → Fail (gửi D12 = 0); mã hợp lệ → Pass và được đánh dấu đã quét.
+/// </para>
 /// </summary>
 internal sealed class CameraSignalWorker : BackgroundService
 {
@@ -54,6 +62,7 @@ internal sealed class CameraSignalWorker : BackgroundService
     private readonly IScanRecordWriter _scanWriter;
     private readonly CameraOptions _opt;
     private readonly RuntimeCounters _counters;
+    private readonly ProductionOrderService _po;
     private readonly ILogger<CameraSignalWorker> _logger;
 
     // Hàng đợi để callback của camera không bị chặn bởi I/O.
@@ -85,6 +94,7 @@ internal sealed class CameraSignalWorker : BackgroundService
         IScanRecordWriter scanWriter,
         IOptions<CameraOptions> options,
         RuntimeCounters counters,
+        ProductionOrderService po,
         ILogger<CameraSignalWorker> logger)
     {
         _camera = camera;
@@ -93,6 +103,7 @@ internal sealed class CameraSignalWorker : BackgroundService
         _scanWriter = scanWriter;
         _opt = options.Value;
         _counters = counters;
+        _po = po;
         _logger = logger;
     }
 
@@ -171,6 +182,53 @@ internal sealed class CameraSignalWorker : BackgroundService
             return;
         }
 
+        // ===== GATE PRODUCTION ORDER =====
+        // Kiểm tra PO TRƯỚC khi check trùng cửa sổ thời gian: nếu chưa bắt đầu
+        // sản xuất thì mọi mã đều bị loại bỏ (không ghi PLC).
+        var poResult = _po.ValidateCode(gtin, serial);
+
+        if (poResult == PoCodeValidation.NoProductionOrder)
+        {
+            _logger.LogWarning(
+                "Chưa bắt đầu sản xuất, loại mã (không ghi PLC): GTIN={Gtin} Serial={Serial}",
+                gtin, serial);
+
+            var processingMs = MeasureProcessingMs(request);
+
+            // KHÔNG ghi PLC — mã bị loại bỏ hoàn toàn.
+            _counters.AddScan(pass: false);
+            Publish(raw, gtin, serial, ScanOutcome.NoProductionOrder, request.ReceivedUtc, plcWritten: false, processingMs);
+            return;
+        }
+
+        if (poResult == PoCodeValidation.InvalidForOrder)
+        {
+            _logger.LogWarning(
+                "Mã không thuộc PO đang chạy, gửi Fail xuống PLC: GTIN={Gtin} Serial={Serial}",
+                gtin, serial);
+
+            var processingMs = MeasureProcessingMs(request);
+
+            var written = await _plc.WriteResultAsync(pass: false, ct);
+            _counters.AddScan(pass: false);
+            Publish(raw, gtin, serial, ScanOutcome.InvalidForOrder, request.ReceivedUtc, written, processingMs);
+            return;
+        }
+
+        if (poResult == PoCodeValidation.Duplicate)
+        {
+            _logger.LogWarning(
+                "Mã đã quét trong PO đang chạy, gửi Fail xuống PLC: GTIN={Gtin} Serial={Serial}",
+                gtin, serial);
+
+            var processingMs = MeasureProcessingMs(request);
+
+            var written = await _plc.WriteResultAsync(pass: false, ct);
+            _counters.AddScan(pass: false);
+            Publish(raw, gtin, serial, ScanOutcome.Duplicate, request.ReceivedUtc, written, processingMs);
+            return;
+        }
+
         // Mã trùng (quét lại trong cửa sổ thời gian) → Fail.
         if (IsDuplicate($"{gtin}|{serial}"))
         {
@@ -186,6 +244,10 @@ internal sealed class CameraSignalWorker : BackgroundService
 
         // Đọc được mã hợp lệ → Pass (không cần gọi API để quyết định).
         var passProcessingMs = MeasureProcessingMs(request);
+
+        // Đánh dấu mã đã quét TRƯỚC khi ghi PLC: việc ghi DB PO là I/O
+        // chậm hơn, không nên chặn việc báo kết quả xuống PLC.
+        await _po.MarkCodeScannedAsync(gtin, serial, ct);
 
         var ok = await _plc.WriteResultAsync(pass: true, ct);
         _counters.AddScan(pass: true);
@@ -260,9 +322,12 @@ internal sealed class CameraSignalWorker : BackgroundService
             ProcessingTimeMs = processingMs,
             PlcResult = plcWritten
                 ? ScanPlcResults.Ok
-                : outcome == ScanOutcome.Overload
-                    ? ScanPlcResults.Skipped
-                    : ScanPlcResults.Failed,
+                : outcome switch
+                {
+                    ScanOutcome.Overload => ScanPlcResults.Skipped,
+                    ScanOutcome.NoProductionOrder => ScanPlcResults.Skipped,
+                    _ => ScanPlcResults.Failed,
+                },
             BatchNo = ScanBatchDefaults.NoBatch,
             Raw = raw,
         });
