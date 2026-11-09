@@ -41,7 +41,12 @@ internal static class Program
         Console.WriteLine("=== PoServer (server giả lập Production Order) ===");
         Console.WriteLine($"Đang lắng nghe: {prefix}");
         Console.WriteLine($"Database: {dbPath}");
+        Console.WriteLine();
+        Console.WriteLine("Giao diện tạo PO mẫu: mở trình duyệt tại");
+        Console.WriteLine($"    {prefix}");
+        Console.WriteLine();
         Console.WriteLine("Endpoints:");
+        Console.WriteLine("  GET  /                      (giao diện web tạo PO mẫu)");
         Console.WriteLine("  GET  /api/po");
         Console.WriteLine("  GET  /api/po/{orderNo}/codes");
         Console.WriteLine("  POST /api/po");
@@ -94,6 +99,15 @@ internal static class Program
         try
         {
             var path = request.Url?.AbsolutePath.Trim('/') ?? "";
+
+            // Giao diện web tạo PO mẫu: GET / -> www/index.html
+            if (request.HttpMethod == "GET"
+                && (path.Length == 0
+                    || path.Equals("index.html", StringComparison.OrdinalIgnoreCase)))
+            {
+                await WriteHtmlAsync(response).ConfigureAwait(false);
+                return;
+            }
 
             if (request.HttpMethod == "GET" && path.Equals("api/po", StringComparison.OrdinalIgnoreCase))
             {
@@ -205,6 +219,35 @@ internal static class Program
     }
 
     /// <summary>
+    /// Ghi trang HTML giao diện tạo PO mẫu ra response.
+    /// </summary>
+    private static async Task WriteHtmlAsync(HttpListenerResponse response)
+    {
+        var htmlPath = Path.Combine(AppContext.BaseDirectory, "www", "index.html");
+
+        if (!File.Exists(htmlPath))
+        {
+            // Chạy từ source (dotnet run) -> www nằm cạnh file .csproj.
+            var sourceHtml = Path.Combine(
+                AppContext.BaseDirectory, "..", "..", "..", "..", "www", "index.html");
+            htmlPath = Path.GetFullPath(sourceHtml);
+        }
+
+        if (!File.Exists(htmlPath))
+        {
+            await WriteErrorAsync(
+                response, 404, "Không tìm thấy file giao diện www/index.html.").ConfigureAwait(false);
+            return;
+        }
+
+        response.StatusCode = 200;
+        response.ContentType = "text/html; charset=utf-8";
+
+        var bytes = await File.ReadAllBytesAsync(htmlPath).ConfigureAwait(false);
+        await response.OutputStream.WriteAsync(bytes).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Ghi JSON ra response.
     /// </summary>
     private static async Task WriteJsonAsync<T>(
@@ -227,7 +270,8 @@ internal static class Program
         response.ContentType = "application/json; charset=utf-8";
 
         var payload = JsonSerializer.SerializeToUtf8Bytes(
-            new { ok = false, message }, PoServerJsonContext.Default.PoActivateResult);
+            new PoActivateResult { Ok = false, Message = message },
+            PoServerJsonContext.Default.PoActivateResult);
         await response.OutputStream.WriteAsync(payload).ConfigureAwait(false);
     }
 

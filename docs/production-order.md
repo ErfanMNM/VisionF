@@ -57,9 +57,10 @@ Console app chạy độc lập, dùng `HttpListener` + SQLite.
 
 | File | Vai trò |
 | ---- | ------- |
-| `Program.cs` | `HttpListener` + routing + seed dữ liệu mẫu |
+| `Program.cs` | `HttpListener` + routing + seed dữ liệu mẫu + phục vụ giao diện web |
 | `PoServerStore.cs` | SQLite `Orders` / `Codes` |
 | `PoServerJsonContext.cs` | JSON context (AOT-safe) |
+| `www/index.html` | Giao diện web tạo PO mẫu (HTML/CSS/JS thuần, không cần build) |
 
 ### 2.3. Tích hợp trong `TanTienQR`
 
@@ -188,10 +189,26 @@ dotnet run --project tools/PoServer/PoServer.csproj -- http://0.0.0.0:5080/
 
 Khi khởi động lần đầu, server tự **seed 3 PO × 100 mã** (nếu database còn trống).
 
+### Giao diện web tạo PO mẫu
+
+Mở trình duyệt tại **[http://127.0.0.1:5080/](http://127.0.0.1:5080/)** để dùng công cụ tạo PO:
+
+- **Form "Tạo PO mới"** — nhập *Mã lệnh sản xuất* + *Số lượng mã* → bấm **Tạo PO**
+  - Nút **Gợi ý mã PO** tự điền mã theo ngày, ví dụ `PO20261109-001`
+  - Mỗi mã được sinh theo chuẩn TXNG Digital Link: `/01/{gtin}/21/{serial}`
+- **Bảng "Danh sách PO"** — hiển thị các PO còn hiệu lực (mã PO, số lượng mã, thời điểm tạo)
+  - Nút **Làm mới** để tải lại danh sách
+- Thông báo kết quả hiển thị ngay dưới form (xanh = thành công, đỏ = lỗi, ví dụ mã PO đã tồn tại)
+
+> Trang HTML nằm tại `tools/PoServer/www/index.html` và được copy tự động vào
+> thư mục output khi build (`CopyToOutputDirectory=PreserveNewest`), nên có thể
+> chỉnh sửa giao diện rồi build lại là dùng được ngay.
+
 ### API
 
 | Method | Endpoint | Mô tả |
 | ------ | -------- | ---- |
+| `GET` | `/` | Giao diện web tạo PO mẫu (`www/index.html`) |
 | `GET` | `/api/po` | Danh sách PO còn hiệu lực |
 | `GET` | `/api/po/{orderNo}/codes` | Tải tập mã của PO |
 | `POST` | `/api/po` | Tạo PO mới — body `{ "orderNo": "PO001", "orderQty": 100 }` |
@@ -210,6 +227,7 @@ curl -X POST http://127.0.0.1:5080/api/po -H "Content-Type: application/json" -d
 ## 7. Quy trình vận hành
 
 1. **Khởi động `PoServer`** (nếu dùng server giả lập).
+   - Mở [http://127.0.0.1:5080/](http://127.0.0.1:5080/) để tạo PO mẫu (không bắt buộc — server cũng tự seed 3 PO × 100 mã).
 2. **Khởi động SCADA TanTienQR**, đăng nhập.
 3. Mở tab **Truy xuất Sản xuất (Local)** → bấm **Tải PO từ server**.
    - Mỗi PO mới tạo 1 file `logs/po/{yyyy-MM}/{OrderNo}.db`.

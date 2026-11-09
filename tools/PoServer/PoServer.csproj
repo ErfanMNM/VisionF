@@ -18,4 +18,9 @@
     <ProjectReference Include="..\..\ClassLibraryMT.Po\ClassLibraryMT.Po.csproj" />
   </ItemGroup>
 
+  <!-- Copy giao diện web tạo PO mẫu vào output -->
+  <ItemGroup>
+    <None Update="www\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
