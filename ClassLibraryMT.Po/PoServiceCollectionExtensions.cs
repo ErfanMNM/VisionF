@@ -46,7 +46,10 @@ public static class PoServiceCollectionExtensions
             .Validate(o => o.CodeSampleSize > 0, "Po:CodeSampleSize phai lon hon 0.")
             .ValidateOnStart();
 
-        services.TryAddSingleton(sp =>
+        // Đăng ký theo interface IPoClient — ProductionOrderService yêu cầu
+        // IPoClient chứ không phải PoClient, nên đăng ký concrete class sẽ
+        // khiến DI không resolve được và app crash lúc khởi động.
+        services.TryAddSingleton<IPoClient>(sp =>
         {
             var options = sp.GetRequiredService<IOptions<PoOptions>>().Value;
             return new PoClient(options.BaseUrl);
