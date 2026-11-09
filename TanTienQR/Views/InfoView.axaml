@@ -249,9 +249,10 @@
                     <!-- Dropdown PO + nút Tải PO -->
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                         <ComboBox Grid.Column="0"
+                                  Classes="field"
                                   Height="44"
                                   HorizontalAlignment="Stretch"
-                                  VerticalAlignment="Stretch"
+                                  VerticalAlignment="Center"
                                   ItemsSource="{Binding ProductionInfo.Orders.SelectableOrders}"
                                   SelectedItem="{Binding ProductionInfo.Orders.SelectedOrder}"
                                   PlaceholderText="Chọn PO để bắt đầu sản xuất...">
@@ -263,44 +264,42 @@
                         </ComboBox>
 
                         <Button Grid.Column="1"
-                                Classes="soft,iconbtn"
-                                MinWidth="104"
+                                Classes="whitebtn,iconbtn"
+                                MinWidth="108"
+                                ToolTip.Tip="Tải PO / Cập nhật danh sách PO từ server"
                                 IsEnabled="{Binding !ProductionInfo.IsBusy}"
                                 Command="{Binding ProductionInfo.Orders.DownloadOrdersCommand}">
                             <StackPanel>
-                                <Path Stroke="{StaticResource TextPrimary}"
-                                      Data="{StaticResource Icon.Download}" />
+                                <Path Data="{StaticResource Icon.Download}" />
                                 <TextBlock Text="Tải PO" />
                             </StackPanel>
                         </Button>
                     </Grid>
 
-                    <!-- Bắt đầu / Huỷ PO -->
-                    <Grid ColumnDefinitions="1.3*,*" ColumnSpacing="8">
+                    <!-- Bắt đầu / Huỷ PO — 2 nút bằng nhau như mẫu -->
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
                         <Button Grid.Column="0"
-                                Classes="primary,iconbtn"
+                                Classes="startbtn,iconbtn"
                                 FontSize="14"
+                                HorizontalAlignment="Stretch"
                                 IsEnabled="{Binding ProductionInfo.CanStart}"
                                 Command="{Binding ProductionInfo.Orders.StartProductionCommand}">
                             <StackPanel>
-                                <Path Fill="White"
-                                      Stroke="Transparent"
-                                      Data="{StaticResource Icon.Play}" />
-                                <TextBlock Text="Bắt đầu" Foreground="White" />
+                                <Path Data="{StaticResource Icon.Play}" />
+                                <TextBlock Text="Bắt đầu" />
                             </StackPanel>
                         </Button>
 
-                        <!-- PO đủ 100% thì tự hoàn tất — chỉ hiện nút Huỷ khi chưa đủ -->
+                        <!-- PO đủ 100% thì tự hoàn tất — luôn hiện nút Huỷ, disable khi chưa đủ điều kiện -->
                         <Button Grid.Column="1"
-                                Classes="soft,iconbtn"
+                                Classes="whitebtn,danger,iconbtn"
                                 FontSize="14"
-                                IsVisible="{Binding ProductionInfo.CanCancel}"
+                                HorizontalAlignment="Stretch"
                                 IsEnabled="{Binding ProductionInfo.CanCancel}"
                                 Command="{Binding ProductionInfo.Orders.CancelProductionCommand}">
                             <StackPanel>
-                                <Path Stroke="{StaticResource Danger}"
-                                      Data="{StaticResource Icon.Close}" />
-                                <TextBlock Text="Huỷ PO" Foreground="{StaticResource Danger}" />
+                                <Path Data="{StaticResource Icon.Close}" />
+                                <TextBlock Text="Huỷ PO" />
                             </StackPanel>
                         </Button>
                     </Grid>

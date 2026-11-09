@@ -404,6 +404,96 @@
             <Setter Property="BorderBrush" Value="{StaticResource LineColor}" />
             <Setter Property="CornerRadius" Value="10" />
         </Style>
+        <!-- Nút trắng viền xám (giống mẫu: Tải PO / Hoàn tất) -->
+        <Style Selector="Button.whitebtn">
+            <Setter Property="MinHeight" Value="38" />
+            <Setter Property="Padding" Value="14,0" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Background" Value="{StaticResource BgPanel}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineColor}" />
+            <Setter Property="BorderThickness" Value="1.5" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        </Style>
+        <Style Selector="Button.whitebtn /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource BgPanel}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineColor}" />
+            <Setter Property="BorderThickness" Value="1.5" />
+            <Setter Property="CornerRadius" Value="10" />
+        </Style>
+        <Style Selector="Button.whitebtn:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource BgPanel}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineAccent}" />
+        </Style>
+        <Style Selector="Button.whitebtn:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#F1F5F9" />
+            <Setter Property="BorderBrush" Value="#E2E8F0" />
+        </Style>
+        <Style Selector="Button.whitebtn:disabled TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
+        </Style>
+        <Style Selector="Button.whitebtn:disabled Path">
+            <Setter Property="Stroke" Value="{StaticResource TextMuted}" />
+        </Style>
+        <!-- Nút trắng chữ đỏ (Huỷ PO) -->
+        <Style Selector="Button.whitebtn.danger TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Danger}" />
+        </Style>
+        <Style Selector="Button.whitebtn.danger Path">
+            <Setter Property="Stroke" Value="{StaticResource Danger}" />
+            <Setter Property="Fill" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.whitebtn.danger:disabled TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
+        </Style>
+        <Style Selector="Button.whitebtn.danger:disabled Path">
+            <Setter Property="Stroke" Value="{StaticResource TextMuted}" />
+        </Style>
+        <!-- Chữ trong nút cam Bắt đầu luôn đen (kể cả icon Play) -->
+        <Style Selector="Button.startbtn Path">
+            <Setter Property="Fill" Value="#1A1A1A" />
+            <Setter Property="Stroke" Value="Transparent" />
+        </Style>
+        <!-- Nút cam Bắt đầu (giống mẫu Dashboard 4) -->
+        <Style Selector="Button.startbtn">
+            <Setter Property="MinHeight" Value="38" />
+            <Setter Property="Padding" Value="14,0" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Background" Value="#F5A623" />
+            <Setter Property="BorderBrush" Value="#F5A623" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="#1A1A1A" />
+        </Style>
+        <Style Selector="Button.startbtn /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#F5A623" />
+            <Setter Property="BorderBrush" Value="#F5A623" />
+            <Setter Property="CornerRadius" Value="10" />
+        </Style>
+        <Style Selector="Button.startbtn:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#FBBF24" />
+            <Setter Property="BorderBrush" Value="#FBBF24" />
+        </Style>
+        <Style Selector="Button.startbtn:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#D97706" />
+            <Setter Property="BorderBrush" Value="#D97706" />
+        </Style>
+        <Style Selector="Button.startbtn TextBlock">
+            <Setter Property="Foreground" Value="#1A1A1A" />
+        </Style>
+        <Style Selector="Button.startbtn:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#EDEFF2" />
+            <Setter Property="BorderBrush" Value="#E2E8F0" />
+        </Style>
+        <Style Selector="Button.startbtn:disabled TextBlock">
+            <Setter Property="Foreground" Value="#9AA8B2" />
+        </Style>
+        <Style Selector="Button.startbtn:disabled Path">
+            <Setter Property="Fill" Value="#9AA8B2" />
+            <Setter Property="Stroke" Value="Transparent" />
+        </Style>
 
         <!-- ===== Nut co icon + chu (canh giua chuẩn) =====
              Dung chung cho moi nut dang "icon + nhan" de tranh viec
