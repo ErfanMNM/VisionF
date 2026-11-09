@@ -213,7 +213,7 @@
                       StrokeThickness="2"
                       StrokeLineCap="Round"
                       StrokeJoin="Round"
-                      Data="M4,12 L9,17 L20,6" />
+                      Data="{StaticResource Icon.Check}" />
                 <StackPanel Grid.Column="1" Spacing="2">
                   <TextBlock Text="Nhận tín hiệu camera RD"
                              FontSize="13"
@@ -237,7 +237,7 @@
                       StrokeThickness="2"
                       StrokeLineCap="Round"
                       StrokeJoin="Round"
-                      Data="M4,8 L8,8 M12,8 L20,8 M6,4 L6,12 M14,4 L14,12 M4,16 L20,16 M8,12 L8,20 M16,12 L16,20" />
+                      Data="{StaticResource Icon.Sliders}" />
                 <StackPanel Grid.Column="1" Spacing="2">
                   <TextBlock Text="Ghi kết quả xuống PLC Omron"
                              FontSize="13"
@@ -261,7 +261,7 @@
                       StrokeThickness="2"
                       StrokeLineCap="Round"
                       StrokeJoin="Round"
-                      Data="M12,11 A4,4 0 1 0 12,3 A4,4 0 1 0 12,11 Z M4,21 C4,16.5 7.6,14 12,14 C16.4,14 20,16.5 20,21" />
+                      Data="{StaticResource Icon.User}" />
                 <StackPanel Grid.Column="1" Spacing="2">
                   <TextBlock Text="Phân quyền theo vai trò"
                              FontSize="13"
@@ -367,7 +367,7 @@
                           StrokeThickness="1.8"
                           StrokeLineCap="Round"
                           StrokeJoin="Round"
-                          Data="M12,11 A4,4 0 1 0 12,3 A4,4 0 1 0 12,11 Z M4,21 C4,16.5 7.6,14 12,14 C16.4,14 20,16.5 20,21" />
+                          Data="{StaticResource Icon.User}" />
                   </TextBox.InnerLeftContent>
                 </TextBox>
               </StackPanel>
@@ -391,7 +391,7 @@
                           StrokeThickness="1.8"
                           StrokeLineCap="Round"
                           StrokeJoin="Round"
-                          Data="M5,11 L5,7 A7,7 0 0 1 19,7 L19,11 M6,11 L6,20 L18,20 L18,11 Z M12,14.5 L12,17" />
+                          Data="{StaticResource Icon.Link}" />
                   </TextBox.InnerLeftContent>
                   <TextBox.InnerRightContent>
                     <ToggleButton Classes="reveal"
@@ -404,7 +404,7 @@
                             StrokeThickness="1.8"
                             StrokeLineCap="Round"
                             StrokeJoin="Round"
-                            Data="M2,12 C5,6 9.5,4 12,4 C14.5,4 19,6 22,12 C19,18 14.5,20 12,20 C9.5,20 5,18 2,12 Z M12,12 M12,9.5 A2.5,2.5 0 1 0 12,14.5 A2.5,2.5 0 1 0 12,9.5 Z" />
+                            Data="{StaticResource Icon.Search}" />
                     </ToggleButton>
                   </TextBox.InnerRightContent>
                 </TextBox>
@@ -546,7 +546,7 @@
                             StrokeThickness="1.8"
                             StrokeLineCap="Round"
                             StrokeJoin="Round"
-                            Data="M2,12 C5,6 9.5,4 12,4 C14.5,4 19,6 22,12 C19,18 14.5,20 12,20 C9.5,20 5,18 2,12 Z M12,12 M12,9.5 A2.5,2.5 0 1 0 12,14.5 A2.5,2.5 0 1 0 12,9.5 Z" />
+                            Data="{StaticResource Icon.Search}" />
                     </ToggleButton>
                   </TextBox.InnerRightContent>
                 </TextBox>
@@ -572,7 +572,7 @@
                             StrokeThickness="1.8"
                             StrokeLineCap="Round"
                             StrokeJoin="Round"
-                            Data="M2,12 C5,6 9.5,4 12,4 C14.5,4 19,6 22,12 C19,18 14.5,20 12,20 C9.5,20 5,18 2,12 Z M12,12 M12,9.5 A2.5,2.5 0 1 0 12,14.5 A2.5,2.5 0 1 0 12,9.5 Z" />
+                            Data="{StaticResource Icon.Search}" />
                     </ToggleButton>
                   </TextBox.InnerRightContent>
                 </TextBox>
@@ -615,7 +615,7 @@
                             StrokeThickness="1.8"
                             StrokeLineCap="Round"
                             StrokeJoin="Round"
-                            Data="M2,12 C5,6 9.5,4 12,4 C14.5,4 19,6 22,12 C19,18 14.5,20 12,20 C9.5,20 5,18 2,12 Z M12,12 M12,9.5 A2.5,2.5 0 1 0 12,14.5 A2.5,2.5 0 1 0 12,9.5 Z" />
+                            Data="{StaticResource Icon.Search}" />
                     </ToggleButton>
                   </TextBox.InnerRightContent>
                 </TextBox>

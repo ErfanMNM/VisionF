@@ -10,6 +10,11 @@
 
     <Application.Resources>
         <ResourceDictionary>
+            <!-- Bo icon SVG dung chung (Controls/Icons.axaml) -->
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceInclude Source="avares://TanTienQR/Controls/Icons.axaml" />
+            </ResourceDictionary.MergedDictionaries>
+
             <!-- Bang mau phong cach Google 2026: nen sang, xanh duong primary
                  (theo logo cong ty Tan Tien). -->
             <SolidColorBrush x:Key="BgBase">#F6F9FB</SolidColorBrush>
@@ -33,8 +38,18 @@
             <SolidColorBrush x:Key="LineOk">#A8E0BE</SolidColorBrush>
             <SolidColorBrush x:Key="LineAccent">#A9C4F5</SolidColorBrush>
 
-            <FontFamily x:Key="UiFont">Google Sans, Segoe UI, Inter</FontFamily>
-            <FontFamily x:Key="MonoFont">Roboto Mono, Cascadia Mono, Consolas</FontFamily>
+            <!-- Font: Space Grotesk cho UI (khớp mẫu Dashboard 4),
+                 JetBrains Mono cho số liệu / mã đơn / đồng hồ.
+                 Cả hai đều nhúng trong app (Assets/Fonts) -> không cần cài
+                 font vào máy, chạy được trên máy khách không có font.
+                 Inter là fallback cho ký tự không có trong font chính. -->
+            <FontFamily x:Key="UiFont">Space Grotesk, Inter, Segoe UI</FontFamily>
+            <FontFamily x:Key="MonoFont">JetBrains Mono, Cascadia Mono, Consolas</FontFamily>
+
+            <!-- Bo goc dung chung (mẫu Dashboard 4 dung 16px cho card lon) -->
+            <CornerRadius x:Key="RadiusCard">16</CornerRadius>
+            <CornerRadius x:Key="RadiusSmall">14</CornerRadius>
+            <CornerRadius x:Key="RadiusField">10</CornerRadius>
         </ResourceDictionary>
     </Application.Resources>
 
@@ -45,6 +60,11 @@
         <Style Selector="Window">
             <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
             <Setter Property="Background" Value="{StaticResource BgBase}" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        </Style>
+        <!-- UserControl: ke thua font UI de moi manh dong nhat -->
+        <Style Selector="UserControl">
+            <Setter Property="FontFamily" Value="{StaticResource UiFont}" />
             <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
         </Style>
 
@@ -81,141 +101,84 @@
             <Setter Property="Background" Value="{StaticResource BgPanel}" />
             <Setter Property="BorderBrush" Value="{StaticResource LineColor}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="10" />
-            <Setter Property="Padding" Value="12" />
+            <Setter Property="CornerRadius" Value="16" />
+            <Setter Property="Padding" Value="16" />
         </Style>
         <Style Selector="Border.kpi">
             <Setter Property="Background" Value="{StaticResource BgPanel}" />
             <Setter Property="BorderBrush" Value="{StaticResource LineColor}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="CornerRadius" Value="16" />
             <Setter Property="Padding" Value="16,14" />
         </Style>
 
-        <!-- ===== Dieu huong sidebar ===== -->
-        <Style Selector="Button.nav">
-            <Setter Property="Width" Value="76" />
-            <Setter Property="Height" Value="76" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="CornerRadius" Value="16" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="HorizontalContentAlignment" Value="Center" />
-            <Setter Property="VerticalContentAlignment" Value="Center" />
-        </Style>
-        <Style Selector="Button.nav Path.icon">
-            <Setter Property="Stroke" Value="{StaticResource TextMuted}" />
-        </Style>
-        <Style Selector="Button.nav TextBlock">
+        <!-- Nhan uppercase kieu mau: 11px, letter-spacing 0.12em -->
+        <Style Selector="TextBlock.overline">
             <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
             <Setter Property="FontSize" Value="11" />
             <Setter Property="FontWeight" Value="SemiBold" />
-        </Style>
-        <Style Selector="Button.nav:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-            <Setter Property="Background" Value="{StaticResource BgRaised}" />
-        </Style>
-        <Style Selector="Button.nav:pointerover Path.icon">
-            <Setter Property="Stroke" Value="{StaticResource TextPrimary}" />
-        </Style>
-        <Style Selector="Button.nav:pointerover TextBlock">
-            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
-        </Style>
-        <Style Selector="Button.nav.active /template/ ContentPresenter#PART_ContentPresenter">
-            <Setter Property="Background" Value="{StaticResource AccentSoft}" />
-        </Style>
-        <Style Selector="Button.nav.active Path.icon">
-            <Setter Property="Stroke" Value="{StaticResource Accent}" />
-        </Style>
-        <Style Selector="Button.nav.active TextBlock">
-            <Setter Property="Foreground" Value="{StaticResource Accent}" />
+            <Setter Property="LetterSpacing" Value="0.12" />
         </Style>
 
-        <!-- ===== Thanh tab ===== -->
-        <Style Selector="Button.tab">
-            <Setter Property="Padding" Value="16,9" />
-            <Setter Property="CornerRadius" Value="9" />
+        <!-- Segment thanh tien trinh: 24 o bo goc 2px -->
+        <Style Selector="Border.segment">
+            <Setter Property="Height" Value="12" />
+            <Setter Property="CornerRadius" Value="2" />
+            <Setter Property="Background" Value="{StaticResource LineColor}" />
+        </Style>
+        <Style Selector="Border.segment.on">
+            <Setter Property="Background" Value="{StaticResource Accent}" />
+        </Style>
+
+        <!-- Dong moc thoi gian: border-top 1px (mau mau dung dashed) -->
+        <Style Selector="Border.dashedRow">
+            <Setter Property="BorderBrush" Value="{StaticResource LineColor}" />
+            <Setter Property="BorderThickness" Value="0,1,0,0" />
+        </Style>
+
+        <!-- ===== Tab thanh duoi header: cao 44px, gach chan 3px khi active ===== -->
+        <Style Selector="Button.tabbar">
+            <Setter Property="Height" Value="44" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="Padding" Value="14,0" />
+            <Setter Property="CornerRadius" Value="0" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderThickness" Value="0,0,0,3" />
             <Setter Property="FontSize" Value="13" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
-        </Style>
-        <Style Selector="Button.tab /template/ ContentPresenter#PART_ContentPresenter">
-            <Setter Property="Background" Value="Transparent" />
-        </Style>
-        <Style Selector="Button.tab:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-            <Setter Property="Background" Value="{StaticResource BgRaised}" />
-        </Style>
-        <Style Selector="Button.tab:pointerover TextBlock">
-            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
-        </Style>
-        <Style Selector="Button.tab.active /template/ ContentPresenter#PART_ContentPresenter">
-            <Setter Property="Background" Value="{StaticResource AccentSoft}" />
-        </Style>
-        <Style Selector="Button.tab.active TextBlock">
-            <Setter Property="Foreground" Value="{StaticResource Accent}" />
-        </Style>
-        <Style Selector="Button.tab Path.icon">
-            <Setter Property="Stroke" Value="{StaticResource TextMuted}" />
-            <Setter Property="Fill" Value="Transparent" />
-        </Style>
-        <Style Selector="Button.tab.active Path.icon">
-            <Setter Property="Stroke" Value="{StaticResource Accent}" />
-        </Style>
-
-        <!-- ===== Segmented tab (header): nut co gian theo noi dung, khong tran ===== -->
-        <Style Selector="ScrollViewer.segtabs">
-            <!-- Thanh cuon ngang mo mong, chi xuat hien khi that su tran. -->
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-        </Style>
-        <Style Selector="ScrollViewer.segtabs ScrollBar">
-            <Setter Property="Height" Value="6" />
-            <Setter Property="MinWidth" Value="48" />
-            <Setter Property="Background" Value="{StaticResource LineColor}" />
-        </Style>
-        <Style Selector="ScrollViewer.segtabs ScrollBar:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-            <Setter Property="Background" Value="{StaticResource TextMuted}" />
-        </Style>
-        <Style Selector="Button.segtab">
-            <Setter Property="MinWidth" Value="0" />
-            <Setter Property="Height" Value="32" />
-            <!-- Padding ngang linh hoat: nut co lai khi cua so hep,
-                 khong dung Width co dinh de tran sang cac thanh khac. -->
-            <Setter Property="Padding" Value="16,0" />
-            <Setter Property="CornerRadius" Value="999" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderBrush" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="FontSize" Value="12.5" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
-            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
-        <Style Selector="Button.segtab /template/ ContentPresenter#PART_ContentPresenter">
+        <Style Selector="Button.tabbar /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="CornerRadius" Value="999" />
+            <Setter Property="BorderThickness" Value="0,0,0,3" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Padding" Value="14,0" />
         </Style>
-        <Style Selector="Button.segtab:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-            <Setter Property="Background" Value="{StaticResource BgPanel}" />
+        <Style Selector="Button.tabbar:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource BgRaised}" />
         </Style>
-        <Style Selector="Button.segtab:pointerover TextBlock">
+        <Style Selector="Button.tabbar:pointerover TextBlock">
             <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
         </Style>
-        <Style Selector="Button.segtab.active /template/ ContentPresenter#PART_ContentPresenter">
-            <Setter Property="Background" Value="{StaticResource AccentSoft}" />
+        <Style Selector="Button.tabbar.active /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
         </Style>
-        <Style Selector="Button.segtab.active TextBlock">
+        <Style Selector="Button.tabbar.active TextBlock">
             <Setter Property="Foreground" Value="{StaticResource Accent}" />
         </Style>
-        <Style Selector="Button.segtab Path.icon">
+        <Style Selector="Button.tabbar Path.icon">
             <Setter Property="Stroke" Value="{StaticResource TextMuted}" />
             <Setter Property="Fill" Value="Transparent" />
+            <Setter Property="StrokeThickness" Value="1.9" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
         </Style>
-        <Style Selector="Button.segtab.active Path.icon">
+        <Style Selector="Button.tabbar.active Path.icon">
             <Setter Property="Stroke" Value="{StaticResource Accent}" />
         </Style>
 
@@ -525,7 +488,7 @@
             <Setter Property="Background" Value="{StaticResource BgRaised}" />
             <Setter Property="BorderBrush" Value="{StaticResource LineColor}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="9" />
+            <Setter Property="CornerRadius" Value="14" />
             <Setter Property="Padding" Value="9" />
         </Style>
 
@@ -534,7 +497,7 @@
             <Setter Property="Background" Value="{StaticResource BgPanel}" />
             <Setter Property="BorderBrush" Value="{StaticResource LineColor}" />
             <Setter Property="BorderThickness" Value="1.5" />
-            <Setter Property="CornerRadius" Value="11" />
+            <Setter Property="CornerRadius" Value="14" />
             <Setter Property="Padding" Value="12" />
         </Style>
         <Style Selector="Border.deviceCard.ok">
@@ -561,8 +524,8 @@
 
         <!-- ===== LED trang thai ===== -->
         <Style Selector="Ellipse.led">
-            <Setter Property="Width" Value="11" />
-            <Setter Property="Height" Value="11" />
+            <Setter Property="Width" Value="10" />
+            <Setter Property="Height" Value="10" />
             <Setter Property="Fill" Value="{StaticResource Idle}" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>

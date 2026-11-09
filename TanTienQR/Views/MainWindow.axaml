@@ -24,267 +24,83 @@
         <vm:MainViewModel />
     </Design.DataContext>
 
-    <Grid RowDefinitions="Auto,Auto,*,Auto">
+    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto">
 
         <!-- Viền accent trên cùng của custom chrome -->
         <Border Grid.Row="0" Height="3" Background="{StaticResource Accent}" />
 
-        <!-- ===== Thanh tiêu đề tự vẽ: logo + tab + trạng thái + nút cửa sổ ===== -->
+        <!-- ===== Hàng 1: logo + đồng hồ + người dùng + nút cửa sổ ===== -->
         <Border Grid.Row="1" x:Name="HeaderBar"
                 Background="{StaticResource BgPanel}"
-                BorderBrush="{StaticResource LineColor}"
-                BorderThickness="0,0,0,1"
-                Padding="16,8,8,8"
+                Padding="20,8"
                 PointerPressed="OnHeaderPointerPressed">
-            <Grid RowDefinitions="Auto,Auto"
-                  ColumnDefinitions="Auto,*,Auto"
-                  ColumnSpacing="18"
-                  RowSpacing="8">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
 
-                <!-- Logo -->
-                <StackPanel Grid.Row="0" Grid.Column="0"
-                            Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                    <Border Width="38" Height="38"
-                            CornerRadius="11"
+                <!-- Logo + tên app -->
+                <StackPanel Grid.Column="0"
+                            Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                    <Border Width="36" Height="36"
+                            CornerRadius="10"
                             Background="White"
                             BorderBrush="{StaticResource LineAccent}"
                             BorderThickness="1">
                         <Image Source="/Assets/tantien-logo-tt.png"
                                Stretch="Uniform"
-                               Margin="3" />
+                               Margin="2" />
                     </Border>
                     <StackPanel VerticalAlignment="Center" Spacing="0">
                         <TextBlock Text="TanTienQR"
-                                   FontSize="14"
+                                   FontSize="16"
                                    FontWeight="Bold"
                                    Foreground="{StaticResource TextPrimary}" />
                         <TextBlock Text="Quét mã · PLC"
                                    Classes="label"
-                                   FontSize="10" />
+                                   FontSize="12" />
                     </StackPanel>
                 </StackPanel>
 
-                <!-- Tiêu đề trang (lấp khoảng trống giữa, giúp header cân đối) -->
-                <StackPanel Grid.Row="0" Grid.Column="1"
-                            VerticalAlignment="Center"
-                            HorizontalAlignment="Center"
-                            Spacing="1"
-                            Margin="8,0">
-                    <TextBlock Text="{Binding PageTitle}"
-                               FontSize="15"
-                               FontWeight="Bold"
-                               Foreground="{StaticResource TextPrimary}"
-                               HorizontalAlignment="Center"
-                               TextTrimming="CharacterEllipsis" />
-                    <TextBlock Text="{Binding PageSubtitle}"
-                               Classes="label"
-                               FontSize="10"
-                               HorizontalAlignment="Center"
-                               TextTrimming="CharacterEllipsis" />
-                </StackPanel>
+                <!-- Trạng thái + đồng hồ + người dùng + nút cửa sổ -->
+                <StackPanel Grid.Column="2"
+                            Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
 
-                <!-- Thanh tab: chiếm hết hàng riêng, nút co giãn theo noi dung
-                     -> khong bao gio chong cheo voi logo / vung trang thai ben phai -->
-                <Grid Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3">
-                    <ScrollViewer Classes="segtabs"
-                                  HorizontalScrollBarVisibility="Auto"
-                                  VerticalScrollBarVisibility="Disabled">
-                        <!-- Grid boc trong ScrollViewer: Border ben trong moi duoc canh giua
-                             theo quy tac cua Grid (ScrollViewer khong ho tro canh giua noi dung). -->
-                        <Grid>
-                            <Border HorizontalAlignment="Center"
-                                    VerticalAlignment="Center"
-                                    Background="{StaticResource BgRaised}"
-                                    BorderBrush="{StaticResource LineColor}"
-                                    BorderThickness="1"
-                                    CornerRadius="999"
-                                    Padding="4">
-                            <StackPanel Orientation="Horizontal" Spacing="2">
-                        <Button Classes="segtab"
-                                Classes.active="{Binding IsInfoVisible}"
-                                Command="{Binding ShowInfoTabCommand}">
-                            <StackPanel Orientation="Horizontal" Spacing="8"
-                                        HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <Path Classes="icon"
-                                      Width="15" Height="15"
-                                      Stretch="Uniform"
-                                      StrokeThickness="2"
-                                      StrokeLineCap="Round"
-                                      StrokeJoin="Round"
-                                      Data="M4,4 L12,4 L12,11 L4,11 Z M16,4 L20,4 L20,11 L16,11 Z M4,15 L12,15 L12,19 L4,19 Z M16,15 L20,15 L20,19 L16,19 Z" />
-                                <TextBlock Text="Thông tin" />
-                            </StackPanel>
-                        </Button>
-
-                        <Button Classes="segtab"
-                                Classes.active="{Binding IsProductionVisible}"
-                                Command="{Binding ShowProductionTabCommand}">
-                            <StackPanel Orientation="Horizontal" Spacing="8"
-                                        HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <Path Classes="icon"
-                                      Width="15" Height="15"
-                                      Stretch="Uniform"
-                                      StrokeThickness="2"
-                                      StrokeLineCap="Round"
-                                      StrokeJoin="Round"
-                                      Data="M3,12 A9,9 0 1 0 3,4 M3,12 L12,12 M12,3 C8,7 8,17 12,21" />
-                                <TextBlock Text="Sản xuất" />
-                            </StackPanel>
-                        </Button>
-
-                        <Button Classes="segtab"
-                                Classes.active="{Binding IsConfigVisible}"
-                                Command="{Binding ShowConfigTabCommand}">
-                            <StackPanel Orientation="Horizontal" Spacing="8"
-                                        HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <Path Classes="icon"
-                                      Width="15" Height="15"
-                                      Stretch="Uniform"
-                                      StrokeThickness="2"
-                                      StrokeLineCap="Round"
-                                      StrokeJoin="Round"
-                                      Data="M4,7 L8,7 M10,7 L20,7 M4,17 L12,17 M16,17 L20,17 M8,4 L8,10 M16,14 L16,20" />
-                                <TextBlock Text="Cấu hình" />
-                            </StackPanel>
-                        </Button>
-
-                        <Button Classes="segtab"
-                                Classes.active="{Binding IsPlcSettingsVisible}"
-                                IsVisible="{Binding CanEditPlc}"
-                                Command="{Binding ShowPlcSettingsTabCommand}">
-                            <StackPanel Orientation="Horizontal" Spacing="8"
-                                        HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <Path Classes="icon"
-                                      Width="15" Height="15"
-                                      Stretch="Uniform"
-                                      StrokeThickness="2"
-                                      StrokeLineCap="Round"
-                                      StrokeJoin="Round"
-                                      Data="M4,8 L8,8 M12,8 L20,8 M6,4 L6,12 M14,4 L14,12 M4,16 L20,16 M8,12 L8,20 M16,12 L16,20" />
-                                <TextBlock Text="Chỉnh PLC" />
-                            </StackPanel>
-                        </Button>
-
-                        <Button Classes="segtab"
-                                Classes.active="{Binding IsHistoryVisible}"
-                                IsVisible="{Binding CanViewHistory}"
-                                Command="{Binding ShowHistoryTabCommand}">
-                            <StackPanel Orientation="Horizontal" Spacing="8"
-                                        HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <Path Classes="icon"
-                                      Width="15" Height="15"
-                                      Stretch="Uniform"
-                                      StrokeThickness="2"
-                                      StrokeLineCap="Round"
-                                      StrokeJoin="Round"
-                                      Data="M4,5 L4,19 L7,19 L7,5 Z M9,5 L9,19 L12,19 L12,5 Z M14,5 L14,19 L17,19 L17,5 Z M20,9 L20,19 L20,19" />
-                                <TextBlock Text="Lịch sử" />
-                            </StackPanel>
-                        </Button>
-
-                        <!-- Truy xuất sản xuất (Local): mọi vai trò xem được -->
-                        <Button Classes="segtab"
-                                Classes.active="{Binding IsProductionOrdersVisible}"
-                                IsVisible="{Binding CanViewProduction}"
-                                Command="{Binding ShowProductionOrdersTabCommand}">
-                            <StackPanel Orientation="Horizontal" Spacing="8"
-                                        HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <Path Classes="icon"
-                                      Width="15" Height="15"
-                                      Stretch="Uniform"
-                                      StrokeThickness="2"
-                                      StrokeLineCap="Round"
-                                      StrokeJoin="Round"
-                                      Data="M3,7 L9,7 M3,12 L15,12 M3,17 L12,17 M15,4 L21,4 L21,20 L15,20 Z" />
-                                <TextBlock Text="Truy xuất SX" />
-                            </StackPanel>
-                        </Button>
-
-                        <!-- Tra cứu mã: mọi vai trò đều xem được -->
-                        <Button Classes="segtab"
-                                Classes.active="{Binding IsCodeLookupVisible}"
-                                Command="{Binding ShowCodeLookupTabCommand}">
-                            <StackPanel Orientation="Horizontal" Spacing="8"
-                                        HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <Path Classes="icon"
-                                      Width="15" Height="15"
-                                      Stretch="Uniform"
-                                      StrokeThickness="2"
-                                      StrokeLineCap="Round"
-                                      StrokeJoin="Round"
-                                      Data="M10,3 A7,7 0 1 0 10,17 A7,7 0 1 0 10,3 Z M15,15 L21,21" />
-                                <TextBlock Text="Tra cứu mã" />
-                            </StackPanel>
-                        </Button>
-
-                        <Button Classes="segtab"
-                                Classes.active="{Binding IsAccountsVisible}"
-                                IsVisible="{Binding CanManageUsers}"
-                                Command="{Binding ShowAccountsTabCommand}">
-                            <StackPanel Orientation="Horizontal" Spacing="8"
-                                        HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <Path Classes="icon"
-                                      Width="15" Height="15"
-                                      Stretch="Uniform"
-                                      StrokeThickness="2"
-                                      StrokeLineCap="Round"
-                                      StrokeJoin="Round"
-                                      Data="M12,11 A4,4 0 1 0 12,3 A4,4 0 1 0 12,11 Z M4,21 C4,16.5 7.6,14 12,14 C16.4,14 20,16.5 20,21" />
-                                <TextBlock Text="Tài khoản" />
-                            </StackPanel>
-                        </Button>
-
-                        <!-- Dev: chỉ Lập trình viên -->
-                        <Button Classes="segtab"
-                                Classes.active="{Binding IsDevVisible}"
-                                IsVisible="{Binding CanViewDev}"
-                                Command="{Binding ShowDevTabCommand}">
-                            <StackPanel Orientation="Horizontal" Spacing="8"
-                                        HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <Path Classes="icon"
-                                      Width="15" Height="15"
-                                      Stretch="Uniform"
-                                      StrokeThickness="2"
-                                      StrokeLineCap="Round"
-                                      StrokeJoin="Round"
-                                      Data="M8,4 L16,4 L20,8 L20,20 L4,20 L4,8 Z M8,4 L8,8 L20,8 M8,12 L16,12 M8,16 L16,16" />
-                                <TextBlock Text="Dev" />
-                            </StackPanel>
-                        </Button>
-                            </StackPanel>
-                        </Border>
-                        </Grid>
-                    </ScrollViewer>
-                </Grid>
-
-                <!-- Trạng thái + đồng hồ (độ rộng ổn định, không phụ thuộc tab đang mở) -->
-                <StackPanel Grid.Row="0" Grid.Column="2" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                     <Border Classes="pill" Classes.ok="{Binding IsReady}" Classes.warn="{Binding !IsReady}"
                             MinWidth="96">
                         <TextBlock Text="{Binding AppStateText}" HorizontalAlignment="Center" />
                     </Border>
 
-                    <Border Width="1" Height="28"
+                    <Border Width="1" Height="34"
                             Background="{StaticResource LineColor}"
                             VerticalAlignment="Center" />
 
+                    <!-- Đồng hồ + ngày -->
+                    <StackPanel Spacing="0" MinWidth="124">
+                        <TextBlock Classes="mono"
+                                   Text="{Binding ClockText}"
+                                   FontSize="21"
+                                   FontWeight="Bold"
+                                   HorizontalAlignment="Right" />
+                        <TextBlock Classes="label" FontSize="11" Text="{Binding DateText}" HorizontalAlignment="Right" />
+                    </StackPanel>
+
                     <!-- Người dùng đang đăng nhập + vai trò -->
                     <StackPanel Orientation="Horizontal"
-                                Spacing="8"
+                                Spacing="10"
                                 VerticalAlignment="Center">
-                        <Border Width="30" Height="30"
-                                CornerRadius="15"
-                                Background="{StaticResource AccentSoft}">
+                        <Border Width="36" Height="36"
+                                CornerRadius="18"
+                                Background="#FEF3C7"
+                                BorderBrush="#FCD34D"
+                                BorderThickness="1">
                             <TextBlock Text="{Binding CurrentUserInitial}"
-                                       FontSize="12"
+                                       FontSize="15"
                                        FontWeight="Bold"
-                                       Foreground="{StaticResource Accent}"
+                                       Foreground="#92400E"
                                        HorizontalAlignment="Center"
                                        VerticalAlignment="Center" />
                         </Border>
-                        <StackPanel Spacing="0" VerticalAlignment="Center" MaxWidth="130">
+                        <StackPanel Spacing="3" VerticalAlignment="Center" MaxWidth="150">
                             <TextBlock Text="{Binding CurrentUserDisplayName}"
-                                       FontSize="12"
+                                       FontSize="13"
                                        FontWeight="SemiBold"
                                        Foreground="{StaticResource TextPrimary}"
                                        TextTrimming="CharacterEllipsis"
@@ -295,53 +111,46 @@
                                     Classes.accent="{Binding IsRoleAdministrator}"
                                     Classes.developer="{Binding IsRoleDeveloper}"
                                     HorizontalAlignment="Left"
-                                    Padding="6,1"
-                                    CornerRadius="5">
-                                <TextBlock Text="{Binding CurrentRoleText}" FontSize="9" />
+                                    Padding="8,2"
+                                    CornerRadius="8">
+                                <TextBlock Text="{Binding CurrentRoleText}" FontSize="11" />
                             </Border>
                         </StackPanel>
                     </StackPanel>
 
-                    <!-- Nút đăng xuất -->
-                    <Button x:Name="LogoutButton"
-                            Width="34" Height="34"
+                    <!-- Nút nguồn -->
+                    <Button x:Name="PowerButton"
+                            Width="44" Height="44"
                             MinWidth="0" MinHeight="0"
                             Padding="0"
-                            CornerRadius="17"
-                            Background="{StaticResource BgRaised}"
-                            BorderBrush="{StaticResource LineColor}"
+                            CornerRadius="12"
+                            Background="{StaticResource BgPanel}"
+                            BorderBrush="#D2D7E0"
                             BorderThickness="1"
-                            Foreground="{StaticResource TextMuted}"
-                            FontSize="13"
-                            FontWeight="Bold"
-                            Content="⏻"
-                            HorizontalContentAlignment="Center"
-                            VerticalContentAlignment="Center"
-                            VerticalAlignment="Center"
-                            ToolTip.Tip="Đăng xuất"
-                            Command="{Binding LogoutCommand}" />
-
-                    <StackPanel Spacing="0" MinWidth="124">
-                        <TextBlock Classes="mono"
-                                   Text="{Binding ClockText}"
-                                   FontSize="17"
-                                   FontWeight="Bold"
-                                   HorizontalAlignment="Right" />
-                        <TextBlock Classes="label" FontSize="10" Text="{Binding DateText}" HorizontalAlignment="Right" />
-                    </StackPanel>
+                            ToolTip.Tip="Nguồn"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center">
+                        <Path Width="18" Height="18"
+                              Stretch="Uniform"
+                              Stroke="{StaticResource TextPrimary}"
+                              StrokeThickness="2"
+                              StrokeLineCap="Round"
+                              StrokeJoin="Round"
+                              Data="{StaticResource Icon.Power}" />
+                    </Button>
 
                     <!-- Nút ? mở nhanh thông tin license -->
                     <Button x:Name="LicenseInfoButton"
-                            Width="34" Height="34"
+                            Width="44" Height="44"
                             MinWidth="0" MinHeight="0"
                             Padding="0"
-                            CornerRadius="17"
-                            Background="{StaticResource BgRaised}"
-                            BorderBrush="{StaticResource LineColor}"
+                            CornerRadius="12"
+                            Background="{StaticResource BgPanel}"
+                            BorderBrush="#D2D7E0"
                             BorderThickness="1"
-                            Foreground="{StaticResource TextMuted}"
-                            FontSize="15"
+                            FontSize="16"
                             FontWeight="Bold"
+                            Foreground="{StaticResource TextPrimary}"
                             Content="?"
                             HorizontalContentAlignment="Center"
                             VerticalContentAlignment="Center"
@@ -349,27 +158,152 @@
                             ToolTip.Tip="Thông tin license"
                             Command="{Binding ToggleLicensePanelCommand}" />
 
-                    <!-- Menu cửa sổ (custom chrome): gộp thu nhỏ / phóng to / tắt vào 1 nút hamburger -->
+                    <!-- Menu cửa sổ (custom chrome): gộp thu nhỏ / phóng to / tắt vào 1 nút -->
                     <Button x:Name="WindowMenuButton"
-                            Classes="windowmenu"
-                            Width="34" Height="34"
+                            Width="44" Height="44"
                             MinWidth="0" MinHeight="0"
-                            Padding="0,1,0,0"
-                            HorizontalContentAlignment="Center"
-                            VerticalContentAlignment="Center"
-                            VerticalAlignment="Center"
+                            Padding="0"
+                            CornerRadius="12"
+                            Background="{StaticResource BgPanel}"
+                            BorderBrush="#D2D7E0"
+                            BorderThickness="1"
                             ToolTip.Tip="Tùy chọn cửa sổ"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
                             Click="OnWindowMenuClick">
-                        <Path Width="15" Height="15"
-                              HorizontalAlignment="Center"
-                              VerticalAlignment="Center"
+                        <Path Width="18" Height="18"
                               Stretch="Uniform"
+                              Stroke="{StaticResource TextPrimary}"
                               StrokeThickness="2"
                               StrokeLineCap="Round"
-                              Data="M4,6 L20,6 M4,12 L20,12 M4,18 L20,18" />
+                              Data="{StaticResource Icon.Menu}" />
                     </Button>
                 </StackPanel>
+            </Grid>
+        </Border>
 
+        <!-- ===== Hàng 2: thanh điều hướng (tab gạch chân) ===== -->
+        <Border Grid.Row="2"
+                Background="{StaticResource BgPanel}"
+                BorderBrush="{StaticResource LineColor}"
+                BorderThickness="0,0,0,1"
+                Padding="20,0">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Disabled">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <Button Classes="tabbar"
+                            Classes.active="{Binding IsInfoVisible}"
+                            Command="{Binding ShowInfoTabCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Path Classes="icon" Width="16" Height="16" Stretch="Uniform"
+                                  Data="{StaticResource Icon.Grid}" />
+                            <TextBlock Text="Thông tin" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button Classes="tabbar"
+                            Classes.active="{Binding IsProductionVisible}"
+                            Command="{Binding ShowProductionTabCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Path Classes="icon" Width="16" Height="16" Stretch="Uniform"
+                                  Data="{StaticResource Icon.Chart}" />
+                            <TextBlock Text="Sản xuất" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button Classes="tabbar"
+                            Classes.active="{Binding IsConfigVisible}"
+                            Command="{Binding ShowConfigTabCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Path Classes="icon" Width="16" Height="16" Stretch="Uniform"
+                                  Data="{StaticResource Icon.Sliders}" />
+                            <TextBlock Text="Cấu hình" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button Classes="tabbar"
+                            Classes.active="{Binding IsPlcSettingsVisible}"
+                            IsVisible="{Binding CanEditPlc}"
+                            Command="{Binding ShowPlcSettingsTabCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Path Classes="icon" Width="16" Height="16" Stretch="Uniform"
+                                  Data="{StaticResource Icon.Cpu}" />
+                            <TextBlock Text="Chỉnh PLC" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button Classes="tabbar"
+                            Classes.active="{Binding IsHistoryVisible}"
+                            IsVisible="{Binding CanViewHistory}"
+                            Command="{Binding ShowHistoryTabCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Path Classes="icon" Width="16" Height="16" Stretch="Uniform"
+                                  Data="{StaticResource Icon.Bars}" />
+                            <TextBlock Text="Lịch sử" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Truy xuất sản xuất (Local): mọi vai trò xem được -->
+                    <Button Classes="tabbar"
+                            Classes.active="{Binding IsProductionOrdersVisible}"
+                            IsVisible="{Binding CanViewProduction}"
+                            Command="{Binding ShowProductionOrdersTabCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Path Classes="icon" Width="16" Height="16" Stretch="Uniform"
+                                  Data="{StaticResource Icon.Clipboard}" />
+                            <TextBlock Text="Truy xuất SX" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Tra cứu mã: mọi vai trò đều xem được -->
+                    <Button Classes="tabbar"
+                            Classes.active="{Binding IsCodeLookupVisible}"
+                            Command="{Binding ShowCodeLookupTabCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Path Classes="icon" Width="16" Height="16" Stretch="Uniform"
+                                  Data="{StaticResource Icon.Search}" />
+                            <TextBlock Text="Tra cứu mã" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button Classes="tabbar"
+                            Classes.active="{Binding IsAccountsVisible}"
+                            IsVisible="{Binding CanManageUsers}"
+                            Command="{Binding ShowAccountsTabCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Path Classes="icon" Width="16" Height="16" Stretch="Uniform"
+                                  Data="{StaticResource Icon.User}" />
+                            <TextBlock Text="Tài khoản" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Dev: chỉ Lập trình viên -->
+                    <Button Classes="tabbar"
+                            Classes.active="{Binding IsDevVisible}"
+                            IsVisible="{Binding CanViewDev}"
+                            Command="{Binding ShowDevTabCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Path Classes="icon" Width="16" Height="16" Stretch="Uniform"
+                                  Data="{StaticResource Icon.File}" />
+                            <TextBlock Text="Dev" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <!-- Lớp overlay: 2 popup (menu cửa sổ + hộp thoại license).
+             Đặt trong Grid riêng để không ảnh hưởng flow của layout chính. -->
+        <Grid Grid.Row="0">
                 <!-- Menu cửa sổ thả xuống (overlay, popup tự vẽ đồng bộ với app) -->
                 <Popup x:Name="WindowMenuPopup"
                        PlacementTarget="{Binding #WindowMenuButton}"
@@ -567,10 +501,9 @@
                     </Border>
                 </Popup>
             </Grid>
-        </Border>
 
         <!-- ===== Nội dung: sidebar + vùng tab ===== -->
-        <Grid Grid.Row="2" ColumnDefinitions="240,*">
+        <Grid Grid.Row="3" ColumnDefinitions="232,*">
 
             <!-- ===== Sidebar ===== -->
             <Border Grid.Column="0"
@@ -578,33 +511,33 @@
                     BorderBrush="{StaticResource LineColor}"
                     BorderThickness="0,0,1,0"
                     Padding="16,18">
-                <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="18">
+                <Grid RowDefinitions="Auto,Auto,*" RowSpacing="16">
 
                     <!-- Trạng thái app -->
-                    <Border Grid.Row="0" Classes="device" Padding="12">
-                        <StackPanel Spacing="8">
-                            <TextBlock Classes="label" FontSize="10" Text="TRẠNG THÁI ỨNG DỤNG" />
+                    <Border Grid.Row="0" Classes="device" Padding="14,16">
+                        <StackPanel Spacing="10">
+                            <TextBlock Classes="overline" Text="TRẠNG THÁI ỨNG DỤNG" />
                             <Border Classes="badge"
                                     Classes.running="{Binding IsReady}"
                                     HorizontalAlignment="Left">
                                 <TextBlock Text="{Binding AppStateText}" />
                             </Border>
                             <TextBlock Text="{Binding AppStateDetail}"
-                                       FontSize="11"
-                                       Foreground="{StaticResource TextMuted}"
+                                       FontSize="13"
+                                       Foreground="{StaticResource TextPrimary}"
                                        TextWrapping="Wrap"
                                        MaxLines="3" />
                         </StackPanel>
                     </Border>
 
                     <!-- Thiết bị -->
-                    <StackPanel Grid.Row="1" Spacing="8">
-                        <TextBlock Classes="label" FontSize="10" Text="THIẾT BỊ" Margin="2,0,0,0" />
+                    <StackPanel Grid.Row="1" Spacing="12">
+                        <TextBlock Classes="overline" Text="THIẾT BỊ" Margin="2,0,0,0" />
 
                         <!-- Camera: viền + LED chớp khi mất kết nối -->
-                        <Border Classes="deviceCard {Binding CameraCardClass}">
-                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
-                                <Grid Width="11" Height="11">
+                        <Border Classes="deviceCard {Binding CameraCardClass}" Padding="12,16">
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                                <Grid Width="10" Height="10" VerticalAlignment="Center">
                                     <Ellipse Classes="ledHalo"
                                              Classes.warn="{Binding !IsCameraConnected}"
                                              Classes.blink="{Binding IsCameraBlinking}" />
@@ -621,9 +554,9 @@
                         </Border>
 
                         <!-- PLC: viền + LED chớp khi mất kết nối -->
-                        <Border Classes="deviceCard {Binding PlcCardClass}">
-                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
-                                <Grid Width="11" Height="11">
+                        <Border Classes="deviceCard {Binding PlcCardClass}" Padding="12,16">
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                                <Grid Width="10" Height="10" VerticalAlignment="Center">
                                     <Ellipse Classes="ledHalo"
                                              Classes.warn="{Binding !IsPlcConnected}"
                                              Classes.blink="{Binding IsPlcBlinking}" />
@@ -640,99 +573,11 @@
                         </Border>
                     </StackPanel>
 
-                    <!-- Lối vào nhanh các tab -->
-                    <StackPanel Grid.Row="2" Spacing="8" VerticalAlignment="Top">
-                        <TextBlock Classes="label" FontSize="10" Text="MỤC LỤC" Margin="2,0,0,0" />
-
-                        <Button Classes="chip"
-                                HorizontalAlignment="Stretch"
-                                FontSize="12"
-                                HorizontalContentAlignment="Left"
-                                Content="Thông tin"
-                                Command="{Binding ShowInfoTabCommand}" />
-                        <Button Classes="chip"
-                                HorizontalAlignment="Stretch"
-                                FontSize="12"
-                                HorizontalContentAlignment="Left"
-                                Content="Sản xuất"
-                                Command="{Binding ShowProductionTabCommand}" />
-                        <Button Classes="chip"
-                                HorizontalAlignment="Stretch"
-                                FontSize="12"
-                                HorizontalContentAlignment="Left"
-                                Content="Cấu hình"
-                                Command="{Binding ShowConfigTabCommand}" />
-                        <Button Classes="chip"
-                                HorizontalAlignment="Stretch"
-                                FontSize="12"
-                                HorizontalContentAlignment="Left"
-                                Content="Chỉnh PLC"
-                                IsVisible="{Binding CanEditPlc}"
-                                Command="{Binding ShowPlcSettingsTabCommand}" />
-                        <Button Classes="chip"
-                                HorizontalAlignment="Stretch"
-                                FontSize="12"
-                                HorizontalContentAlignment="Left"
-                                Content="Tra cứu mã"
-                                Command="{Binding ShowCodeLookupTabCommand}" />
-                        <Button Classes="chip"
-                                HorizontalAlignment="Stretch"
-                                FontSize="12"
-                                HorizontalContentAlignment="Left"
-                                Content="Truy xuất Sản xuất (Local)"
-                                IsVisible="{Binding CanViewProduction}"
-                                Command="{Binding ShowProductionOrdersTabCommand}" />
-
-                        <!-- Nhóm nhà phát triển -->
-                        <Border Classes="device"
-                                Padding="8"
-                                Margin="0,10,0,0"
-                                IsVisible="{Binding CanViewHistory}">
-                            <StackPanel Spacing="6">
-                                <TextBlock Classes="label"
-                                           FontSize="9"
-                                           Text="NHÀ PHÁT TRIỂN"
-                                           Margin="2,0,0,2" />
-                                <Button Classes="chip"
-                                        HorizontalAlignment="Stretch"
-                                        FontSize="12"
-                                        HorizontalContentAlignment="Left"
-                                        Content="Lịch sử thao tác"
-                                        Command="{Binding ShowHistoryTabCommand}" />
-                                <Button Classes="chip"
-                                        HorizontalAlignment="Stretch"
-                                        FontSize="12"
-                                        HorizontalContentAlignment="Left"
-                                        Content="Dev"
-                                        IsVisible="{Binding CanViewDev}"
-                                        Command="{Binding ShowDevTabCommand}" />
-                            </StackPanel>
-                        </Border>
-
-                        <!-- Nhóm quản trị (chỉ Quản trị / Lập trình viên) -->
-                        <Border Classes="device"
-                                Padding="8"
-                                Margin="0,10,0,0"
-                                IsVisible="{Binding CanManageUsers}">
-                            <StackPanel Spacing="6">
-                                <TextBlock Classes="label"
-                                           FontSize="9"
-                                           Text="QUẢN TRỊ"
-                                           Margin="2,0,0,2" />
-                                <Button Classes="chip"
-                                        HorizontalAlignment="Stretch"
-                                        FontSize="12"
-                                        HorizontalContentAlignment="Left"
-                                        Content="Tài khoản"
-                                        Command="{Binding ShowAccountsTabCommand}" />
-                            </StackPanel>
-                        </Border>
-                    </StackPanel>
-
                     <!-- Gợi ý: license quản lý qua nút "?" trên thanh trên cùng -->
-                    <TextBlock Grid.Row="3"
+                    <TextBlock Grid.Row="2"
+                               VerticalAlignment="Bottom"
                                Classes="label"
-                               FontSize="10"
+                               FontSize="12"
                                TextWrapping="Wrap"
                                Text="Nhấn dấu ? ở góc trên bên phải để xem thông tin license." />
                 </Grid>
@@ -760,7 +605,7 @@
              Control tự quản lý IsVisible: chỉ cửa sổ đang sở hữu ô nhập
              mới hiện bàn phím. Khi ẩn, hàng này co về 0 và nội dung lấy
              lại toàn bộ chỗ. -->
-        <controls:VirtualKeyboard Grid.Row="3"
+        <controls:VirtualKeyboard Grid.Row="4"
                                  DataContext="{Binding Keyboard}" />
     </Grid>
 </Window>

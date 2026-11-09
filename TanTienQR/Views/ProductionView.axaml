@@ -1,12 +1,14 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:TanTienQR.ViewModels"
-             xmlns:d="http://schemas.com/expression/blend/2008"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="1040" d:DesignHeight="700"
              x:Class="TanTienQR.Views.ProductionView"
              x:DataType="vm:MainViewModel">
 
+    <!-- Bố cục theo mẫu Dashboard 4: thanh công cụ bo góc 16px,
+         banner lỗi bo góc 14px, khung web bo góc 16px. -->
     <Grid RowDefinitions="Auto,Auto,*" Margin="18,6,18,18" RowSpacing="12">
 
         <!-- Thanh công cụ -->
@@ -15,23 +17,50 @@
                 <Button x:Name="BackButton"
                         Grid.Column="0"
                         Classes="chip"
-                        Content="←"
-                        FontSize="18"
+                        Width="44"
+                        Padding="0"
                         IsEnabled="False"
                         Click="OnBackClick"
-                        AutomationProperties.Name="Quay lại" />
+                        AutomationProperties.Name="Quay lại">
+                    <Path Width="16" Height="16"
+                          Stretch="Uniform"
+                          Stroke="{StaticResource TextPrimary}"
+                          StrokeThickness="2.2"
+                          StrokeLineCap="Round"
+                          StrokeJoin="Round"
+                          RenderTransform="Rotate(180)"
+                          Data="{StaticResource Icon.ChevronRight}" />
+                </Button>
                 <Button x:Name="ForwardButton"
                         Grid.Column="1"
                         Classes="chip"
-                        Content="→"
-                        FontSize="18"
+                        Width="44"
+                        Padding="0"
                         IsEnabled="False"
                         Click="OnForwardClick"
-                        AutomationProperties.Name="Tiến tới" />
+                        AutomationProperties.Name="Tiến tới">
+                    <Path Width="16" Height="16"
+                          Stretch="Uniform"
+                          Stroke="{StaticResource TextPrimary}"
+                          StrokeThickness="2.2"
+                          StrokeLineCap="Round"
+                          StrokeJoin="Round"
+                          Data="{StaticResource Icon.ChevronRight}" />
+                </Button>
                 <Button Grid.Column="2"
                         Classes="chip"
-                        Content="Tải lại"
-                        Click="OnReloadClick" />
+                        Click="OnReloadClick">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Path Width="16" Height="16"
+                              Stretch="Uniform"
+                              Stroke="{StaticResource TextPrimary}"
+                              StrokeThickness="2"
+                              StrokeLineCap="Round"
+                              StrokeJoin="Round"
+                              Data="{StaticResource Icon.Refresh}" />
+                        <TextBlock Text="Tải lại" />
+                    </StackPanel>
+                </Button>
 
                 <Border Grid.Column="3"
                         Background="{StaticResource BgRaised}"
@@ -40,13 +69,22 @@
                         CornerRadius="10"
                         MinHeight="44"
                         Padding="14,0">
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                        <TextBlock Classes="mono"
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                        <Path Width="16" Height="16"
+                              Stretch="Uniform"
+                              Stroke="{StaticResource TextMuted}"
+                              StrokeThickness="1.9"
+                              StrokeLineCap="Round"
+                              StrokeJoin="Round"
+                              VerticalAlignment="Center"
+                              Data="{StaticResource Icon.Link}" />
+                        <TextBlock Grid.Column="1"
+                                   Classes="mono"
                                    Text="{Binding WebUrl}"
                                    FontSize="13"
                                    VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis" />
-                        <StackPanel Grid.Column="1"
+                        <StackPanel Grid.Column="2"
                                     Orientation="Horizontal"
                                     Spacing="8"
                                     VerticalAlignment="Center">
@@ -64,8 +102,18 @@
 
                 <Button Grid.Column="4"
                         Classes="chip"
-                        Content="Mở trong trình duyệt"
-                        Click="OnOpenExternalClick" />
+                        Click="OnOpenExternalClick">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Path Width="16" Height="16"
+                              Stretch="Uniform"
+                              Stroke="{StaticResource TextPrimary}"
+                              StrokeThickness="1.9"
+                              StrokeLineCap="Round"
+                              StrokeJoin="Round"
+                              Data="{StaticResource Icon.Link}" />
+                        <TextBlock Text="Mở trong trình duyệt" />
+                    </StackPanel>
+                </Button>
             </Grid>
         </Border>
 
@@ -74,13 +122,23 @@
                 Background="{StaticResource DangerSoft}"
                 BorderBrush="{StaticResource Danger}"
                 BorderThickness="1"
-                CornerRadius="10"
+                CornerRadius="14"
                 Padding="14,10"
                 IsVisible="{Binding HasWebError}">
-            <TextBlock Text="{Binding WebStatusText}"
-                       Foreground="{StaticResource Danger}"
-                       FontWeight="SemiBold"
-                       TextWrapping="Wrap" />
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <Path Width="16" Height="16"
+                      Stretch="Uniform"
+                      Stroke="{StaticResource Danger}"
+                      StrokeThickness="2"
+                      StrokeLineCap="Round"
+                      StrokeJoin="Round"
+                      VerticalAlignment="Center"
+                      Data="{StaticResource Icon.Alert}" />
+                <TextBlock Text="{Binding WebStatusText}"
+                           Foreground="{StaticResource Danger}"
+                           FontWeight="SemiBold"
+                           TextWrapping="Wrap" />
+            </StackPanel>
         </Border>
 
         <!-- Vùng hiển thị trang web -->
@@ -88,7 +146,7 @@
                 Background="{StaticResource BgPanel}"
                 BorderBrush="{StaticResource LineColor}"
                 BorderThickness="1"
-                CornerRadius="14"
+                CornerRadius="16"
                 ClipToBounds="True">
             <Grid>
                 <NativeWebView x:Name="Browser"
@@ -102,13 +160,27 @@
                             VerticalAlignment="Center"
                             Spacing="10"
                             IsVisible="{Binding IsWebDisabled}">
+                    <Border Width="56" Height="56"
+                            CornerRadius="16"
+                            Background="{StaticResource WarnSoft}"
+                            BorderBrush="{StaticResource Warn}"
+                            BorderThickness="1"
+                            HorizontalAlignment="Center">
+                        <Path Width="26" Height="26"
+                              Stretch="Uniform"
+                              Stroke="{StaticResource Warn}"
+                              StrokeThickness="1.8"
+                              StrokeLineCap="Round"
+                              StrokeJoin="Round"
+                              Data="{StaticResource Icon.Settings}" />
+                    </Border>
                     <TextBlock Text="Tính năng web đang bị tắt"
                                FontSize="16"
                                FontWeight="Bold"
                                Foreground="{StaticResource TextMuted}"
                                HorizontalAlignment="Center" />
                     <TextBlock Classes="label"
-                               FontSize="12"
+                               FontSize="13"
                                HorizontalAlignment="Center"
                                Text="Bật lại trong tab Cấu hình → Web · Checkee → Cho phép mở web" />
                 </StackPanel>

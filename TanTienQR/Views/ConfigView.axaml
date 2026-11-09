@@ -1,35 +1,48 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:TanTienQR.ViewModels"
-             xmlns:d="http://schemas.com/expression/blend/2008"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="1040" d:DesignHeight="700"
              x:Class="TanTienQR.Views.ConfigView"
              x:DataType="vm:MainViewModel">
 
+    <!-- Bố cục theo mẫu Dashboard 4: tiêu đề lớn, các card cấu hình bo góc 16px,
+         card nhỏ (device) bo góc 14px, thanh thao tác dưới bo góc 16px. -->
     <Grid RowDefinitions="Auto,*,Auto" Margin="18,6,18,18" RowSpacing="12">
 
         <!-- Tiêu đề + cảnh báo -->
         <StackPanel Grid.Row="0" Spacing="6">
             <TextBlock Text="Cấu hình ứng dụng"
-                       FontSize="21"
+                       FontSize="24"
                        FontWeight="Bold"
                        Foreground="{StaticResource TextPrimary}" />
             <TextBlock Classes="label"
-                       FontSize="12"
+                       FontSize="13"
                        Text="Tham số camera, PLC và web. Thay đổi IP/Port có hiệu lực sau khi khởi động lại ứng dụng." />
 
             <Border Background="{StaticResource WarnSoft}"
                     BorderBrush="{StaticResource Warn}"
                     BorderThickness="1"
-                    CornerRadius="10"
+                    CornerRadius="14"
                     Padding="12,8"
                     IsVisible="{Binding ConfigEditor.HasDevelopmentOverride}">
-                <TextBlock Foreground="{StaticResource Warn}"
-                           FontSize="11"
-                           FontWeight="SemiBold"
-                           TextWrapping="Wrap"
-                           Text="appsettings.Development.json đang tồn tại trong thư mục ứng dụng và sẽ ghi đè các giá trị trong appsettings.json khi app khởi động." />
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <Path Width="16" Height="16"
+                          Stretch="Uniform"
+                          Stroke="{StaticResource Warn}"
+                          StrokeThickness="2"
+                          StrokeLineCap="Round"
+                          StrokeJoin="Round"
+                          VerticalAlignment="Top"
+                          Margin="0,1,0,0"
+                          Data="{StaticResource Icon.Alert}" />
+                    <TextBlock Foreground="{StaticResource Warn}"
+                               FontSize="11"
+                               FontWeight="SemiBold"
+                               TextWrapping="Wrap"
+                               Text="appsettings.Development.json đang tồn tại trong thư mục ứng dụng và sẽ ghi đè các giá trị trong appsettings.json khi app khởi động." />
+                </StackPanel>
             </Border>
         </StackPanel>
 
@@ -38,9 +51,23 @@
             <Grid ColumnDefinitions="*,*" ColumnSpacing="12" RowSpacing="12">
 
                 <!-- ===== Camera ===== -->
-                <Border Grid.Row="0" Grid.Column="0" Classes="panel" Padding="14,12">
+                <Border Grid.Row="0" Grid.Column="0" Classes="panel" Padding="16,14">
                     <StackPanel Spacing="10">
-                        <TextBlock Classes="sectionTitle" Text="CAMERA · ĐẦU ĐỌC MÃ" />
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Path Width="16" Height="16"
+                                  Stretch="Uniform"
+                                  Stroke="{StaticResource TextPrimary}"
+                                  StrokeThickness="1.9"
+                                  StrokeLineCap="Round"
+                                  StrokeJoin="Round"
+                                  VerticalAlignment="Center"
+                                  Data="{StaticResource Icon.Camera}" />
+                            <TextBlock Classes="overline"
+                                       FontSize="14"
+                                       LetterSpacing="0.1"
+                                       Foreground="{StaticResource TextPrimary}"
+                                       Text="CAMERA · ĐẦU ĐỌC MÃ" />
+                        </StackPanel>
 
                         <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
                             <TextBlock Classes="label" VerticalAlignment="Center" Text="IP đầu đọc" />
@@ -63,15 +90,29 @@
                                            Value="{Binding ConfigEditor.CameraDuplicateWindowSeconds}" />
                         </Grid>
 
-                        <TextBlock Classes="label" FontSize="10" TextWrapping="Wrap"
+                        <TextBlock Classes="label" FontSize="11" TextWrapping="Wrap"
                                    Text="Mã quét trùng trong khoảng thời gian này sẽ được coi là trùng và gửi Fail (D12 = 0)." />
                     </StackPanel>
                 </Border>
 
                 <!-- ===== PLC ===== -->
-                <Border Grid.Row="0" Grid.Column="1" Classes="panel" Padding="14,12">
+                <Border Grid.Row="0" Grid.Column="1" Classes="panel" Padding="16,14">
                     <StackPanel Spacing="10">
-                        <TextBlock Classes="sectionTitle" Text="PLC · OMERON FINS/UDP" />
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Path Width="16" Height="16"
+                                  Stretch="Uniform"
+                                  Stroke="{StaticResource TextPrimary}"
+                                  StrokeThickness="1.9"
+                                  StrokeLineCap="Round"
+                                  StrokeJoin="Round"
+                                  VerticalAlignment="Center"
+                                  Data="{StaticResource Icon.CpuChip}" />
+                            <TextBlock Classes="overline"
+                                       FontSize="14"
+                                       LetterSpacing="0.1"
+                                       Foreground="{StaticResource TextPrimary}"
+                                       Text="PLC · OMERON FINS/UDP" />
+                        </StackPanel>
 
                         <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
                             <TextBlock Classes="label" VerticalAlignment="Center" Text="IP PLC" />
@@ -121,9 +162,23 @@
                 </Border>
 
                 <!-- ===== Địa chỉ vùng D ===== -->
-                <Border Grid.Row="1" Grid.Column="0" Classes="panel" Padding="14,12">
+                <Border Grid.Row="1" Grid.Column="0" Classes="panel" Padding="16,14">
                     <StackPanel Spacing="10">
-                        <TextBlock Classes="sectionTitle" Text="VÙNG NHỚ D · TÍN HIỆU" />
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Path Width="16" Height="16"
+                                  Stretch="Uniform"
+                                  Stroke="{StaticResource TextPrimary}"
+                                  StrokeThickness="1.9"
+                                  StrokeLineCap="Round"
+                                  StrokeJoin="Round"
+                                  VerticalAlignment="Center"
+                                  Data="{StaticResource Icon.Cpu}" />
+                            <TextBlock Classes="overline"
+                                       FontSize="14"
+                                       LetterSpacing="0.1"
+                                       Foreground="{StaticResource TextPrimary}"
+                                       Text="VÙNG NHỚ D · TÍN HIỆU" />
+                        </StackPanel>
 
                         <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
                             <TextBlock Classes="label" VerticalAlignment="Center" Text="Kết quả (1/0)" />
@@ -145,7 +200,7 @@
 
                         <Border Classes="device" Padding="10">
                             <StackPanel Spacing="3">
-                                <TextBlock Classes="label" FontSize="10" Text="Ý NGHĨA" />
+                                <TextBlock Classes="overline" FontSize="11" Text="Ý NGHĨA" />
                                 <TextBlock FontSize="11" TextWrapping="Wrap"
                                            Foreground="{StaticResource TextMuted}"
                                            Text="D12 = 1 khi đọc mã hợp lệ, D12 = 0 khi NoRead / FAIL / sai định dạng / trùng mã. D16 = 1 mỗi chu kỳ khi camera + PLC + license đều sẵn sàng." />
@@ -155,9 +210,23 @@
                 </Border>
 
                 <!-- ===== Web + License ===== -->
-                <Border Grid.Row="1" Grid.Column="1" Classes="panel" Padding="14,12">
+                <Border Grid.Row="1" Grid.Column="1" Classes="panel" Padding="16,14">
                     <StackPanel Spacing="10">
-                        <TextBlock Classes="sectionTitle" Text="WEB · CHECKEE" />
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Path Width="16" Height="16"
+                                  Stretch="Uniform"
+                                  Stroke="{StaticResource TextPrimary}"
+                                  StrokeThickness="1.9"
+                                  StrokeLineCap="Round"
+                                  StrokeJoin="Round"
+                                  VerticalAlignment="Center"
+                                  Data="{StaticResource Icon.Link}" />
+                            <TextBlock Classes="overline"
+                                       FontSize="14"
+                                       LetterSpacing="0.1"
+                                       Foreground="{StaticResource TextPrimary}"
+                                       Text="WEB · CHECKEE" />
+                        </StackPanel>
 
                         <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
                             <TextBlock Classes="label" VerticalAlignment="Center" Text="URL trang" />
@@ -173,7 +242,7 @@
 
                         <Border Classes="device" Padding="10">
                             <StackPanel Spacing="3">
-                                <TextBlock Classes="label" FontSize="10" Text="LICENSE" />
+                                <TextBlock Classes="overline" FontSize="11" Text="LICENSE" />
                                 <TextBlock FontSize="12" FontWeight="SemiBold" Text="{Binding LicenseStatusText}" />
                                 <TextBlock FontSize="11"
                                            Foreground="{StaticResource TextMuted}"
@@ -185,8 +254,18 @@
                                         HorizontalAlignment="Stretch"
                                         Margin="0,6,0,0"
                                         FontSize="11"
-                                        Content="Quản lý license..."
-                                        Command="{Binding ShowLicenseWindowCommand}" />
+                                        Command="{Binding ShowLicenseWindowCommand}">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <Path Width="14" Height="14"
+                                              Stretch="Uniform"
+                                              Stroke="{StaticResource TextPrimary}"
+                                              StrokeThickness="2"
+                                              StrokeLineCap="Round"
+                                              StrokeJoin="Round"
+                                              Data="{StaticResource Icon.File}" />
+                                        <TextBlock Text="Quản lý license..." />
+                                    </StackPanel>
+                                </Button>
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -195,29 +274,60 @@
         </ScrollViewer>
 
         <!-- Thanh thao tác -->
-        <Border Grid.Row="2" Classes="panel" Padding="12,10">
+        <Border Grid.Row="2" Classes="panel" Padding="16,12">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
                 <StackPanel Spacing="2" VerticalAlignment="Center">
                     <TextBlock FontSize="11"
                                TextWrapping="Wrap"
                                Foreground="{StaticResource TextMuted}"
                                Text="Cấu hình được lưu vào appsettings.json trong thư mục ứng dụng." />
-                    <TextBlock FontSize="11"
-                               FontWeight="SemiBold"
-                               TextWrapping="Wrap"
-                               Foreground="{StaticResource Ok}"
-                               IsVisible="{Binding ConfigEditor.HasMessage}"
-                               Text="{Binding ConfigEditor.ConfigMessageText}" />
+                    <StackPanel Orientation="Horizontal"
+                                Spacing="8"
+                                IsVisible="{Binding ConfigEditor.HasMessage}">
+                        <Path Width="14" Height="14"
+                              Stretch="Uniform"
+                              Stroke="{StaticResource Ok}"
+                              StrokeThickness="2.2"
+                              StrokeLineCap="Round"
+                              StrokeJoin="Round"
+                              VerticalAlignment="Center"
+                              Data="{StaticResource Icon.Check}" />
+                        <TextBlock FontSize="11"
+                                   FontWeight="SemiBold"
+                                   TextWrapping="Wrap"
+                                   Foreground="{StaticResource Ok}"
+                                   Text="{Binding ConfigEditor.ConfigMessageText}" />
+                    </StackPanel>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                     <Button Classes="chip"
-                            Content="Hoàn tác"
-                            Command="{Binding ConfigEditor.ResetCommand}" />
+                            Command="{Binding ConfigEditor.ResetCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Width="15" Height="15"
+                                  Stretch="Uniform"
+                                  Stroke="{StaticResource TextPrimary}"
+                                  StrokeThickness="2"
+                                  StrokeLineCap="Round"
+                                  StrokeJoin="Round"
+                                  Data="{StaticResource Icon.Refresh}" />
+                            <TextBlock Text="Hoàn tác" />
+                        </StackPanel>
+                    </Button>
                     <Button Classes="chip"
                             FontWeight="Bold"
-                            Content="Lưu cấu hình"
-                            Command="{Binding ConfigEditor.SaveCommand}" />
+                            Command="{Binding ConfigEditor.SaveCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Path Width="15" Height="15"
+                                  Stretch="Uniform"
+                                  Stroke="{StaticResource TextPrimary}"
+                                  StrokeThickness="2"
+                                  StrokeLineCap="Round"
+                                  StrokeJoin="Round"
+                                  Data="{StaticResource Icon.Save}" />
+                            <TextBlock Text="Lưu cấu hình" />
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
             </Grid>
         </Border>

@@ -10,8 +10,26 @@
     <Grid RowDefinitions="Auto,Auto,*" Margin="18,6,18,18" RowSpacing="12">
 
         <!-- Tiêu đề -->
-        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="12">
-            <StackPanel Spacing="4">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+            <Border Grid.Column="0"
+                    Width="42" Height="42"
+                    CornerRadius="14"
+                    Background="{StaticResource AccentSoft}"
+                    BorderBrush="{StaticResource LineAccent}"
+                    BorderThickness="1"
+                    VerticalAlignment="Center">
+                <Path Width="20" Height="20"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center"
+                      Stretch="Uniform"
+                      Stroke="{StaticResource Accent}"
+                      StrokeThickness="1.9"
+                      StrokeLineCap="Round"
+                      StrokeJoin="Round"
+                      Data="{StaticResource Icon.CpuChip}" />
+            </Border>
+
+            <StackPanel Grid.Column="1" Spacing="4">
                 <TextBlock Text="Dev · Trạng thái runtime"
                            FontSize="21"
                            FontWeight="Bold"
@@ -21,7 +39,7 @@
                            Text="Biến global, bộ đếm, bộ nhớ, service DI và log kỹ thuật — tự làm mới mỗi 1–3 giây. Chỉ dành cho Lập trình viên." />
             </StackPanel>
 
-            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                 <Border Classes="pill">
                     <TextBlock Classes="mono" Text="{Binding DevView.AppVersionText}" />
                 </Border>
@@ -40,17 +58,37 @@
                         Height="36" MinWidth="96" Padding="14,0"
                         HorizontalContentAlignment="Center"
                         VerticalContentAlignment="Center"
-                        Content="Làm mới"
-                        Command="{Binding DevView.RefreshAllCommand}" />
+                        Command="{Binding DevView.RefreshAllCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Path Width="16" Height="16"
+                              Stretch="Uniform"
+                              Stroke="White"
+                              StrokeThickness="1.9"
+                              StrokeLineCap="Round"
+                              StrokeJoin="Round"
+                              Data="{StaticResource Icon.Refresh}" />
+                        <TextBlock Text="Làm mới" />
+                    </StackPanel>
+                </Button>
 
                 <Button Grid.Column="1"
                         Classes="soft"
                         Height="36" MinWidth="130" Padding="14,0"
                         HorizontalContentAlignment="Center"
                         VerticalContentAlignment="Center"
-                        Content="Giải phóng RAM"
                         ToolTip.Tip="Chạy GC.Collect toàn bộ heap + nén bộ nhớ (có thể gây pause ngắn)"
-                        Command="{Binding DevView.CollectGarbageCommand}" />
+                        Command="{Binding DevView.CollectGarbageCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Path Width="16" Height="16"
+                              Stretch="Uniform"
+                              Stroke="{StaticResource TextPrimary}"
+                              StrokeThickness="1.9"
+                              StrokeLineCap="Round"
+                              StrokeJoin="Round"
+                              Data="{StaticResource Icon.Trash}" />
+                        <TextBlock Text="Giải phóng RAM" />
+                    </StackPanel>
+                </Button>
 
                 <ComboBox Grid.Column="2"
                           Classes="field"
@@ -91,7 +129,20 @@
                 <!-- ===== TRẠNG THÁI GLOBAL ===== -->
                 <Border Grid.Row="0" Grid.Column="0" Classes="panel" Padding="14,12">
                     <StackPanel Spacing="8">
-                        <TextBlock Classes="sectionTitle" Text="TRẠNG THÁI GLOBAL" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Width="16" Height="16"
+                                  Stretch="Uniform"
+                                  Stroke="{StaticResource TextMuted}"
+                                  StrokeThickness="1.9"
+                                  StrokeLineCap="Round"
+                                  StrokeJoin="Round"
+                                  Data="{StaticResource Icon.Grid}" />
+                            <TextBlock Classes="overline"
+                                       FontSize="14"
+                                       LetterSpacing="0.1"
+                                       Foreground="{StaticResource TextPrimary}"
+                                       Text="TRẠNG THÁI GLOBAL" />
+                        </StackPanel>
 
                         <ItemsControl ItemsSource="{Binding DevView.GlobalStates}">
                             <ItemsControl.ItemTemplate>
@@ -127,7 +178,20 @@
                 <!-- ===== LỖI HIỆN TẠI ===== -->
                 <Border Grid.Row="0" Grid.Column="1" Classes="panel" Padding="14,12">
                     <StackPanel Spacing="8">
-                        <TextBlock Classes="sectionTitle" Text="LỖI HIỆN TẠI" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Width="16" Height="16"
+                                  Stretch="Uniform"
+                                  Stroke="{StaticResource Danger}"
+                                  StrokeThickness="1.9"
+                                  StrokeLineCap="Round"
+                                  StrokeJoin="Round"
+                                  Data="{StaticResource Icon.Alert}" />
+                            <TextBlock Classes="overline"
+                                       FontSize="14"
+                                       LetterSpacing="0.1"
+                                       Foreground="{StaticResource TextPrimary}"
+                                       Text="LỖI HIỆN TẠI" />
+                        </StackPanel>
 
                         <ItemsControl ItemsSource="{Binding DevView.CurrentErrors}">
                             <ItemsControl.ItemTemplate>
@@ -153,6 +217,14 @@
 
                         <StackPanel Spacing="4"
                                     IsVisible="{Binding DevView.HasNoErrors}">
+                            <Path Width="18" Height="18"
+                                  HorizontalAlignment="Center"
+                                  Stretch="Uniform"
+                                  Stroke="{StaticResource Ok}"
+                                  StrokeThickness="1.9"
+                                  StrokeLineCap="Round"
+                                  StrokeJoin="Round"
+                                  Data="{StaticResource Icon.Check}" />
                             <TextBlock Text="Không có lỗi"
                                        FontSize="12"
                                        FontWeight="SemiBold"
@@ -169,7 +241,20 @@
                 <!-- ===== BỘ ĐẾM RUNTIME ===== -->
                 <Border Grid.Row="1" Grid.Column="0" Classes="panel" Padding="14,12">
                     <StackPanel Spacing="8">
-                        <TextBlock Classes="sectionTitle" Text="BỘ ĐẾM RUNTIME" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Width="16" Height="16"
+                                  Stretch="Uniform"
+                                  Stroke="{StaticResource TextMuted}"
+                                  StrokeThickness="1.9"
+                                  StrokeLineCap="Round"
+                                  StrokeJoin="Round"
+                                  Data="{StaticResource Icon.Bars}" />
+                            <TextBlock Classes="overline"
+                                       FontSize="14"
+                                       LetterSpacing="0.1"
+                                       Foreground="{StaticResource TextPrimary}"
+                                       Text="BỘ ĐẾM RUNTIME" />
+                        </StackPanel>
 
                         <ItemsControl ItemsSource="{Binding DevView.Counters}">
                             <ItemsControl.ItemTemplate>
@@ -206,7 +291,20 @@
                 <Border Grid.Row="1" Grid.Column="1" Classes="panel" Padding="14,12">
                     <StackPanel Spacing="8">
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                            <TextBlock Classes="sectionTitle" Text="BỘ NHỚ (RAM)" />
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                                <Path Width="16" Height="16"
+                                      Stretch="Uniform"
+                                      Stroke="{StaticResource TextMuted}"
+                                      StrokeThickness="1.9"
+                                      StrokeLineCap="Round"
+                                      StrokeJoin="Round"
+                                      Data="{StaticResource Icon.Chart}" />
+                                <TextBlock Classes="overline"
+                                           FontSize="14"
+                                           LetterSpacing="0.1"
+                                           Foreground="{StaticResource TextPrimary}"
+                                           Text="BỘ NHỚ (RAM)" />
+                            </StackPanel>
                             <TextBlock Grid.Column="1"
                                        Classes="label mono"
                                        FontSize="10"
@@ -255,7 +353,20 @@
                 <!-- ===== MÔI TRƯỜNG ===== -->
                 <Border Grid.Row="2" Grid.Column="0" Classes="panel" Padding="14,12">
                     <StackPanel Spacing="8">
-                        <TextBlock Classes="sectionTitle" Text="MÔI TRƯỜNG" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Width="16" Height="16"
+                                  Stretch="Uniform"
+                                  Stroke="{StaticResource TextMuted}"
+                                  StrokeThickness="1.9"
+                                  StrokeLineCap="Round"
+                                  StrokeJoin="Round"
+                                  Data="{StaticResource Icon.Settings}" />
+                            <TextBlock Classes="overline"
+                                       FontSize="14"
+                                       LetterSpacing="0.1"
+                                       Foreground="{StaticResource TextPrimary}"
+                                       Text="MÔI TRƯỜNG" />
+                        </StackPanel>
 
                         <ItemsControl ItemsSource="{Binding DevView.EnvironmentRows}">
                             <ItemsControl.ItemTemplate>
@@ -286,7 +397,20 @@
                 <!-- ===== CẤU HÌNH ĐỌC ĐƯỢC ===== -->
                 <Border Grid.Row="2" Grid.Column="1" Classes="panel" Padding="14,12">
                     <StackPanel Spacing="8">
-                        <TextBlock Classes="sectionTitle" Text="CẤU HÌNH ĐỌC ĐƯỢC" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Width="16" Height="16"
+                                  Stretch="Uniform"
+                                  Stroke="{StaticResource TextMuted}"
+                                  StrokeThickness="1.9"
+                                  StrokeLineCap="Round"
+                                  StrokeJoin="Round"
+                                  Data="{StaticResource Icon.File}" />
+                            <TextBlock Classes="overline"
+                                       FontSize="14"
+                                       LetterSpacing="0.1"
+                                       Foreground="{StaticResource TextPrimary}"
+                                       Text="CẤU HÌNH ĐỌC ĐƯỢC" />
+                        </StackPanel>
 
                         <ScrollViewer MaxHeight="230" VerticalScrollBarVisibility="Auto">
                             <ItemsControl ItemsSource="{Binding DevView.ConfigRows}">
@@ -320,7 +444,20 @@
                 <Border Grid.Row="3" Grid.Column="0" Classes="panel" Padding="14,12">
                     <StackPanel Spacing="8">
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                            <TextBlock Classes="sectionTitle" Text="DỊCH VỤ ĐĂNG KÝ (DI)" />
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                                <Path Width="16" Height="16"
+                                      Stretch="Uniform"
+                                      Stroke="{StaticResource TextMuted}"
+                                      StrokeThickness="1.9"
+                                      StrokeLineCap="Round"
+                                      StrokeJoin="Round"
+                                      Data="{StaticResource Icon.Link}" />
+                                <TextBlock Classes="overline"
+                                           FontSize="14"
+                                           LetterSpacing="0.1"
+                                           Foreground="{StaticResource TextPrimary}"
+                                           Text="DỊCH VỤ ĐĂNG KÝ (DI)" />
+                            </StackPanel>
                             <TextBlock Grid.Column="1"
                                        Classes="label"
                                        FontSize="10"
@@ -341,8 +478,18 @@
                                     Height="34" MinWidth="70" Padding="12,0"
                                     HorizontalContentAlignment="Center"
                                     VerticalContentAlignment="Center"
-                                    Content="Xoá"
-                                    Command="{Binding DevView.ClearServiceFilterCommand}" />
+                                    Command="{Binding DevView.ClearServiceFilterCommand}">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <Path Width="14" Height="14"
+                                          Stretch="Uniform"
+                                          Stroke="{StaticResource TextPrimary}"
+                                          StrokeThickness="1.9"
+                                          StrokeLineCap="Round"
+                                          StrokeJoin="Round"
+                                          Data="{StaticResource Icon.Close}" />
+                                    <TextBlock Text="Xoá" />
+                                </StackPanel>
+                            </Button>
                         </Grid>
 
                         <ScrollViewer MaxHeight="260" VerticalScrollBarVisibility="Auto">
@@ -386,7 +533,20 @@
                 <Border Grid.Row="3" Grid.Column="1" Classes="panel" Padding="14,12">
                     <StackPanel Spacing="8">
                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                            <TextBlock Classes="sectionTitle" Text="LOG KỸ THUẬT (AppLogs)" />
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                                <Path Width="16" Height="16"
+                                      Stretch="Uniform"
+                                      Stroke="{StaticResource TextMuted}"
+                                      StrokeThickness="1.9"
+                                      StrokeLineCap="Round"
+                                      StrokeJoin="Round"
+                                      Data="{StaticResource Icon.Clipboard}" />
+                                <TextBlock Classes="overline"
+                                           FontSize="14"
+                                           LetterSpacing="0.1"
+                                           Foreground="{StaticResource TextPrimary}"
+                                           Text="LOG KỸ THUẬT (AppLogs)" />
+                            </StackPanel>
                             <TextBlock Grid.Column="1"
                                        Classes="label"
                                        FontSize="10"

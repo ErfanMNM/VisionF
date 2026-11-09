@@ -1,7 +1,10 @@
+using System;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Avalonia.Media;
+using Avalonia.Media.Fonts;
 using ClassLibraryMT.Auth;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,6 +24,39 @@ public partial class App : Application
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
+
+        // ===== Font nhung trong app =====
+        // Space Grotesk: font UI chinh (khuong giong mau Dashboard 4).
+        //   Bien bien (variable font) -> 1 file du cho moi weight 400..700.
+        // JetBrains Mono: font cho so lieu / ma don / dong ho.
+        // Font Inter dung lam fallback khi may khong co font he thong.
+        //
+        // EmbeddedFontCollection nap file .ttf truc tiep tu avares:// nen
+        // app khong can cai font vao may (vuot qua gioi han Native AOT).
+        // EmbeddedFontCollection(Uri key, Uri source):
+        //   key    = dinh danh collection (phai khac nhau giua cac font)
+        //   source = file .ttf trong avares://
+        // Font .ttf duoc nhung trong app -> khong can cai font vao may,
+        // va khong dung reflection nen giu duoc kha nang Native AOT.
+        FontManager.Current.AddFontCollection(
+            new EmbeddedFontCollection(
+                new Uri("avares://TanTienQR/Assets/Fonts/SpaceGrotesk-Regular.ttf"),
+                new Uri("avares://TanTienQR/Assets/Fonts/SpaceGrotesk-Regular.ttf")));
+
+        FontManager.Current.AddFontCollection(
+            new EmbeddedFontCollection(
+                new Uri("avares://TanTienQR/Assets/Fonts/JetBrainsMono-Regular.ttf"),
+                new Uri("avares://TanTienQR/Assets/Fonts/JetBrainsMono-Regular.ttf")));
+
+        FontManager.Current.AddFontCollection(
+            new EmbeddedFontCollection(
+                new Uri("avares://TanTienQR/Assets/Fonts/JetBrainsMono-Bold.ttf"),
+                new Uri("avares://TanTienQR/Assets/Fonts/JetBrainsMono-Bold.ttf")));
+
+        FontManager.Current.AddFontCollection(
+            new EmbeddedFontCollection(
+                new Uri("avares://TanTienQR/Assets/Fonts/JetBrainsMedium.ttf"),
+                new Uri("avares://TanTienQR/Assets/Fonts/JetBrainsMedium.ttf")));
     }
 
     public override void OnFrameworkInitializationCompleted()

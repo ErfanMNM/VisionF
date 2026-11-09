@@ -134,6 +134,31 @@ internal sealed partial class ProductionInfoViewModel : ViewModelBase, IDisposab
     public bool HasCompleted => CompletedText != "—";
 
     /// <summary>
+    /// Trạng thái từng ô trong thanh tiến trình 24 ô (mẫu Dashboard 4).
+    /// Mỗi phần tử là <c>true</c> nếu ô đó đã "chạy" (đã quét), ngược lại <c>false</c>.
+    /// </summary>
+    public IReadOnlyList<bool> SegmentStates { get; private set; } = CreateSegments(0);
+
+    /// <summary>Số ô đã "chạy" trong thanh tiến trình 24 ô.</summary>
+    public int FilledSegmentCount =>
+        (int)Math.Round(Math.Clamp(ProgressPercent, 0, 100) / 100.0 * SegmentCount);
+
+    /// <summary>Tổng số ô của thanh tiến trình (24, giống mẫu Dashboard 4).</summary>
+    public const int SegmentCount = 24;
+
+    /// <summary>Tạo mảng 24 phần tử, <paramref name="filled"/> phần tử đầu là <c>true</c>.</summary>
+    private static IReadOnlyList<bool> CreateSegments(int filled)
+    {
+        var result = new bool[SegmentCount];
+        for (var i = 0; i < filled && i < SegmentCount; i++)
+        {
+            result[i] = true;
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// Nạp lại thông tin từ <see cref="ProductionOrderService"/>.
     /// </summary>
     public void Refresh()
@@ -151,10 +176,13 @@ internal sealed partial class ProductionInfoViewModel : ViewModelBase, IDisposab
             CompletedText = "—";
             CreatedText = "—";
             IsRunning = false;
+            SegmentStates = CreateSegments(0);
             OnPropertyChanged(nameof(ProgressText));
             OnPropertyChanged(nameof(ProgressPercentText));
             OnPropertyChanged(nameof(StatusBadgeClass));
             OnPropertyChanged(nameof(IsEmpty));
+            OnPropertyChanged(nameof(SegmentStates));
+            OnPropertyChanged(nameof(FilledSegmentCount));
             RaiseSelectionStateChanged();
             return;
         }
@@ -189,6 +217,9 @@ internal sealed partial class ProductionInfoViewModel : ViewModelBase, IDisposab
         OnPropertyChanged(nameof(ProgressPercentText));
         OnPropertyChanged(nameof(StatusBadgeClass));
         OnPropertyChanged(nameof(IsEmpty));
+        SegmentStates = CreateSegments(FilledSegmentCount);
+        OnPropertyChanged(nameof(SegmentStates));
+        OnPropertyChanged(nameof(FilledSegmentCount));
         RaiseSelectionStateChanged();
     }
 

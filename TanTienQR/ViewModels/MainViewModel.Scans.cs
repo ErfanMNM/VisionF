@@ -24,12 +24,27 @@ internal partial class MainViewModel
     /// <summary>Sự kiện gần đây, mới nhất đứng đầu.</summary>
     public ObservableCollection<ScanEvent> Events { get; } = [];
 
+    /// <summary>
+    /// True khi bảng lịch sử mã quét còn dữ liệu — dùng để ẩn/hiện
+    /// empty state kiểu mẫu Dashboard 4.
+    /// </summary>
+    public bool HasScans => Scans.Count > 0;
+
+    /// <summary>
+    /// True khi danh sách sự kiện gần đây còn dữ liệu — dùng để ẩn/hiện
+    /// dòng "Chưa có sự kiện nào." kiểu mẫu Dashboard 4.
+    /// </summary>
+    public bool HasEvents => Events.Count > 0;
+
     /// <summary>Thêm một bản ghi quét mã vào bảng và cập nhật chỉ số.</summary>
     private void AddScan(ScanRecord record)
     {
         Scans.Insert(0, new ScanRowViewModel(record));
         while (Scans.Count > MaxScanRows)
             Scans.RemoveAt(Scans.Count - 1);
+
+        // Bảng vừa có dữ liệu -> cập nhật trạng thái empty state.
+        OnPropertyChanged(nameof(HasScans));
 
         TotalScans++;
         if (record.Outcome == ScanOutcome.Pass)
@@ -87,6 +102,9 @@ internal partial class MainViewModel
         Events.Insert(0, new ScanEvent(message, level, DateTime.Now));
         while (Events.Count > MaxEventRows)
             Events.RemoveAt(Events.Count - 1);
+
+        // Danh sách sự kiện vừa có dữ liệu -> cập nhật trạng thái empty state.
+        OnPropertyChanged(nameof(HasEvents));
     }
 }
 

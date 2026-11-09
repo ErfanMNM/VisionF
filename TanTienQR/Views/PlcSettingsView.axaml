@@ -30,7 +30,7 @@
 
         <!-- ===== Tiêu đề nhóm ===== -->
         <Style Selector="TextBlock.sectionTitle">
-            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontSize" Value="14" />
             <Setter Property="FontWeight" Value="Bold" />
             <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
             <Setter Property="VerticalAlignment" Value="Center" />
@@ -42,7 +42,7 @@
             <Setter Property="MinWidth" Value="36" />
             <Setter Property="Padding" Value="7,0" />
             <Setter Property="FontSize" Value="11" />
-            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="CornerRadius" Value="9" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
@@ -82,8 +82,9 @@
 
         <!-- ===== Header bảng ===== -->
         <Style Selector="TextBlock.th">
-            <Setter Property="FontSize" Value="10" />
-            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="LetterSpacing" Value="0.12" />
             <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
@@ -145,7 +146,7 @@
                           StrokeLineCap="Round"
                           StrokeJoin="Round"
                           IsVisible="{Binding PlcSettings.IsParameterPanelVisible}"
-                          Data="M9,3 L4,7 L9,11" />
+                          Data="{StaticResource Icon.ChevronRight}" />
                     <!-- Mũi tên phải: hiện bảng -->
                     <Path Width="14" Height="14"
                           Stretch="Uniform"
@@ -154,7 +155,7 @@
                           StrokeLineCap="Round"
                           StrokeJoin="Round"
                           IsVisible="{Binding !PlcSettings.IsParameterPanelVisible}"
-                          Data="M5,3 L10,7 L5,11" />
+                          Data="{StaticResource Icon.ChevronDown}" />
                 </Panel>
             </Button>
         </Grid>
@@ -162,11 +163,11 @@
         <!-- ================= THÔNG BÁO TRẠNG THÁI ================= -->
         <Border Grid.Row="1"
                 Padding="12,9"
-                CornerRadius="9"
+                CornerRadius="14"
                 Background="{StaticResource BgPanel}"
                 BorderBrush="{StaticResource LineColor}"
                 BorderThickness="1">
-            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
+            <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="9">
                 <Ellipse Grid.Column="0"
                          Width="7" Height="7"
                          VerticalAlignment="Center"
@@ -177,7 +178,27 @@
                          VerticalAlignment="Center"
                          Fill="{StaticResource Danger}"
                          IsVisible="{Binding PlcSettings.IsStatusError}" />
-                <TextBlock Grid.Column="1"
+                <Path Grid.Column="1"
+                      Width="15" Height="15"
+                      Stretch="Uniform"
+                      VerticalAlignment="Center"
+                      Stroke="{StaticResource TextMuted}"
+                      StrokeThickness="1.8"
+                      StrokeLineCap="Round"
+                      StrokeJoin="Round"
+                      IsVisible="{Binding !PlcSettings.IsStatusError}"
+                      Data="{StaticResource Icon.Info}" />
+                <Path Grid.Column="1"
+                      Width="15" Height="15"
+                      Stretch="Uniform"
+                      VerticalAlignment="Center"
+                      Stroke="{StaticResource Danger}"
+                      StrokeThickness="1.8"
+                      StrokeLineCap="Round"
+                      StrokeJoin="Round"
+                      IsVisible="{Binding PlcSettings.IsStatusError}"
+                      Data="{StaticResource Icon.Alert}" />
+                <TextBlock Grid.Column="2"
                            FontSize="11.5"
                            Foreground="{StaticResource TextMuted}"
                            TextTrimming="CharacterEllipsis"
@@ -238,7 +259,8 @@
                                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                       StrokeThickness="1.8"
                                       StrokeLineCap="Round"
-                                      Data="M4,10 L12,2 M6,2 L12,2 L12,8" />
+                                      StrokeJoin="Round"
+                                      Data="{StaticResource Icon.Upload}" />
                             </Button>
 
                             <!-- Xoá -->
@@ -247,7 +269,7 @@
                                     Width="34" Height="34"
                                     MinWidth="34" MinHeight="34"
                                     Padding="0"
-                                    CornerRadius="8"
+                                    CornerRadius="10"
                                     ToolTip.Tip="Xoá recipe đang chọn"
                                     HorizontalContentAlignment="Center"
                                     VerticalContentAlignment="Center"
@@ -257,7 +279,8 @@
                                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                       StrokeThickness="1.6"
                                       StrokeLineCap="Round"
-                                      Data="M2,4 L12,4 M5,4 L5,2 L9,2 L9,4 M3,4 L4,13 L10,13 L11,4 M5.5,6 L5.5,11 M8.5,6 L8.5,11" />
+                                      StrokeJoin="Round"
+                                      Data="{StaticResource Icon.Trash}" />
                             </Button>
                         </Grid>
 
@@ -281,8 +304,18 @@
                                     FontSize="11.5"
                                     HorizontalContentAlignment="Center"
                                     VerticalContentAlignment="Center"
-                                    Content="Tạo"
-                                    Command="{Binding PlcSettings.CreateRecipeCommand}" />
+                                    Command="{Binding PlcSettings.CreateRecipeCommand}">
+                                <StackPanel Orientation="Horizontal" Spacing="5">
+                                    <Path Width="13" Height="13"
+                                          Stretch="Uniform"
+                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                          StrokeThickness="2"
+                                          StrokeLineCap="Round"
+                                          StrokeJoin="Round"
+                                          Data="{StaticResource Icon.Plus}" />
+                                    <TextBlock Text="Tạo" />
+                                </StackPanel>
+                            </Button>
                         </Grid>
                     </Grid>
                 </Border>
@@ -297,13 +330,21 @@
                               ColumnSpacing="8"
                               Margin="14,11,14,10">
                             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                <TextBlock Classes="sectionTitle" Text="Ô nhớ PLC" />
+                                <Path Width="15" Height="15"
+                                      Stretch="Uniform"
+                                      VerticalAlignment="Center"
+                                      Stroke="{StaticResource TextMuted}"
+                                      StrokeThickness="1.8"
+                                      StrokeLineCap="Round"
+                                      StrokeJoin="Round"
+                                      Data="{StaticResource Icon.CpuChip}" />
+                                <TextBlock Classes="sectionTitle" Text="Ô NHỚ PLC" />
                                 <Border Classes="badge">
                                     <TextBlock Text="{Binding PlcSettings.ParameterCount}" />
                                 </Border>
                             </StackPanel>
                             <TextBlock Grid.Column="1"
-                                       Classes="label"
+                                       Classes="overline"
                                        FontSize="10.5"
                                        VerticalAlignment="Center"
                                        Text="Nhấn ▼ để xem chi tiết" />
@@ -312,11 +353,18 @@
                                     Classes="primary"
                                     Height="28" MinWidth="98" Padding="10,0"
                                     FontSize="11.5"
-                                    CornerRadius="7"
+                                    CornerRadius="9"
                                     HorizontalContentAlignment="Center"
                                     VerticalContentAlignment="Center"
-                                    Content="+ Tham số"
-                                    Command="{Binding PlcSettings.AddParameterCommand}" />
+                                    Command="{Binding PlcSettings.AddParameterCommand}">
+                                <StackPanel Orientation="Horizontal" Spacing="5">
+                                    <Path Width="13" Height="13"
+                                          Stretch="Uniform"
+                                          Fill="White"
+                                          Data="{StaticResource Icon.Plus}" />
+                                    <TextBlock Text="Tham số" />
+                                </StackPanel>
+                            </Button>
                         </Grid>
 
                         <!-- Header cột -->
@@ -324,7 +372,7 @@
                                 BorderBrush="{StaticResource LineColor}"
                                 BorderThickness="0,1,0,1"
                                 Padding="14,7"
-                                Background="{StaticResource BgBase}">
+                                Background="#F8F9FB">
                             <Grid ColumnDefinitions="Auto,*,96,104,Auto" ColumnSpacing="8">
                                 <TextBlock Grid.Column="1" Classes="th" Text="TÊN" />
                                 <TextBlock Grid.Column="2" Classes="th" Text="GIÁ TRỊ" />
@@ -360,15 +408,17 @@
                                                                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                                                       StrokeThickness="1.8"
                                                                       StrokeLineCap="Round"
+                                                                      StrokeJoin="Round"
                                                                       IsVisible="{Binding !IsExpanded}"
-                                                                      Data="M2,4 L10,4 L6,9 Z" />
+                                                                      Data="{StaticResource Icon.ChevronDown}" />
                                                                 <Path Width="12" Height="12"
                                                                       Stretch="Uniform"
                                                                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                                                       StrokeThickness="1.8"
                                                                       StrokeLineCap="Round"
+                                                                      StrokeJoin="Round"
                                                                       IsVisible="{Binding IsExpanded}"
-                                                                      Data="M2,8 L10,8 L6,3 Z" />
+                                                                      Data="{StaticResource Icon.ChevronRight}" />
                                                             </Panel>
                                                         </Button>
 
@@ -399,7 +449,8 @@
                                                                       Stroke="{StaticResource BgPanel}"
                                                                       StrokeThickness="2"
                                                                       StrokeLineCap="Round"
-                                                                      Data="M3,7 L6,10 L11,3" />
+                                                                      StrokeJoin="Round"
+                                                                      Data="{StaticResource Icon.Check}" />
                                                             </Button>
                                                             <Button Classes="soft iconBtn"
                                                                     ToolTip.Tip="Huỷ"
@@ -410,7 +461,8 @@
                                                                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                                                       StrokeThickness="1.8"
                                                                       StrokeLineCap="Round"
-                                                                      Data="M3,3 L9,9 M9,3 L3,9" />
+                                                                      StrokeJoin="Round"
+                                                                      Data="{StaticResource Icon.Close}" />
                                                             </Button>
                                                         </StackPanel>
                                                     </Grid>
@@ -494,15 +546,17 @@
                                                                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                                                       StrokeThickness="1.8"
                                                                       StrokeLineCap="Round"
+                                                                      StrokeJoin="Round"
                                                                       IsVisible="{Binding !IsExpanded}"
-                                                                      Data="M2,4 L10,4 L6,9 Z" />
+                                                                      Data="{StaticResource Icon.ChevronDown}" />
                                                                 <Path Width="12" Height="12"
                                                                       Stretch="Uniform"
                                                                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                                                       StrokeThickness="1.8"
                                                                       StrokeLineCap="Round"
+                                                                      StrokeJoin="Round"
                                                                       IsVisible="{Binding IsExpanded}"
-                                                                      Data="M2,8 L10,8 L6,3 Z" />
+                                                                      Data="{StaticResource Icon.ChevronRight}" />
                                                             </Panel>
                                                         </Button>
 
@@ -549,7 +603,8 @@
                                                                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                                                       StrokeThickness="1.6"
                                                                       StrokeLineCap="Round"
-                                                                      Data="M1,7 L4,10 L12,2" />
+                                                                      StrokeJoin="Round"
+                                                                      Data="{StaticResource Icon.Download}" />
                                                             </Button>
                                                             <Button Classes="soft iconBtn"
                                                                     ToolTip.Tip="Ghi giá trị xuống PLC"
@@ -561,7 +616,8 @@
                                                                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                                                       StrokeThickness="1.6"
                                                                       StrokeLineCap="Round"
-                                                                      Data="M6,2 L2,6 L6,10 M2,6 L11,6 M11,2 L11,10" />
+                                                                      StrokeJoin="Round"
+                                                                      Data="{StaticResource Icon.Upload}" />
                                                             </Button>
                                                             <Button Classes="soft iconBtn"
                                                                     ToolTip.Tip="Sửa thông số"
@@ -572,7 +628,8 @@
                                                                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                                                       StrokeThickness="1.6"
                                                                       StrokeLineCap="Round"
-                                                                      Data="M2,11 L2,13 L4,13 L11,6 L9,4 Z M8,5 L11,8" />
+                                                                      StrokeJoin="Round"
+                                                                      Data="{StaticResource Icon.Settings}" />
                                                             </Button>
                                                             <Button Classes="soft iconBtn danger"
                                                                     ToolTip.Tip="Xoá thông số"
@@ -583,7 +640,8 @@
                                                                       Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
                                                                       StrokeThickness="1.6"
                                                                       StrokeLineCap="Round"
-                                                                      Data="M2,4 L11,4 M4.5,4 L4.5,2 L8.5,2 L8.5,4 M3,4 L3.8,11.5 L9.2,11.5 L10,4 M5,6 L5,9.5 M8,6 L8,9.5" />
+                                                                      StrokeJoin="Round"
+                                                                      Data="{StaticResource Icon.Trash}" />
                                                             </Button>
                                                         </StackPanel>
                                                     </Grid>
@@ -656,7 +714,7 @@
                                     Spacing="7"
                                     IsVisible="{Binding !PlcSettings.IsTableEmpty}">
                             <Border Width="42" Height="42"
-                                    CornerRadius="21"
+                                    CornerRadius="14"
                                     Background="{StaticResource BgRaised}">
                                 <Path Width="20" Height="20"
                                       HorizontalAlignment="Center"
@@ -665,7 +723,8 @@
                                       Stroke="{StaticResource TextMuted}"
                                       StrokeThickness="1.6"
                                       StrokeLineCap="Round"
-                                      Data="M3,6 L3,4 M3,4 L7,1 L12,4 L12,6 M2,6 L12,6 L12,14 L2,14 Z" />
+                                      StrokeJoin="Round"
+                                      Data="{StaticResource Icon.Table}" />
                             </Border>
                             <TextBlock Text="Chưa có ô nhớ nào"
                                        FontSize="13"
@@ -702,9 +761,19 @@
                                             FontSize="11.5"
                                             HorizontalContentAlignment="Center"
                                             VerticalContentAlignment="Center"
-                                            Content="Tải lên"
                                             ToolTip.Tip="Tải giá trị của recipe đang chọn vào ô nhập"
-                                            Command="{Binding PlcSettings.LoadRecipeValuesCommand}" />
+                                            Command="{Binding PlcSettings.LoadRecipeValuesCommand}">
+                                        <StackPanel Orientation="Horizontal" Spacing="5">
+                                            <Path Width="13" Height="13"
+                                                  Stretch="Uniform"
+                                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                  StrokeThickness="1.9"
+                                                  StrokeLineCap="Round"
+                                                  StrokeJoin="Round"
+                                                  Data="{StaticResource Icon.Download}" />
+                                            <TextBlock Text="Tải lên" />
+                                        </StackPanel>
+                                    </Button>
 
                                     <!-- Cập nhật: đọc lại giá trị thực tế từ PLC -->
                                     <Button Classes="soft"
@@ -712,9 +781,19 @@
                                             FontSize="11.5"
                                             HorizontalContentAlignment="Center"
                                             VerticalContentAlignment="Center"
-                                            Content="Cập nhật"
                                             ToolTip.Tip="Đọc lại giá trị thực tế từ PLC"
-                                            Command="{Binding PlcSettings.ReadAllCommand}" />
+                                            Command="{Binding PlcSettings.ReadAllCommand}">
+                                        <StackPanel Orientation="Horizontal" Spacing="5">
+                                            <Path Width="13" Height="13"
+                                                  Stretch="Uniform"
+                                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                  StrokeThickness="1.9"
+                                                  StrokeLineCap="Round"
+                                                  StrokeJoin="Round"
+                                                  Data="{StaticResource Icon.Refresh}" />
+                                            <TextBlock Text="Cập nhật" />
+                                        </StackPanel>
+                                    </Button>
 
                                     <!-- Áp dụng: ghi xuống PLC + lưu vào recipe -->
                                     <Button Classes="primary"
@@ -722,9 +801,16 @@
                                             FontSize="11.5"
                                             HorizontalContentAlignment="Center"
                                             VerticalContentAlignment="Center"
-                                            Content="Áp dụng"
                                             ToolTip.Tip="Ghi giá trị đang nhập xuống PLC và lưu vào recipe"
-                                            Command="{Binding PlcSettings.ApplyAndSaveRecipeCommand}" />
+                                            Command="{Binding PlcSettings.ApplyAndSaveRecipeCommand}">
+                                        <StackPanel Orientation="Horizontal" Spacing="5">
+                                            <Path Width="13" Height="13"
+                                                  Stretch="Uniform"
+                                                  Fill="White"
+                                                  Data="{StaticResource Icon.Check}" />
+                                            <TextBlock Text="Áp dụng" />
+                                        </StackPanel>
+                                    </Button>
                                 </StackPanel>
                             </Grid>
                         </Border>
@@ -742,7 +828,17 @@
                           ColumnSpacing="8"
                           Margin="14,11,14,9">
                         <StackPanel Grid.Column="0" Spacing="1" VerticalAlignment="Center">
-                            <TextBlock Classes="sectionTitle" Text="Camera" />
+                            <StackPanel Orientation="Horizontal" Spacing="7">
+                                <Path Width="15" Height="15"
+                                      Stretch="Uniform"
+                                      VerticalAlignment="Center"
+                                      Stroke="{StaticResource TextMuted}"
+                                      StrokeThickness="1.8"
+                                      StrokeLineCap="Round"
+                                      StrokeJoin="Round"
+                                      Data="{StaticResource Icon.Camera}" />
+                                <TextBlock Classes="sectionTitle" Text="CAMERA" />
+                            </StackPanel>
                             <TextBlock Classes="mono"
                                        FontSize="10"
                                        Foreground="{StaticResource TextMuted}"
@@ -756,8 +852,18 @@
                                 FontSize="11"
                                 HorizontalContentAlignment="Center"
                                 VerticalContentAlignment="Center"
-                                Content="Tải lại"
-                                Click="OnReloadCameraClick" />
+                                Click="OnReloadCameraClick">
+                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                <Path Width="13" Height="13"
+                                      Stretch="Uniform"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      StrokeThickness="1.9"
+                                      StrokeLineCap="Round"
+                                      StrokeJoin="Round"
+                                      Data="{StaticResource Icon.Refresh}" />
+                                <TextBlock Text="Tải lại" />
+                            </StackPanel>
+                        </Button>
 
                         <Button Grid.Column="2"
                                 Classes="soft"
@@ -765,8 +871,18 @@
                                 FontSize="11"
                                 HorizontalContentAlignment="Center"
                                 VerticalContentAlignment="Center"
-                                Content="Mở trình duyệt"
-                                Click="OnOpenCameraExternalClick" />
+                                Click="OnOpenCameraExternalClick">
+                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                <Path Width="13" Height="13"
+                                      Stretch="Uniform"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                      StrokeThickness="1.9"
+                                      StrokeLineCap="Round"
+                                      StrokeJoin="Round"
+                                      Data="{StaticResource Icon.Link}" />
+                                <TextBlock Text="Mở trình duyệt" />
+                            </StackPanel>
+                        </Button>
                     </Grid>
 
                     <!-- Webview camera (rộng) -->
@@ -775,7 +891,7 @@
                             Background="{StaticResource BgBase}"
                             BorderBrush="{StaticResource LineColor}"
                             BorderThickness="1"
-                            CornerRadius="10"
+                            CornerRadius="14"
                             ClipToBounds="True">
                         <Grid>
                             <NativeWebView x:Name="CameraBrowser"
@@ -790,7 +906,7 @@
                                         Spacing="8"
                                         IsVisible="{Binding !PlcSettings.HasCameraUrl}">
                                 <Border Width="52" Height="52"
-                                        CornerRadius="26"
+                                        CornerRadius="16"
                                         Background="{StaticResource BgRaised}">
                                     <Path Width="26" Height="26"
                                           HorizontalAlignment="Center"
@@ -799,7 +915,8 @@
                                           Stroke="{StaticResource TextMuted}"
                                           StrokeThickness="1.6"
                                           StrokeLineCap="Round"
-                                          Data="M3,8 L3,5 M3,5 L7,2 L12,5 L12,8 Z M2,8 L12,8 L12,14 L2,14 Z" />
+                                          StrokeJoin="Round"
+                                          Data="{StaticResource Icon.Camera}" />
                                 </Border>
                                 <TextBlock Text="Chưa cấu hình IP camera"
                                            FontSize="13"
