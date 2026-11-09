@@ -28,7 +28,7 @@
                           StrokeThickness="2.2"
                           StrokeLineCap="Round"
                           StrokeJoin="Round"
-                          RenderTransform="Rotate(180)"
+                          RenderTransform="Rotate(180deg)"
                           Data="{StaticResource Icon.ChevronRight}" />
                 </Button>
                 <Button x:Name="ForwardButton"

@@ -38,24 +38,29 @@ public partial class App : Application
         //   source = file .ttf trong avares://
         // Font .ttf duoc nhung trong app -> khong can cai font vao may,
         // va khong dung reflection nen giu duoc kha nang Native AOT.
+        //
+        // LUU Y: key cua EmbeddedFontCollection phai theo scheme "fonts:"
+        // (Avalonia 12 yeu cau). Neu key tro thang avares:// app se nem
+        // ArgumentException "Font collection Key should follow the fonts: scheme"
+        // ngay luc khoi dong.
         FontManager.Current.AddFontCollection(
             new EmbeddedFontCollection(
-                new Uri("avares://TanTienQR/Assets/Fonts/SpaceGrotesk-Regular.ttf"),
+                new Uri("fonts:SpaceGrotesk"),
                 new Uri("avares://TanTienQR/Assets/Fonts/SpaceGrotesk-Regular.ttf")));
 
         FontManager.Current.AddFontCollection(
             new EmbeddedFontCollection(
-                new Uri("avares://TanTienQR/Assets/Fonts/JetBrainsMono-Regular.ttf"),
+                new Uri("fonts:JetBrainsMono"),
                 new Uri("avares://TanTienQR/Assets/Fonts/JetBrainsMono-Regular.ttf")));
 
         FontManager.Current.AddFontCollection(
             new EmbeddedFontCollection(
-                new Uri("avares://TanTienQR/Assets/Fonts/JetBrainsMono-Bold.ttf"),
+                new Uri("fonts:JetBrainsMonoBold"),
                 new Uri("avares://TanTienQR/Assets/Fonts/JetBrainsMono-Bold.ttf")));
 
         FontManager.Current.AddFontCollection(
             new EmbeddedFontCollection(
-                new Uri("avares://TanTienQR/Assets/Fonts/JetBrainsMedium.ttf"),
+                new Uri("fonts:JetBrainsMedium"),
                 new Uri("avares://TanTienQR/Assets/Fonts/JetBrainsMedium.ttf")));
     }
 
