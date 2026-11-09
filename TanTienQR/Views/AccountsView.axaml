@@ -26,25 +26,37 @@
             </StackPanel>
 
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                <Button Classes="soft"
+                <Button Classes="soft,iconbtn"
                         Height="36" MinWidth="92" Padding="14,0"
                         HorizontalContentAlignment="Center"
                         VerticalContentAlignment="Center"
-                        Content="Làm mới"
-                        Command="{Binding AccountsView.LoadCommand}" />
-                <Button Classes="primary"
+                        Command="{Binding AccountsView.LoadCommand}">
+                    <StackPanel>
+                        <Path
+                              Stroke="{StaticResource TextPrimary}"
+                              Data="{StaticResource Icon.Refresh}" />
+                        <TextBlock Text="Làm mới" />
+                    </StackPanel>
+                </Button>
+                <Button Classes="primary,iconbtn"
                         Height="36" MinWidth="110" Padding="14,0"
                         HorizontalContentAlignment="Center"
                         VerticalContentAlignment="Center"
-                        Content="+ Tài khoản"
-                        Command="{Binding AccountsView.AddUserCommand}" />
+                        Command="{Binding AccountsView.AddUserCommand}">
+                    <StackPanel>
+                        <Path
+                              Stroke="White"
+                              Data="{StaticResource Icon.Plus}" />
+                        <TextBlock Text="Tài khoản" Foreground="White" />
+                    </StackPanel>
+                </Button>
             </StackPanel>
         </Grid>
 
         <!-- Thông báo trạng thái -->
         <Border Grid.Row="1"
                 Padding="12,9"
-                CornerRadius="9"
+                CornerRadius="12"
                 Background="{StaticResource BgRaised}"
                 BorderBrush="{StaticResource LineColor}"
                 BorderThickness="1">
@@ -63,14 +75,14 @@
                         BorderBrush="{StaticResource LineColor}"
                         BorderThickness="0,0,0,1"
                         Padding="14,10"
-                        Background="{StaticResource BgRaised}">
+                        Background="#F8F9FB">
                     <Grid ColumnDefinitions="180,200,130,130,150,auto" ColumnSpacing="10">
-                        <TextBlock Grid.Column="0" Classes="fieldLabel" Text="TÊN ĐĂNG NHẬP" />
-                        <TextBlock Grid.Column="1" Classes="fieldLabel" Text="TÊN HIỂN THỊ" />
-                        <TextBlock Grid.Column="2" Classes="fieldLabel" Text="VAI TRÒ" />
-                        <TextBlock Grid.Column="3" Classes="fieldLabel" Text="TRẠNG THÁI" />
-                        <TextBlock Grid.Column="4" Classes="fieldLabel" Text="ĐĂNG NHẬP CUỐI" />
-                        <TextBlock Grid.Column="5" Classes="fieldLabel" Text="THAO TÁC" />
+                        <TextBlock Grid.Column="0" Classes="overline" Text="TÊN ĐĂNG NHẬP" />
+                        <TextBlock Grid.Column="1" Classes="overline" Text="TÊN HIỂN THỊ" />
+                        <TextBlock Grid.Column="2" Classes="overline" Text="VAI TRÒ" />
+                        <TextBlock Grid.Column="3" Classes="overline" Text="TRẠNG THÁI" />
+                        <TextBlock Grid.Column="4" Classes="overline" Text="ĐĂNG NHẬP CUỐI" />
+                        <TextBlock Grid.Column="5" Classes="overline" Text="THAO TÁC" />
                     </Grid>
                 </Border>
 
@@ -148,38 +160,62 @@
                                                     Orientation="Horizontal"
                                                     Spacing="6"
                                                     VerticalAlignment="Center">
-                                            <Button Classes="soft"
+                                            <Button Classes="soft,iconbtn"
                                                     Height="30" MinWidth="52" Padding="10,0"
                                                     FontSize="11"
                                                     HorizontalContentAlignment="Center"
                                                     VerticalContentAlignment="Center"
-                                                    Content="Sửa"
                                                     Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).AccountsView.EditUserCommand}"
-                                                    CommandParameter="{Binding}" />
-                                            <Button Classes="soft"
+                                                    CommandParameter="{Binding}">
+                                                <StackPanel>
+                                                    <Path
+                                                          Stroke="{StaticResource TextPrimary}"
+                                                          Data="{StaticResource Icon.File}" />
+                                                    <TextBlock Text="Sửa" />
+                                                </StackPanel>
+                                            </Button>
+                                            <Button Classes="soft,iconbtn"
                                                     Height="30" MinWidth="76" Padding="10,0"
                                                     FontSize="11"
                                                     HorizontalContentAlignment="Center"
                                                     VerticalContentAlignment="Center"
-                                                    Content="Mật khẩu"
                                                     Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).AccountsView.ResetPasswordCommand}"
-                                                    CommandParameter="{Binding}" />
-                                            <Button Classes="soft"
+                                                    CommandParameter="{Binding}">
+                                                <StackPanel>
+                                                    <Path
+                                                          Stroke="{StaticResource TextPrimary}"
+                                                          Data="{StaticResource Icon.Key}" />
+                                                    <TextBlock Text="Mật khẩu" />
+                                                </StackPanel>
+                                            </Button>
+                                            <Button Classes="soft,iconbtn"
                                                     Height="30" MinWidth="58" Padding="10,0"
                                                     FontSize="11"
                                                     HorizontalContentAlignment="Center"
                                                     VerticalContentAlignment="Center"
-                                                    Content="Khoá"
                                                     Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).AccountsView.ToggleActiveCommand}"
-                                                    CommandParameter="{Binding}" />
-                                            <Button Classes="soft"
+                                                    CommandParameter="{Binding}">
+                                                <StackPanel>
+                                                    <Path
+                                                          Stroke="{StaticResource TextPrimary}"
+                                                          Data="{StaticResource Icon.Lock}" />
+                                                    <TextBlock Text="Khoá" />
+                                                </StackPanel>
+                                            </Button>
+                                            <Button Classes="soft,iconbtn"
                                                     Height="30" MinWidth="52" Padding="10,0"
                                                     FontSize="11"
                                                     HorizontalContentAlignment="Center"
                                                     VerticalContentAlignment="Center"
-                                                    Content="Xoá"
                                                     Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).AccountsView.DeleteCommand}"
-                                                    CommandParameter="{Binding}" />
+                                                    CommandParameter="{Binding}">
+                                                <StackPanel>
+                                                    <Path
+                                                          Stroke="{StaticResource Danger}"
+                                                          Data="{StaticResource Icon.Trash}" />
+                                                    <TextBlock Text="Xoá" Foreground="{StaticResource Danger}" />
+                                                </StackPanel>
+                                            </Button>
                                         </StackPanel>
                                     </Grid>
                                 </Border>
@@ -192,15 +228,23 @@
                 <StackPanel Grid.Row="1"
                             VerticalAlignment="Center"
                             HorizontalAlignment="Center"
-                            Spacing="6"
+                            Spacing="10"
                             IsVisible="{Binding !AccountsView.IsBusy}">
+                    <Border Width="52" Height="52"
+                            CornerRadius="16"
+                            Background="{StaticResource AccentSoft}">
+                        <Path Width="24" Height="24"
+                              Stroke="{StaticResource Accent}"
+                              StrokeThickness="1.8"
+                              Data="{StaticResource Icon.User}" />
+                    </Border>
                     <TextBlock Text="Chưa có tài khoản nào"
-                               FontSize="14"
+                               FontSize="15"
                                FontWeight="SemiBold"
                                Foreground="{StaticResource TextMuted}"
                                HorizontalAlignment="Center" />
                     <TextBlock Classes="label"
-                               FontSize="11"
+                               FontSize="13"
                                Text="Bấm “+ Tài khoản” để tạo tài khoản đầu tiên."
                                HorizontalAlignment="Center" />
                 </StackPanel>

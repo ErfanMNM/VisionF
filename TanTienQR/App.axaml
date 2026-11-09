@@ -404,6 +404,40 @@
             <Setter Property="BorderBrush" Value="{StaticResource LineColor}" />
             <Setter Property="CornerRadius" Value="10" />
         </Style>
+
+        <!-- ===== Nut co icon + chu (canh giua chuẩn) =====
+             Dung chung cho moi nut dang "icon + nhan" de tranh viec
+             icon lech chu / nut lech nhau do kich thuoc icon khac nhau.
+             - Path luon 16x16, canh giua theo chiều dọc
+             - StackPanel ben trong canh giua theo ca 2 chieu
+             - Chieu cao co dinh 44px cho dong nut dong hang
+             -->
+        <Style Selector="Button.iconbtn">
+            <Setter Property="Height" Value="44" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="Padding" Value="14,0" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.iconbtn StackPanel">
+            <Setter Property="Orientation" Value="Horizontal" />
+            <Setter Property="Spacing" Value="7" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.iconbtn Path">
+            <Setter Property="Width" Value="16" />
+            <Setter Property="Height" Value="16" />
+            <Setter Property="Stretch" Value="Uniform" />
+            <Setter Property="StrokeThickness" Value="2" />
+            <Setter Property="StrokeLineCap" Value="Round" />
+            <Setter Property="StrokeJoin" Value="Round" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.iconbtn TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
         <Style Selector="Button.soft:pointerover /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="Background" Value="{StaticResource BgPanel}" />
             <Setter Property="BorderBrush" Value="{StaticResource Accent}" />

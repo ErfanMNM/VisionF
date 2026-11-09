@@ -42,24 +42,42 @@
                          VerticalContentAlignment="Center"
                          FontSize="14"
                          PlaceholderText="Nhập mã cần tra cứu (ví dụ: 8934567890123 / ABC123)..."
-                         Text="{Binding CodeLookup.CodeInput}" />
+                         Text="{Binding CodeLookup.CodeInput}">
+                    <TextBox.InnerLeftContent>
+                        <Path Width="17" Height="17"
+                              Margin="12,0,0,0"
+                              VerticalAlignment="Center"
+                              Stroke="{StaticResource TextMuted}"
+                              Data="{StaticResource Icon.Search}" />
+                    </TextBox.InnerLeftContent>
+                </TextBox>
 
                 <Button Grid.Column="1"
-                        Classes="primary"
-                        Height="42" MinWidth="110" Padding="18,0"
+                        Classes="primary,iconbtn"
+                        Height="44" MinWidth="110" Padding="18,0"
                         HorizontalContentAlignment="Center"
                         VerticalContentAlignment="Center"
-                        Content="Tra cứu"
                         IsEnabled="{Binding !CodeLookup.IsBusy}"
-                        Command="{Binding CodeLookup.LookupCommand}" />
+                        Command="{Binding CodeLookup.LookupCommand}">
+                    <StackPanel>
+                        <Path Stroke="White"
+                              Data="{StaticResource Icon.Search}" />
+                        <TextBlock Text="Tra cứu" Foreground="White" />
+                    </StackPanel>
+                </Button>
 
                 <Button Grid.Column="2"
-                        Classes="soft"
-                        Height="42" MinWidth="86" Padding="14,0"
+                        Classes="soft,iconbtn"
+                        Height="44" MinWidth="86" Padding="14,0"
                         HorizontalContentAlignment="Center"
                         VerticalContentAlignment="Center"
-                        Content="Xoá"
-                        Command="{Binding CodeLookup.ClearCommand}" />
+                        Command="{Binding CodeLookup.ClearCommand}">
+                    <StackPanel>
+                        <Path Stroke="{StaticResource TextPrimary}"
+                              Data="{StaticResource Icon.Close}" />
+                        <TextBlock Text="Xoá" />
+                    </StackPanel>
+                </Button>
             </Grid>
         </Border>
 
@@ -68,7 +86,7 @@
                 IsVisible="{Binding CodeLookup.HasResult}">
             <Grid RowDefinitions="Auto,Auto" RowSpacing="10">
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                    <StackPanel Orientation="Horizontal" Spacing="14">
+                    <StackPanel>
                         <TextBlock Classes="sectionTitle" Text="LẦN QUÉT GẦN NHẤT" />
                         <TextBlock Classes="label" VerticalAlignment="Center"
                                    Text="{Binding CodeLookup.TotalCount, StringFormat='Tổng: {0} lần'}" />
@@ -81,7 +99,7 @@
 
                 <Grid Grid.Row="1" ColumnDefinitions="*,*,*,*,*,*" ColumnSpacing="12">
                     <StackPanel Grid.Column="0" Spacing="3">
-                        <TextBlock Classes="label" FontSize="10" Text="MÃ / SERIAL" />
+                        <TextBlock Classes="overline" Text="MÃ / SERIAL" />
                         <TextBlock Classes="mono" FontSize="14" FontWeight="Bold"
                                    Foreground="{StaticResource TextPrimary}"
                                    TextTrimming="CharacterEllipsis"
@@ -89,7 +107,7 @@
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" Spacing="3">
-                        <TextBlock Classes="label" FontSize="10" Text="GTIN" />
+                        <TextBlock Classes="overline" Text="GTIN" />
                         <TextBlock Classes="mono" FontSize="13"
                                    Foreground="{StaticResource TextPrimary}"
                                    TextTrimming="CharacterEllipsis"
@@ -97,14 +115,14 @@
                     </StackPanel>
 
                     <StackPanel Grid.Column="2" Spacing="3">
-                        <TextBlock Classes="label" FontSize="10" Text="THỜI ĐIỂM QUÉT" />
+                        <TextBlock Classes="overline" Text="THỜI ĐIỂM QUÉT" />
                         <TextBlock Classes="mono" FontSize="13"
                                    Foreground="{StaticResource TextPrimary}"
                                    Text="{Binding CodeLookup.Latest.TimeText}" />
                     </StackPanel>
 
                     <StackPanel Grid.Column="3" Spacing="3">
-                        <TextBlock Classes="label" FontSize="10" Text="KẾT QUẢ" />
+                        <TextBlock Classes="overline" Text="KẾT QUẢ" />
                         <Border Classes="badge"
                                 HorizontalAlignment="Left"
                                 Classes.running="{Binding CodeLookup.Latest.IsPass}"
@@ -115,14 +133,14 @@
                     </StackPanel>
 
                     <StackPanel Grid.Column="4" Spacing="3">
-                        <TextBlock Classes="label" FontSize="10" Text="XỬ LÝ" />
+                        <TextBlock Classes="overline" Text="XỬ LÝ" />
                         <TextBlock Classes="mono" FontSize="13"
                                    Foreground="{StaticResource TextPrimary}"
                                    Text="{Binding CodeLookup.Latest.ProcessingTimeText}" />
                     </StackPanel>
 
                     <StackPanel Grid.Column="5" Spacing="3">
-                        <TextBlock Classes="label" FontSize="10" Text="GỬI PLC" />
+                        <TextBlock Classes="overline" Text="GỬI PLC" />
                         <Border Classes="badge"
                                 HorizontalAlignment="Left"
                                 Classes.running="{Binding CodeLookup.Latest.IsPlcOk}"
@@ -204,15 +222,25 @@
                 <StackPanel Grid.Row="1"
                             VerticalAlignment="Center"
                             HorizontalAlignment="Center"
-                            Spacing="6"
+                            Spacing="10"
                             IsVisible="{Binding CodeLookup.IsEmpty}">
+                    <Border Width="52" Height="52"
+                            CornerRadius="16"
+                            Background="#FEF3C7"
+                            BorderBrush="#F59E0B"
+                            BorderThickness="1">
+                        <Path Width="24" Height="24"
+                              Stroke="#92400E"
+                              StrokeThickness="1.8"
+                              Data="{StaticResource Icon.Search}" />
+                    </Border>
                     <TextBlock Text="Chưa có dữ liệu"
-                               FontSize="14"
+                               FontSize="15"
                                FontWeight="SemiBold"
                                Foreground="{StaticResource TextMuted}"
                                HorizontalAlignment="Center" />
                     <TextBlock Classes="label"
-                               FontSize="11"
+                               FontSize="13"
                                Text="Nhập mã hoặc quét bằng handheld cầm tay để tra cứu."
                                HorizontalAlignment="Center" />
                 </StackPanel>
