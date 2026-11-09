@@ -187,6 +187,21 @@ internal sealed class CameraSignalWorker : BackgroundService
         // sản xuất thì mọi mã đều bị loại bỏ (không ghi PLC).
         var poResult = _po.ValidateCode(gtin, serial);
 
+        if (poResult == PoCodeValidation.Halted)
+        {
+            // Máy đã bị dừng do phát hiện mã đã từng xuất hiện trong lịch sử
+            // quét của hệ thống → KHÔNG ghi kết quả xuống PLC.
+            _logger.LogError(
+                "Máy đã dừng (mã trùng lịch sử), loại mã (không ghi PLC): GTIN={Gtin} Serial={Serial}",
+                gtin, serial);
+
+            var processingMs = MeasureProcessingMs(request);
+
+            _counters.AddScan(pass: false);
+            Publish(raw, gtin, serial, ScanOutcome.Halted, request.ReceivedUtc, plcWritten: false, processingMs);
+            return;
+        }
+
         if (poResult == PoCodeValidation.NoProductionOrder)
         {
             _logger.LogWarning(
@@ -326,10 +341,15 @@ internal sealed class CameraSignalWorker : BackgroundService
                 {
                     ScanOutcome.Overload => ScanPlcResults.Skipped,
                     ScanOutcome.NoProductionOrder => ScanPlcResults.Skipped,
+                    ScanOutcome.Halted => ScanPlcResults.Skipped,
                     _ => ScanPlcResults.Failed,
                 },
             BatchNo = ScanBatchDefaults.NoBatch,
             Raw = raw,
+
+            // Lưu PO của mã để cơ chế chống trùng lịch sử toàn cục biết mã
+            // này từng thuộc PO nào.
+            OrderNo = _po.CurrentOrder?.OrderNo ?? string.Empty,
         });
     }
 

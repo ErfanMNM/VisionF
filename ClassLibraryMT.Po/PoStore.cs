@@ -39,6 +39,12 @@ public sealed class PoStore
     /// <summary>Key lưu thời điểm hoàn tất sản xuất.</summary>
     public const string MetaCompletedUtc = "completedUtc";
 
+    /// <summary>Key lưu thời điểm huỷ sản xuất.</summary>
+    public const string MetaCancelledUtc = "cancelledUtc";
+
+    /// <summary>Key lưu tổng số mã của PO.</summary>
+    public const string MetaOrderQty = "orderQty";
+
     private readonly string _dbRoot;
 
     /// <summary>
@@ -129,6 +135,11 @@ public sealed class PoStore
         await SetMetaAsync(connection, MetaCreatedUtc, order.CreatedUtc.ToString("O"), ct)
             .ConfigureAwait(false);
 
+        // Lưu tổng số mã của PO (server có thể bổ sung mã sau này — số này sẽ
+        // được cập nhật lại mỗi lần cào).
+        await SetMetaAsync(connection, MetaOrderQty, order.OrderQty.ToString(), ct)
+            .ConfigureAwait(false);
+
         // Insert tập mã (bỏ qua mã đã tồn tại — idempotent).
         if (codes.Count > 0)
         {
@@ -157,14 +168,201 @@ public sealed class PoStore
     }
 
     /// <summary>
+    /// Liệt kê tất cả PO đã tồn tại trong các file DB local (theo tháng).
+    ///
+    /// <para>
+    /// Đọc metadata từ bảng <c>PoMeta</c> của mỗi file — không cần gọi mạng.
+    /// Đây là nguồn danh sách PO cho UI trong mô hình local-first.
+    /// </para>
+    /// </summary>
+    public async Task<IReadOnlyList<LocalPoInfo>> ListLocalOrdersAsync(
+        CancellationToken ct = default)
+    {
+        var result = new List<LocalPoInfo>();
+
+        foreach (var file in ListDbFiles())
+        {
+            try
+            {
+                await using var connection = new SqliteConnection($"Data Source={file}");
+                await connection.OpenAsync(ct).ConfigureAwait(false);
+
+                string orderNo = string.Empty;
+                string status = ProductionOrderStatus.Downloaded.ToString();
+                DateTime createdUtc = DateTime.MinValue;
+                int orderQty = 0;
+                DateTime? startedUtc = null;
+                DateTime? completedUtc = null;
+                DateTime? cancelledUtc = null;
+
+                await using (var meta = connection.CreateCommand())
+                {
+                    meta.CommandText = "SELECT Key, Value FROM PoMeta;";
+                    await using var reader = await meta.ExecuteReaderAsync(ct).ConfigureAwait(false);
+                    while (await reader.ReadAsync(ct).ConfigureAwait(false))
+                    {
+                        var key = reader.GetString(0);
+                        var value = reader.GetString(1);
+
+                        if (string.Equals(key, MetaOrderNo, StringComparison.OrdinalIgnoreCase))
+                            orderNo = value;
+                        else if (string.Equals(key, MetaStatus, StringComparison.OrdinalIgnoreCase))
+                            status = value;
+                        else if (string.Equals(key, MetaCreatedUtc, StringComparison.OrdinalIgnoreCase))
+                            createdUtc = ParseUtc(value);
+                        else if (string.Equals(key, MetaOrderQty, StringComparison.OrdinalIgnoreCase))
+                            _ = int.TryParse(value, out orderQty);
+                        else if (string.Equals(key, MetaStartedUtc, StringComparison.OrdinalIgnoreCase))
+                            startedUtc = ParseUtc(value);
+                        else if (string.Equals(key, MetaCompletedUtc, StringComparison.OrdinalIgnoreCase))
+                            completedUtc = ParseUtc(value);
+                        else if (string.Equals(key, MetaCancelledUtc, StringComparison.OrdinalIgnoreCase))
+                            cancelledUtc = ParseUtc(value);
+                    }
+                }
+
+                if (string.IsNullOrWhiteSpace(orderNo))
+                    continue;
+
+                // Số mã thực tế trong file (có thể nhiều hơn orderQty nếu server
+                // bổ sung mã sau lần cào đầu tiên).
+                int totalCodes = 0;
+                int scannedCodes = 0;
+                await using (var count = connection.CreateCommand())
+                {
+                    count.CommandText = """
+                        SELECT COUNT(*), SUM(CASE WHEN ScannedUtc IS NOT NULL THEN 1 ELSE 0 END)
+                        FROM PoCodes;
+                        """;
+                    await using var reader = await count.ExecuteReaderAsync(ct).ConfigureAwait(false);
+                    if (await reader.ReadAsync(ct).ConfigureAwait(false))
+                    {
+                        totalCodes = reader.GetInt32(0);
+                        if (!reader.IsDBNull(1))
+                        {
+                            scannedCodes = reader.GetInt32(1);
+                        }
+                    }
+                }
+
+                result.Add(new LocalPoInfo
+                {
+                    OrderNo = orderNo,
+                    OrderQty = totalCodes > 0 ? totalCodes : orderQty,
+                    CreatedUtc = createdUtc,
+                    Status = ParseStatus(status),
+                    StartedUtc = startedUtc,
+                    CompletedUtc = completedUtc,
+                    CancelledUtc = cancelledUtc,
+                    TotalCodes = totalCodes,
+                    ScannedCodes = scannedCodes,
+                    DbPath = file,
+                });
+            }
+            catch (Exception)
+            {
+                // File hỏng / không đọc được -> bỏ qua, không làm hỏng cả danh sách.
+            }
+        }
+
+        // Mới nhất trước.
+        return result
+            .OrderByDescending(p => p.CreatedUtc == default ? p.StartedUtc : p.CreatedUtc)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Đọc tập mã kèm cờ trạng thái để nạp vào cache RAM.
+    /// </summary>
+    /// <returns>Cặp (khóa mã, cờ trạng thái) cho từng mã của PO.</returns>
+    public async Task<IReadOnlyList<KeyValuePair<string, PoCodeCache.Flags>>> GetCodesWithFlagsAsync(
+        string orderNo,
+        DateTime createdUtc,
+        CancellationToken ct = default)
+    {
+        var path = ResolvePath(orderNo, createdUtc);
+        if (path is null)
+            return [];
+
+        await using var connection = await OpenAsync(path, ct).ConfigureAwait(false);
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            SELECT Gtin, Serial, ScannedUtc, ActivatedUtc FROM PoCodes;
+            """;
+
+        var list = new List<KeyValuePair<string, PoCodeCache.Flags>>();
+        await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await reader.ReadAsync(ct).ConfigureAwait(false))
+        {
+            var flags = PoCodeCache.Flags.None;
+
+            if (!reader.IsDBNull(2))
+            {
+                flags |= PoCodeCache.Flags.Scanned;
+            }
+
+            if (!reader.IsDBNull(3))
+            {
+                flags |= PoCodeCache.Flags.Activated;
+            }
+
+            list.Add(new KeyValuePair<string, PoCodeCache.Flags>(
+                BuildCodeKey(reader.GetString(0), reader.GetString(1)),
+                flags));
+        }
+
+        return list;
+    }
+
+    /// <summary>
+    /// Đánh dấu PO đã bị huỷ — không được chạy lại.
+    /// </summary>
+    public async Task MarkCancelledAsync(
+        string orderNo,
+        DateTime createdUtc,
+        CancellationToken ct = default)
+    {
+        var path = ResolvePath(orderNo, createdUtc);
+        if (path is null)
+            return;
+
+        await using var connection = await OpenAsync(path, ct).ConfigureAwait(false);
+        await SetMetaAsync(
+            connection, MetaCancelledUtc, DateTime.UtcNow.ToString("O"), ct)
+            .ConfigureAwait(false);
+        await SetMetaAsync(
+            connection, MetaStatus, ProductionOrderStatus.Cancelled.ToString(), ct)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Kiểm tra PO đã bị huỷ hay chưa.
+    /// </summary>
+    public async Task<bool> IsCancelledAsync(
+        string orderNo,
+        DateTime createdUtc,
+        CancellationToken ct = default)
+    {
+        var meta = await GetMetaAsync(orderNo, createdUtc, ct).ConfigureAwait(false);
+        if (meta.TryGetValue(MetaCancelledUtc, out _))
+        {
+            return true;
+        }
+
+        return meta.TryGetValue(MetaStatus, out var status)
+            && string.Equals(
+                status, ProductionOrderStatus.Cancelled.ToString(),
+                StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// Đọc toàn bộ mã của PO (kèm trạng thái).
     /// </summary>
     public async Task<IReadOnlyList<PoCode>> GetCodesAsync(
         string orderNo,
         DateTime createdUtc,
         CancellationToken ct = default)
-    {
-        var path = ResolvePath(orderNo, createdUtc);
+    {        var path = ResolvePath(orderNo, createdUtc);
         if (path is null)
             return [];
 
@@ -478,4 +676,65 @@ public sealed class PoStore
         var name = new string(chars).Trim();
         return string.IsNullOrEmpty(name) ? "PO" : name;
     }
+
+    /// <summary>
+    /// Tạo khóa mã chuẩn (GTIN + serial) để so sánh — dùng chung với
+    /// <see cref="ProductionOrderService"/>.
+    /// </summary>
+    public static string BuildCodeKey(string gtin, string serial) => $"{gtin}|{serial}";
+
+    /// <summary>Parse chuỗi thời gian UTC theo format "O".</summary>
+    private static DateTime ParseUtc(string value) =>
+        DateTime.TryParse(
+            value,
+            null,
+            System.Globalization.DateTimeStyles.RoundtripKind,
+            out var parsed)
+            ? parsed
+            : DateTime.MinValue;
+
+    /// <summary>Parse chuỗi trạng thái PO (fallback <c>Downloaded</c>).</summary>
+    private static ProductionOrderStatus ParseStatus(string value) =>
+        Enum.TryParse<ProductionOrderStatus>(value, ignoreCase: true, out var status)
+            ? status
+            : ProductionOrderStatus.Downloaded;
+}
+
+/// <summary>
+/// Thông tin một PO đọc được từ file DB local.
+/// </summary>
+public sealed class LocalPoInfo
+{
+    /// <summary>Mã PO.</summary>
+    public string OrderNo { get; set; } = string.Empty;
+
+    /// <summary>Tổng số mã của PO.</summary>
+    public int OrderQty { get; set; }
+
+    /// <summary>Thời điểm tạo PO (từ server).</summary>
+    public DateTime CreatedUtc { get; set; }
+
+    /// <summary>Trạng thái PO.</summary>
+    public ProductionOrderStatus Status { get; set; }
+
+    /// <summary>Thời điểm bắt đầu sản xuất (null nếu chưa).</summary>
+    public DateTime? StartedUtc { get; set; }
+
+    /// <summary>Thời điểm hoàn tất (null nếu chưa).</summary>
+    public DateTime? CompletedUtc { get; set; }
+
+    /// <summary>Thời điểm huỷ (null nếu chưa).</summary>
+    public DateTime? CancelledUtc { get; set; }
+
+    /// <summary>Tổng số mã thực tế trong file DB.</summary>
+    public int TotalCodes { get; set; }
+
+    /// <summary>Số mã đã quét trong file DB.</summary>
+    public int ScannedCodes { get; set; }
+
+    /// <summary>Đường dẫn file DB của PO.</summary>
+    public string DbPath { get; set; } = string.Empty;
+
+    /// <summary>True khi PO đã bị huỷ (không được chạy lại).</summary>
+    public bool IsCancelled => Status == ProductionOrderStatus.Cancelled;
 }

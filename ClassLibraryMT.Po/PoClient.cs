@@ -11,7 +11,7 @@ namespace ClassLibraryMT.Po;
 /// Native AOT — không dùng reflection của <c>JsonSerializer</c>.
 /// </para>
 /// </summary>
-public sealed class PoClient : IDisposable
+public sealed class PoClient : IPoClient, IDisposable
 {
     private readonly HttpClient _http;
     private readonly bool _ownsHttp;
@@ -44,10 +44,23 @@ public sealed class PoClient : IDisposable
     /// <summary>
     /// Lấy danh sách PO còn hiệu lực trên server.
     /// </summary>
+    /// <param name="includeCompleted">
+    /// True nếu muốn lấy cả PO đã hoàn tất / đã đóng.
+    ///
+    /// <para>
+    /// Mô hình local-first cần lấy cả PO cũ để danh sách trên máy SCADA khớp
+    /// với server (PO đã hoàn tất ở server vẫn phải hiện trong bảng quản lý
+    /// local).
+    /// </para>
+    /// </param>
+    /// <param name="ct">Token hủy.</param>
     public async Task<IReadOnlyList<ProductionOrder>> GetOrdersAsync(
+        bool includeCompleted = false,
         CancellationToken ct = default)
     {
-        using var response = await _http.GetAsync("api/po", ct).ConfigureAwait(false);
+        var path = includeCompleted ? "api/po?includeCompleted=true" : "api/po";
+
+        using var response = await _http.GetAsync(path, ct).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
 
         var orders = await response.Content

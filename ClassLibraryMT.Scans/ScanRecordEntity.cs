@@ -40,6 +40,16 @@ public sealed class ScanRecordEntity
 
     /// <summary>Nội dung gốc camera gửi lên.</summary>
     public string Raw { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Mã lệnh sản xuất (PO) mà mã này thuộc về (rỗng nếu không trong PO nào).
+    ///
+    /// <para>
+    /// Dùng cho cơ chế chống trùng lịch sử toàn cục: biết mã đã từng quét
+    /// thuộc PO nào để đối chiếu khi gửi mã lên server.
+    /// </para>
+    /// </summary>
+    public string OrderNo { get; set; } = string.Empty;
 }
 
 /// <summary>

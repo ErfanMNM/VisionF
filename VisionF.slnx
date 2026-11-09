@@ -8,4 +8,5 @@
   <Project Path="TanTienQR/TanTienQR.csproj" />
   <Project Path="tools/LicenseTool/LicenseTool.csproj" />
   <Project Path="tools/PoServer/PoServer.csproj" />
+  <Project Path="tools/PoTests/PoTests.csproj" />
 </Solution>

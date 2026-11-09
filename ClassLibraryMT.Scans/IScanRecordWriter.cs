@@ -44,4 +44,20 @@ public interface IScanRecordQuery
     /// </summary>
     /// <param name="cancellationToken">Token hủy.</param>
     Task<Dictionary<string, long>> CountByStatusAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lấy tập serial đã từng xuất hiện trong lịch sử quét với kết quả Pass.
+    ///
+    /// <para>
+    /// Dùng cho cơ chế chống trùng lịch sử toàn cục của luồng PO: trước khi
+    /// gửi mã lên server, mỗi mã của PO đang chạy được kiểm tra xem đã từng
+    /// được quét trong hệ thống hay chưa. Bản ghi thuộc chính PO đang chạy
+    /// được bỏ qua (mã của PO đó hợp lệ).
+    /// </para>
+    /// </summary>
+    /// <param name="orderNo">Mã PO hiện tại (bỏ qua bản ghi của PO này).</param>
+    /// <param name="cancellationToken">Token hủy.</param>
+    Task<IReadOnlyList<string>> GetSeenSerialsAsync(
+        string orderNo,
+        CancellationToken cancellationToken = default);
 }

@@ -25,4 +25,9 @@ internal sealed class ScanRecordQuery : IScanRecordQuery
     public Task<Dictionary<string, long>> CountByStatusAsync(
         CancellationToken cancellationToken = default) =>
         _store.CountByStatusAsync(cancellationToken);
+
+    public Task<IReadOnlyList<string>> GetSeenSerialsAsync(
+        string orderNo,
+        CancellationToken cancellationToken = default) =>
+        _store.GetSeenSerialsAsync(orderNo, cancellationToken);
 }

@@ -33,4 +33,11 @@ public enum ScanOutcome
     /// Mã không thuộc tập mã hợp lệ của PO đang chạy → Fail (gửi D12 = 0).
     /// </summary>
     InvalidForOrder = 6,
+
+    /// <summary>
+    /// Máy đã bị dừng vì phát hiện mã đã từng xuất hiện trong lịch sử quét.
+    ///
+    /// KHÔNG gửi xuống PLC — mã bị loại bỏ hoàn toàn.
+    /// </summary>
+    Halted = 7,
 }

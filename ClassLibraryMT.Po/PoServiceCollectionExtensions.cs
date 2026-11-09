@@ -58,6 +58,13 @@ public static class PoServiceCollectionExtensions
             return new PoStore(options.ResolveDbRoot());
         });
 
+        // DB lịch sử chạy PO (dùng để khôi phục PO đang chạy khi mở máy).
+        services.TryAddSingleton(sp =>
+        {
+            var options = sp.GetRequiredService<IOptions<PoOptions>>().Value;
+            return new PoHistoryStore(options.ResolveDbRoot());
+        });
+
         services.TryAddSingleton<PoCodeCache>();
 
         services.TryAddSingleton<ProductionOrderService>();

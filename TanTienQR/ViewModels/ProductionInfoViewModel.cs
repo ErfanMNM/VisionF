@@ -116,8 +116,13 @@ internal sealed partial class ProductionInfoViewModel : ViewModelBase, IDisposab
     /// <summary>True khi có thể bắt đầu sản xuất PO đang chọn.</summary>
     public bool CanStart => Orders.CanStart;
 
-    /// <summary>True khi có thể hoàn tất sản xuất PO đang chạy.</summary>
-    public bool CanComplete => Orders.CanComplete;
+    /// <summary>
+    /// True khi có thể huỷ PO đang chạy (chưa chạy xong 100%).
+    /// </summary>
+    public bool CanCancel => Orders.CanCancel;
+
+    /// <summary>True khi máy đã bị dừng do mã trùng lịch sử quét.</summary>
+    public bool IsHalted => Orders.IsHalted;
 
     /// <summary>True khi đang xử lý (disable nút).</summary>
     public bool IsBusy => Orders.IsBusy;
@@ -232,7 +237,8 @@ internal sealed partial class ProductionInfoViewModel : ViewModelBase, IDisposab
         OnPropertyChanged(nameof(HasNoOrders));
         OnPropertyChanged(nameof(StatusMessage));
         OnPropertyChanged(nameof(CanStart));
-        OnPropertyChanged(nameof(CanComplete));
+        OnPropertyChanged(nameof(CanCancel));
+        OnPropertyChanged(nameof(IsHalted));
         OnPropertyChanged(nameof(IsBusy));
         OnPropertyChanged(nameof(SelectedOrderNoText));
         OnPropertyChanged(nameof(HasStarted));

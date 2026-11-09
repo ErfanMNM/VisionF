@@ -19,4 +19,15 @@ public enum ProductionOrderStatus
 
     /// <summary>Đã đóng (không dùng nữa).</summary>
     Closed = 4,
+
+    /// <summary>
+    /// Đã bị người dùng huỷ (chưa chạy xong 100%).
+    ///
+    /// <para>
+    /// PO ở trạng thái này <b>không được chạy lại</b> — dù đã quét được
+    /// một phần. Việc huỷ được ghi lại trong <c>PoMeta</c> của file DB PO và
+    /// trong bảng <c>PoRuns</c> của DB lịch sử.
+    /// </para>
+    /// </summary>
+    Cancelled = 5,
 }

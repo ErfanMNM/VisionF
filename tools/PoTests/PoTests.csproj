@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>PoTests</RootNamespace>
+    <AssemblyName>PoTests</AssemblyName>
+    <IsAotCompatible>false</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\ClassLibraryMT.Po\ClassLibraryMT.Po.csproj" />
+    <ProjectReference Include="..\..\ClassLibraryMT.Scans\ClassLibraryMT.Scans.csproj" />
+  </ItemGroup>
+
+</Project>

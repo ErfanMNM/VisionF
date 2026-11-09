@@ -111,7 +111,16 @@ internal static class Program
 
             if (request.HttpMethod == "GET" && path.Equals("api/po", StringComparison.OrdinalIgnoreCase))
             {
-                var orders = _store.ListOrders();
+                // ?includeCompleted=true -> lấy cả PO đã hoàn tất / đã đóng.
+                // Mô hình local-first cần vậy để danh sách PO trên máy SCADA
+                // khớp với server (PO đã xong ở server vẫn phải hiện trong bảng
+                // quản lý local).
+                var includeCompletedValue = request.QueryString["includeCompleted"];
+                var includeCompleted = string.Equals(
+                    includeCompletedValue, "true", StringComparison.OrdinalIgnoreCase)
+                    || includeCompletedValue == "1";
+
+                var orders = _store.ListOrders(includeCompleted);
                 await WriteJsonAsync(response, orders, PoServerJsonContext.Default.ListProductionOrder)
                     .ConfigureAwait(false);
                 return;

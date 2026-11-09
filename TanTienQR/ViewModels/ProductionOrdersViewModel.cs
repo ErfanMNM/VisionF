@@ -13,8 +13,15 @@ namespace TanTienQR.ViewModels;
 ///
 /// <para>
 /// Quản lý các PO đã tải về từ server:
-/// tải PO, xem danh sách, bắt đầu / hoàn tất sản xuất và gửi mã kích hoạt
-/// thủ công.
+/// cào PO mới từ server, xem danh sách, bắt đầu / huỷ sản xuất và gửi mã
+/// kích hoạt thủ công.
+/// </para>
+///
+/// <para>
+/// <b>Mô hình local-first:</b> danh sách PO luôn đọc từ DB local
+/// (<c>logs/po/{yyyy-MM}/</c>). Nút "Tải PO" chỉ <i>cào</i> dữ liệu mới từ
+/// server xuống local — có thể bấm nhiều lần, PO mới và mã mới được thêm vào,
+/// còn mã cũ và lịch sử đã quét giữ nguyên.
 /// </para>
 /// </summary>
 internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDisposable
@@ -38,21 +45,34 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
         _po = po;
         _actionLog = actionLog;
         _po.Changed += OnPoChanged;
+        _po.HistoryConflict += OnHistoryConflict;
     }
 
     // ---------- Danh sách PO ----------
 
-    /// <summary>Các PO đã tải về (mới nhất trước).</summary>
+    /// <summary>Tất cả PO đã có trong DB local (mới nhất trước).</summary>
     public ObservableCollection<ProductionOrderRowViewModel> Orders { get; } = [];
+
+    /// <summary>
+    /// Các PO có thể chọn để chạy (loại bỏ PO đã bị huỷ).
+    ///
+    /// <para>
+    /// PO đã huỷ vẫn hiện trong bảng quản lý <see cref="Orders"/> để người
+    /// dùng tra cứu, nhưng không được chọn để chạy lại.
+    /// </para>
+    /// </summary>
+    public ObservableCollection<ProductionOrderRowViewModel> SelectableOrders { get; } = [];
 
     /// <summary>PO được chọn trong dropdown.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanStart))]
-    [NotifyPropertyChangedFor(nameof(CanComplete))]
+    [NotifyPropertyChangedFor(nameof(CanCancel))]
     public partial ProductionOrderRowViewModel? SelectedOrder { get; set; }
 
     /// <summary>True khi đang tải dữ liệu (disable nút).</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanStart))]
+    [NotifyPropertyChangedFor(nameof(CanCancel))]
     public partial bool IsBusy { get; set; }
 
     /// <summary>Thông báo trạng thái.</summary>
@@ -61,6 +81,7 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
 
     /// <summary>True khi có PO đang chạy.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanCancel))]
     public partial bool HasRunningOrder { get; set; }
 
     /// <summary>Mã PO đang chạy.</summary>
@@ -71,19 +92,32 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
     [ObservableProperty]
     public partial string RunningProgressText { get; set; } = "0 / 0";
 
-    /// <summary>True khi có thể bắt đầu sản xuất (có PO được chọn và chưa có PO chạy).</summary>
-    public bool CanStart => !IsBusy && !HasRunningOrder && SelectedOrder is not null;
+    /// <summary>
+    /// True khi máy đã bị dừng do phát hiện mã đã từng xuất hiện trong lịch sử.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsHalted { get; set; }
 
-    /// <summary>True khi có thể hoàn tất sản xuất (đang có PO chạy).</summary>
-    public bool CanComplete => !IsBusy && HasRunningOrder;
+    /// <summary>True khi có thể bắt đầu sản xuất (có PO được chọn và chưa có PO chạy).</summary>
+    public bool CanStart => !IsBusy && !HasRunningOrder && !IsHalted && SelectedOrder is not null;
+
+    /// <summary>
+    /// True khi có thể huỷ PO (đang có PO chạy, chưa chạy xong 100%).
+    /// </summary>
+    public bool CanCancel => !IsBusy && HasRunningOrder && !IsHalted;
 
     /// <summary>True khi có thể gửi kích hoạt thủ công (đang có PO chạy).</summary>
-    public bool CanActivate => !IsBusy && HasRunningOrder;
+    public bool CanActivate => !IsBusy && HasRunningOrder && !IsHalted;
+
+    /// <summary>
+    /// True khi PO đang chạy đã quét đủ 100% (sẽ tự hoàn tất).
+    /// </summary>
+    public bool IsComplete => _po.ProgressPercent >= 100.0;
 
     // ---------- Lệnh ----------
 
     /// <summary>
-    /// Tải danh sách PO từ server (đồng thời tải tập mã + tạo file DB riêng).
+    /// Cào PO + tập mã từ server xuống DB local (có thể bấm nhiều lần).
     /// </summary>
     [RelayCommand]
     private async Task DownloadOrdersAsync()
@@ -91,44 +125,33 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
         if (IsBusy) return;
 
         IsBusy = true;
-        StatusMessage = "Đang tải PO từ server...";
+        StatusMessage = "Đang cào PO từ server...";
 
         try
         {
-            var summaries = await _po.DownloadOrdersAsync().ConfigureAwait(true);
+            var sync = await _po.SyncFromServerAsync().ConfigureAwait(true);
+            await ReloadLocalAsync().ConfigureAwait(true);
 
-            await Dispatcher.UIThread.InvokeAsync(() =>
-            {
-                Orders.Clear();
-                foreach (var summary in summaries)
-                {
-                    Orders.Add(new ProductionOrderRowViewModel(summary));
-                }
-
-                if (SelectedOrder is null && Orders.Count > 0)
-                {
-                    SelectedOrder = Orders[0];
-                }
-            });
-
-            StatusMessage = $"Đã tải {summaries.Count} PO từ server.";
+            StatusMessage =
+                $"Đã cào {sync.PoCount} PO từ server " +
+                $"({sync.NewPoCount} PO mới, {sync.NewCodeCount} mã mới).";
 
             _actionLog.Log(
                 "Po.Download",
                 "ProductionOrder",
-                $"Tai {summaries.Count} PO tu server",
+                $"Cao {sync.PoCount} PO tu server ({sync.NewPoCount} moi, {sync.NewCodeCount} ma moi)",
                 UserActionResults.Success);
 
             ListChanged?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex)
         {
-            StatusMessage = "Không tải được PO: " + ex.Message;
+            StatusMessage = "Không cào được PO: " + ex.Message;
 
             _actionLog.Log(
                 "Po.Download",
                 "ProductionOrder",
-                $"Loi khi tai PO: {ex.Message}",
+                $"Loi khi cao PO: {ex.Message}",
                 UserActionResults.Failed);
         }
         finally
@@ -155,7 +178,8 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
             var ok = await _po.StartProductionAsync(order.OrderNo).ConfigureAwait(true);
             StatusMessage = ok
                 ? $"Đã bắt đầu sản xuất PO {order.OrderNo}."
-                : $"Không thể bắt đầu PO {order.OrderNo} (đã có PO đang chạy hoặc PO không có mã).";
+                : $"Không thể bắt đầu PO {order.OrderNo} " +
+                  "(đã có PO đang chạy, PO đã bị huỷ, hoặc PO chưa được cào về máy).";
 
             _actionLog.Log(
                 "Po.Start",
@@ -181,37 +205,42 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
     }
 
     /// <summary>
-    /// Hoàn tất sản xuất PO đang chạy (mở khoá chọn PO).
+    /// Huỷ PO đang chạy — PO bị huỷ sẽ không được chạy lại.
     /// </summary>
     [RelayCommand]
-    private async Task CompleteProductionAsync()
+    private async Task CancelProductionAsync()
     {
         if (IsBusy) return;
 
+        var orderNo = _po.CurrentOrder?.OrderNo;
+        if (string.IsNullOrWhiteSpace(orderNo)) return;
+
         IsBusy = true;
-        StatusMessage = "Đang hoàn tất sản xuất...";
+        StatusMessage = $"Đang huỷ PO {orderNo}...";
 
         try
         {
-            var ok = await _po.CompleteProductionAsync().ConfigureAwait(true);
+            var ok = await _po.CancelProductionAsync(orderNo).ConfigureAwait(true);
             StatusMessage = ok
-                ? "Đã hoàn tất sản xuất."
-                : "Không có PO nào đang chạy.";
+                ? $"Đã huỷ PO {orderNo}. PO này không thể chạy lại."
+                : $"Không huỷ được PO {orderNo}.";
 
             _actionLog.Log(
-                "Po.Complete",
+                "Po.Cancel",
                 "ProductionOrder",
-                ok ? "Hoan tat san xuat" : "Khong co PO dang chay",
+                ok ? $"Huy PO {orderNo}" : $"Khong huy duoc PO {orderNo}",
                 ok ? UserActionResults.Success : UserActionResults.Failed);
+
+            await ReloadLocalAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
-            StatusMessage = "Không hoàn tất được sản xuất: " + ex.Message;
+            StatusMessage = "Không huỷ được PO: " + ex.Message;
 
             _actionLog.Log(
-                "Po.Complete",
+                "Po.Cancel",
                 "ProductionOrder",
-                $"Loi khi hoan tat san xuat: {ex.Message}",
+                $"Loi khi huy PO {orderNo}: {ex.Message}",
                 UserActionResults.Failed);
         }
         finally
@@ -263,18 +292,73 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
     }
 
     /// <summary>
-    /// Nạp lại danh sách (khi mở tab).
+    /// Nạp lại danh sách PO từ DB local (không gọi mạng).
+    /// </summary>
+    public async Task LoadLocalAsync()
+    {
+        if (IsBusy) return;
+
+        try
+        {
+            await ReloadLocalAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = "Không đọc được danh sách PO local: " + ex.Message;
+        }
+        finally
+        {
+            RefreshRunningState();
+        }
+    }
+
+    /// <summary>
+    /// Nạp lại danh sách (khi mở tab) — chỉ đọc DB local, không gọi mạng.
     /// </summary>
     public void Load()
     {
         if (Orders.Count == 0)
         {
-            DownloadOrdersCommand.Execute(null);
+            // Đọc local trước; nếu chưa có gì thì báo người dùng bấm "Tải PO".
+            // Fire-and-forget: Load() là callback đồng bộ của UI.
+            _ = LoadLocalAsync();
         }
         else
         {
             RefreshRunningState();
         }
+    }
+
+    /// <summary>
+    /// Đọc danh sách PO từ DB local và cập nhật 2 collection.
+    /// </summary>
+    private async Task ReloadLocalAsync()
+    {
+        var summaries = await _po.GetLocalOrdersAsync().ConfigureAwait(true);
+
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            var previous = SelectedOrder?.OrderNo;
+
+            Orders.Clear();
+            SelectableOrders.Clear();
+
+            foreach (var summary in summaries)
+            {
+                var row = new ProductionOrderRowViewModel(summary);
+                Orders.Add(row);
+
+                if (!row.IsCancelled)
+                {
+                    SelectableOrders.Add(row);
+                }
+            }
+
+            // Giữ lại PO đang chọn nếu vẫn còn hợp lệ.
+            SelectedOrder = SelectableOrders.FirstOrDefault(
+                p => string.Equals(p.OrderNo, previous, StringComparison.OrdinalIgnoreCase))
+                ?? SelectableOrders.FirstOrDefault();
+        });
     }
 
     /// <summary>Cập nhật trạng thái PO đang chạy lên UI.</summary>
@@ -284,10 +368,12 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
         HasRunningOrder = _po.IsProductionRunning;
         RunningOrderNoText = running?.OrderNo ?? "—";
         RunningProgressText = $"{_po.ScannedCount} / {_po.TotalCount}";
+        IsHalted = _po.IsHalted;
 
         OnPropertyChanged(nameof(CanStart));
-        OnPropertyChanged(nameof(CanComplete));
+        OnPropertyChanged(nameof(CanCancel));
         OnPropertyChanged(nameof(CanActivate));
+        OnPropertyChanged(nameof(IsComplete));
     }
 
     /// <summary>PO thay đổi → cập nhật UI (dispatch về luồng UI).</summary>
@@ -303,12 +389,33 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
         });
     }
 
+    /// <summary>
+    /// Phát hiện mã đã từng xuất hiện trong lịch sử → máy đã dừng.
+    /// </summary>
+    private void OnHistoryConflict(object? sender, IReadOnlyList<string> conflicts)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            IsHalted = true;
+            StatusMessage =
+                $"Phát hiện {conflicts.Count} mã đã từng quét: {string.Join(", ", conflicts)}. " +
+                "Đã dừng máy — vui lòng kiểm tra và xử lý.";
+
+            _actionLog.Log(
+                "Po.Halt",
+                "ProductionOrder",
+                $"Phat hien {conflicts.Count} ma da tung quet: {string.Join(", ", conflicts)}. Da dung may.",
+                UserActionResults.Failed);
+        });
+    }
+
     /// <inheritdoc/>
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
         _po.Changed -= OnPoChanged;
+        _po.HistoryConflict -= OnHistoryConflict;
     }
 }
 
@@ -346,6 +453,7 @@ internal sealed class ProductionOrderRowViewModel : ViewModelBase
         ProductionOrderStatus.Running => "Đang chạy",
         ProductionOrderStatus.Completed => "Hoàn tất",
         ProductionOrderStatus.Downloaded => "Đã tải về",
+        ProductionOrderStatus.Cancelled => "Đã huỷ",
         ProductionOrderStatus.Closed => "Đã đóng",
         _ => "Chưa bắt đầu",
     };
@@ -355,6 +463,7 @@ internal sealed class ProductionOrderRowViewModel : ViewModelBase
     {
         ProductionOrderStatus.Running => "running",
         ProductionOrderStatus.Completed => "warning",
+        ProductionOrderStatus.Cancelled => "fault",
         _ => "",
     };
 
@@ -363,6 +472,9 @@ internal sealed class ProductionOrderRowViewModel : ViewModelBase
 
     /// <summary>True khi PO đã hoàn tất (badge vàng).</summary>
     public bool IsCompleted => _summary.Status == ProductionOrderStatus.Completed;
+
+    /// <summary>True khi PO đã bị huỷ (badge đỏ — không được chạy lại).</summary>
+    public bool IsCancelled => _summary.Status == ProductionOrderStatus.Cancelled;
 
     /// <summary>Nạp lại thông tin từ service (khi PO đổi trạng thái).</summary>
     public void Refresh()

@@ -37,11 +37,12 @@ internal sealed class PoActivationWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Nạp lại cache từ các file DB PO đã tồn tại (PO đã quét trước khi
-        // app tắt vẫn phải được nhận diện là trùng khi quét lại).
+        // Khôi phục PO đang chạy từ lần trước: nạp tập mã của PO đó vào cache
+        // RAM và đặt lại trạng thái. Camera sẽ tiếp tục ghi kết quả xuống PLC
+        // ngay vì ValidateCode đã thấy trạng thái Running.
         try
         {
-            await _po.RebuildCacheAsync(stoppingToken).ConfigureAwait(false);
+            await _po.RestoreRunningOrderAsync(stoppingToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
@@ -49,7 +50,7 @@ internal sealed class PoActivationWorker : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Lỗi khi nạp cache PO từ file DB.");
+            _logger.LogError(ex, "Lỗi khi khôi phục PO đang chạy.");
         }
 
         if (!_opt.AutoActivate)
@@ -73,6 +74,12 @@ internal sealed class PoActivationWorker : BackgroundService
             {
                 try
                 {
+                    // Máy đã dừng do phát hiện mã trùng lịch sử → ngừng gửi.
+                    if (_po.IsHalted)
+                    {
+                        continue;
+                    }
+
                     if (!_po.IsProductionRunning)
                         continue;
 

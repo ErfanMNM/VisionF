@@ -17,7 +17,7 @@ namespace ClassLibraryMT.Scans;
 internal sealed class ScanStore
 {
     /// <summary>Phiên bản schema hiện tại.</summary>
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
 
     private readonly string _dbPath;
 
@@ -80,7 +80,8 @@ internal sealed class ScanStore
                 ProcessingTimeMs REAL    NOT NULL DEFAULT 0,
                 PlcResult        TEXT    NOT NULL DEFAULT 'Skipped',
                 BatchNo          TEXT    NOT NULL DEFAULT 'NoBatch',
-                Raw              TEXT    NOT NULL DEFAULT ''
+                Raw              TEXT    NOT NULL DEFAULT '',
+                OrderNo          TEXT    NOT NULL DEFAULT ''
             );
 
             CREATE INDEX IF NOT EXISTS IX_ScanRecords_ReceivedUtc ON ScanRecords (ReceivedUtc DESC);
@@ -106,10 +107,25 @@ internal sealed class ScanStore
         await EnsureColumnAsync(connection, "ScanRecords", "Raw", "TEXT NOT NULL DEFAULT ''", ct)
             .ConfigureAwait(false);
 
+        // Migration v3: cột OrderNo — biết mã quét thuộc PO nào (dùng cho cơ
+        // chế chống trùng lịch sử toàn cục và để truy vết báo cáo).
+        await EnsureColumnAsync(connection, "ScanRecords", "OrderNo", "TEXT NOT NULL DEFAULT ''", ct)
+            .ConfigureAwait(false);
+
         // Migration v2: cột ProcessingTimeMs đổi từ INTEGER sang REAL để giữ
         // được phần thập phân (ví dụ 0.333 ms). SQLite là kiểu động nên dữ
         // liệu cũ vẫn đọc được, nhưng khai báo kiểu trong schema cho đúng.
         await MigrateProcessingTimeToRealAsync(connection, ct).ConfigureAwait(false);
+
+        // Tạo index SAU khi migration xong — index IX_ScanRecords_OrderNo tham
+        // chiếu cột OrderNo, tạo trước khi cột tồn tại sẽ báo lỗi SQLite
+        // ("no such column") với các DB đã tồn tại từ phiên bản cũ.
+        await using (var indexCmd = connection.CreateCommand())
+        {
+            indexCmd.CommandText =
+                "CREATE INDEX IF NOT EXISTS IX_ScanRecords_OrderNo ON ScanRecords (OrderNo);";
+            await indexCmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
 
         await using var versionCmd = connection.CreateCommand();
         versionCmd.CommandText = """
@@ -148,8 +164,8 @@ internal sealed class ScanStore
     ///
     /// SQLite có kiểu động (dynamic typing) nên dữ liệu cũ vẫn đọc được bình
     /// thường, nhưng khai báo kiểu trong schema cần được cập nhật cho khớp với
-    /// code C#. Bảng cũ được đổi tên tạm, tạo bảng mới đúng kiểu, rồi chép dữ
-    /// liệu sang — cách này hoạt động trên mọi phiên bản SQLite và giữ nguyên
+    /// code C#. Bảng cũ được đổi tên tạm, tạo bảng mới đúng kiểu, rồi chép
+    /// dữ liệu sang — cách này hoạt động trên mọi phiên bản SQLite và giữ nguyên
     /// dữ liệu đã ghi.
     ///
     /// Cột không tồn tại thì bỏ qua (sẽ được <see cref="EnsureColumnAsync"/> tạo).
@@ -186,13 +202,14 @@ internal sealed class ScanStore
                     ProcessingTimeMs REAL    NOT NULL DEFAULT 0,
                     PlcResult        TEXT    NOT NULL DEFAULT 'Skipped',
                     BatchNo          TEXT    NOT NULL DEFAULT 'NoBatch',
-                    Raw              TEXT    NOT NULL DEFAULT ''
+                    Raw              TEXT    NOT NULL DEFAULT '',
+                    OrderNo          TEXT    NOT NULL DEFAULT ''
                 );
                 INSERT INTO ScanRecords
                     (Id, ReceivedUtc, Code, Gtin, Serial, Status,
-                     ProcessingTimeMs, PlcResult, BatchNo, Raw)
+                     ProcessingTimeMs, PlcResult, BatchNo, Raw, OrderNo)
                 SELECT Id, ReceivedUtc, Code, Gtin, Serial, Status,
-                       ProcessingTimeMs, PlcResult, BatchNo, Raw
+                       ProcessingTimeMs, PlcResult, BatchNo, Raw, OrderNo
                 FROM ScanRecords_Legacy;
                 DROP TABLE ScanRecords_Legacy;
                 """;
@@ -208,6 +225,7 @@ internal sealed class ScanStore
                 CREATE INDEX IF NOT EXISTS IX_ScanRecords_ReceivedUtc ON ScanRecords (ReceivedUtc DESC);
                 CREATE INDEX IF NOT EXISTS IX_ScanRecords_Status      ON ScanRecords (Status);
                 CREATE INDEX IF NOT EXISTS IX_ScanRecords_BatchNo     ON ScanRecords (BatchNo);
+                CREATE INDEX IF NOT EXISTS IX_ScanRecords_OrderNo     ON ScanRecords (OrderNo);
                 """;
 
             await indexCmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
@@ -306,9 +324,9 @@ internal sealed class ScanStore
         cmd.Transaction = transaction;
         cmd.CommandText = """
             INSERT INTO ScanRecords
-                (ReceivedUtc, Code, Gtin, Serial, Status, ProcessingTimeMs, PlcResult, BatchNo, Raw)
+                (ReceivedUtc, Code, Gtin, Serial, Status, ProcessingTimeMs, PlcResult, BatchNo, Raw, OrderNo)
             VALUES
-                ($receivedUtc, $code, $gtin, $serial, $status, $processingTimeMs, $plcResult, $batchNo, $raw);
+                ($receivedUtc, $code, $gtin, $serial, $status, $processingTimeMs, $plcResult, $batchNo, $raw, $orderNo);
             """;
 
         var pReceived = cmd.Parameters.Add("$receivedUtc", SqliteType.Text);
@@ -320,6 +338,7 @@ internal sealed class ScanStore
         var pPlc = cmd.Parameters.Add("$plcResult", SqliteType.Text);
         var pBatch = cmd.Parameters.Add("$batchNo", SqliteType.Text);
         var pRaw = cmd.Parameters.Add("$raw", SqliteType.Text);
+        var pOrder = cmd.Parameters.Add("$orderNo", SqliteType.Text);
 
         foreach (var r in records)
         {
@@ -334,6 +353,7 @@ internal sealed class ScanStore
                 ? ScanBatchDefaults.NoBatch
                 : r.BatchNo;
             pRaw.Value = r.Raw;
+            pOrder.Value = r.OrderNo ?? string.Empty;
 
             await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
@@ -429,7 +449,7 @@ internal sealed class ScanStore
         {
             cmd.CommandText = $"""
                 SELECT Id, ReceivedUtc, Code, Gtin, Serial, Status,
-                       ProcessingTimeMs, PlcResult, BatchNo, Raw
+                       ProcessingTimeMs, PlcResult, BatchNo, Raw, OrderNo
                 FROM ScanRecords
                 {where}
                 ORDER BY ReceivedUtc DESC, Id DESC
@@ -480,6 +500,45 @@ internal sealed class ScanStore
     }
 
     /// <summary>
+    /// Lấy tập serial đã từng xuất hiện trong lịch sử quét với kết quả Pass.
+    ///
+    /// <para>
+    /// Dùng cho cơ chế chống trùng lịch sử toàn cục: trước khi gửi mã lên
+    /// server, mỗi mã của PO đang chạy được kiểm tra xem đã từng được quét
+    /// trong hệ thống hay chưa. Bản ghi thuộc chính PO đang chạy được bỏ qua
+    /// (mã của PO đó hợp lệ).
+    /// </para>
+    /// </summary>
+    /// <param name="orderNo">Mã PO hiện tại (bỏ qua bản ghi của PO này).</param>
+    /// <param name="ct">Token hủy.</param>
+    /// <returns>Danh sách serial đã từng quét (không trùng lặp).</returns>
+    public async Task<IReadOnlyList<string>> GetSeenSerialsAsync(
+        string orderNo,
+        CancellationToken ct = default)
+    {
+        await using var connection = await OpenAsync(ct).ConfigureAwait(false);
+
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            SELECT DISTINCT Serial FROM ScanRecords
+            WHERE Status = $pass
+              AND Serial <> ''
+              AND (OrderNo <> $orderNo OR OrderNo = '');
+            """;
+        cmd.Parameters.AddWithValue("$pass", ScanStatuses.Pass);
+        cmd.Parameters.AddWithValue("$orderNo", orderNo ?? string.Empty);
+
+        var list = new List<string>();
+        await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
+        while (await reader.ReadAsync(ct).ConfigureAwait(false))
+        {
+            list.Add(reader.GetString(0));
+        }
+
+        return list;
+    }
+
+    /// <summary>
     /// Chuyển dòng dữ liệu thành <see cref="ScanRecordEntity"/>.
     /// </summary>
     private static ScanRecordEntity MapRecord(IDataRecord record) => new()
@@ -494,6 +553,7 @@ internal sealed class ScanStore
         PlcResult = record.GetString(7),
         BatchNo = record.GetString(8),
         Raw = record.GetString(9),
+        OrderNo = record.IsDBNull(10) ? string.Empty : record.GetString(10),
     };
 
     /// <summary>

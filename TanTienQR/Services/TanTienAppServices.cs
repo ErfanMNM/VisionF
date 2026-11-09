@@ -50,6 +50,11 @@ public static class TanTienAppServices
         // ProductionOrderService để gate mã quét theo PO đang chạy.
         services.AddProductionOrders(configuration);
 
+        // Cầu nối: cho luồng PO đọc lịch sử quét mã (chống trùng lịch sử
+        // toàn cục). Đăng ký sau AddProductionOrders vì ProductionOrderService
+        // phụ thuộc IPoScanHistoryReader này.
+        services.AddSingleton<IPoScanHistoryReader, PoScanHistoryReader>();
+
         // ---- Camera: bind cấu hình thủ công (tương thích Native AOT) ----
         services.AddOptions<CameraOptions>()
             .Configure<IConfiguration>((o, cfg) =>

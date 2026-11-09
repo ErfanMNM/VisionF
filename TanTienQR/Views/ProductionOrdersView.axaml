@@ -84,21 +84,23 @@
                         </StackPanel>
                     </Button>
 
+                    <!-- PO đủ 100% thì tự hoàn tất — chỉ hiện nút Huỷ khi chưa đủ -->
                     <Button Classes="soft"
-                            Height="40" MinWidth="140" Padding="16,0"
+                            Height="40" MinWidth="130" Padding="16,0"
                             HorizontalContentAlignment="Center"
                             VerticalContentAlignment="Center"
-                            IsEnabled="{Binding ProductionOrders.CanComplete}"
-                            Command="{Binding ProductionOrders.CompleteProductionCommand}">
+                            IsVisible="{Binding ProductionOrders.CanCancel}"
+                            IsEnabled="{Binding ProductionOrders.CanCancel}"
+                            Command="{Binding ProductionOrders.CancelProductionCommand}">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <Path Width="15" Height="15"
                                   Stretch="Uniform"
-                                  Stroke="{StaticResource TextPrimary}"
+                                  Stroke="{StaticResource Danger}"
                                   StrokeThickness="2.4"
                                   StrokeLineCap="Round"
                                   StrokeJoin="Round"
-                                  Data="{StaticResource Icon.Check}" />
-                            <TextBlock Text="Hoàn tất sản xuất" />
+                                  Data="{StaticResource Icon.Close}" />
+                            <TextBlock Text="Huỷ PO" Foreground="{StaticResource Danger}" />
                         </StackPanel>
                     </Button>
 
@@ -158,7 +160,7 @@
                     <ComboBox Grid.Column="1"
                               MinHeight="44"
                               HorizontalAlignment="Stretch"
-                              ItemsSource="{Binding ProductionOrders.Orders}"
+                              ItemsSource="{Binding ProductionOrders.SelectableOrders}"
                               SelectedItem="{Binding ProductionOrders.SelectedOrder}"
                               PlaceholderText="Chọn PO để bắt đầu sản xuất...">
                         <ComboBox.ItemTemplate>
@@ -229,7 +231,8 @@
                                             <Border Grid.Column="3" Classes="badge"
                                                     HorizontalAlignment="Left"
                                                     Classes.running="{Binding IsRunning}"
-                                                    Classes.warning="{Binding IsCompleted}">
+                                                    Classes.warning="{Binding IsCompleted}"
+                                                    Classes.fault="{Binding IsCancelled}">
                                                 <TextBlock Text="{Binding StatusText}" />
                                             </Border>
                                             <TextBlock Grid.Column="4" Classes="label mono" FontSize="11"

@@ -18,30 +18,64 @@ public enum PoCodeValidation
 
     /// <summary>Mã đã quét trong PO này rồi (trùng).</summary>
     Duplicate = 3,
+
+    /// <summary>
+    /// Máy đã bị dừng vì phát hiện mã đã từng xuất hiện trong lịch sử quét.
+    ///
+    /// <para>
+    /// Trạng thái này chỉ xảy ra khi cơ chế chống trùng lịch sử toàn cục phát
+    /// hiện một mã của PO đang chạy đã từng được quét trong hệ thống → hệ
+    /// thống dừng máy, không ghi kết quả xuống PLC nữa.
+    /// </para>
+    /// </summary>
+    Halted = 4,
 }
+
+/// <summary>
+/// Kết quả cào dữ liệu PO từ server xuống local.
+/// </summary>
+/// <param name="PoCount">Tổng số PO trên server.</param>
+/// <param name="NewPoCount">Số PO mới (chưa có trong DB local).</param>
+/// <param name="NewCodeCount">Số mã mới được thêm vào DB local.</param>
+public sealed record PoSyncResult(int PoCount, int NewPoCount, int NewCodeCount);
 
 /// <summary>
 /// Điều phối toàn bộ luồng quản lý Production Order.
 ///
 /// <para>
+/// <b>Mô hình local-first:</b> server chỉ là nguồn để <i>cào</i> (sync một
+/// chiều vào máy). Mọi lần đọc danh sách PO cho UI đều đến từ DB local
+/// (<c>logs/po/{yyyy-MM}/{orderNo}.db</c>).
+/// </para>
+///
+/// <para>
 /// Trách nhiệm:
 /// <list type="bullet">
-/// <item>Tải PO từ server về và tạo file DB riêng cho từng PO.</item>
-/// <item>Bắt đầu / hoàn tất sản xuất (khóa - mở khóa PO).</item>
-/// <item>Kiểm tra mã quét so với tập mã hợp lệ của PO đang chạy.</item>
-/// <item>Gửi mã kích hoạt lên server.</item>
+/// <item>Cào PO + tập mã từ server, merge vào DB local (không ghi đè mã cũ).</item>
+/// <item>Đọc danh sách PO từ DB local.</item>
+/// <item>Bắt đầu / hoàn tất / huỷ sản xuất.</item>
+/// <item>Kiểm tra mã quét so với tập mã của PO đang chạy.</item>
+/// <item>Gửi mã kích hoạt lên server, kèm kiểm tra trùng lịch sử toàn cục.</item>
 /// </list>
 /// </para>
 /// </summary>
 public sealed class ProductionOrderService
 {
-    private readonly PoClient _client;
+    private readonly IPoClient _client;
     private readonly PoStore _store;
+    private readonly PoHistoryStore _history;
     private readonly PoCodeCache _cache;
+    private readonly IPoScanHistoryReader? _scanLog;
     private readonly ILogger? _logger;
 
     /// <summary>Lock bảo vệ trạng thái PO đang chạy (đọc/ghi từ nhiều luồng).</summary>
     private readonly Lock _gate = new();
+
+    /// <summary>Cờ chống gọi hoàn tất lồng nhau (auto-complete 100%).</summary>
+    private int _completing;
+
+    /// <summary>Cờ dừng máy do phát hiện mã đã từng xuất hiện trong lịch sử.</summary>
+    private volatile bool _halted;
 
     private ProductionOrder? _current;
     private ProductionOrderStatus _currentStatus = ProductionOrderStatus.Available;
@@ -50,19 +84,29 @@ public sealed class ProductionOrderService
     /// Khởi tạo service.
     /// </summary>
     public ProductionOrderService(
-        PoClient client,
+        IPoClient client,
         PoStore store,
+        PoHistoryStore history,
         PoCodeCache cache,
+        IPoScanHistoryReader? scanLog = null,
         ILogger<ProductionOrderService>? logger = null)
     {
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _store = store ?? throw new ArgumentNullException(nameof(store));
+        _history = history ?? throw new ArgumentNullException(nameof(history));
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
+        _scanLog = scanLog;
         _logger = logger;
     }
 
     /// <summary>Event phát khi PO đang chạy / trạng thái thay đổi.</summary>
     public event EventHandler? Changed;
+
+    /// <summary>
+    /// Event phát khi phát hiện mã đã từng xuất hiện trong lịch sử quét.
+    /// Tham số là danh sách serial bị trùng.
+    /// </summary>
+    public event EventHandler<IReadOnlyList<string>>? HistoryConflict;
 
     /// <summary>PO hiện tại đang chạy (null nếu chưa bắt đầu sản xuất).</summary>
     public ProductionOrder? CurrentOrder
@@ -94,74 +138,120 @@ public sealed class ProductionOrderService
         }
     }
 
+    /// <summary>
+    /// True khi máy đã bị dừng do phát hiện mã trùng lịch sử.
+    /// </summary>
+    public bool IsHalted => _halted;
+
     /// <summary>Số mã đã quét của PO đang chạy.</summary>
-    public int ScannedCount
-    {
-        get
-        {
-            var order = CurrentOrder;
-            return order is null ? 0 : _cache.ScannedCount(order.OrderNo);
-        }
-    }
+    public int ScannedCount => _cache.ScannedCount;
 
     /// <summary>Tổng số mã của PO đang chạy.</summary>
-    public int TotalCount
-    {
-        get
-        {
-            var order = CurrentOrder;
-            return order is null ? 0 : _cache.ValidCount(order.OrderNo);
-        }
-    }
+    public int TotalCount => _cache.ValidCount;
+
+    /// <summary>Phần trăm đã quét của PO đang chạy (0-100).</summary>
+    public double ProgressPercent =>
+        TotalCount > 0 ? Math.Round(ScannedCount * 100.0 / TotalCount, 1) : 0;
 
     /// <summary>
-    /// Tải danh sách PO từ server, tạo file DB riêng cho các PO mới.
+    /// Cào (đồng bộ) danh sách PO + tập mã từ server xuống DB local.
+    ///
+    /// <para>
+    /// Có thể gọi nhiều lần: PO mới được thêm vào, mã mới được thêm vào, còn mã
+    /// cũ và lịch sử đã quét được giữ nguyên (<c>INSERT OR IGNORE</c>).
+    /// </para>
     /// </summary>
-    /// <returns>Danh sách PO đã tải về (kèm số mã đã quét nếu có).</returns>
-    public async Task<IReadOnlyList<ProductionOrderSummary>> DownloadOrdersAsync(
-        CancellationToken ct = default)
+    public async Task<PoSyncResult> SyncFromServerAsync(CancellationToken ct = default)
     {
-        var orders = await _client.GetOrdersAsync(ct).ConfigureAwait(false);
-        var result = new List<ProductionOrderSummary>(orders.Count);
+        var orders = await _client.GetOrdersAsync(includeCompleted: true, ct).ConfigureAwait(false);
+
+        var newPoCount = 0;
+        var newCodeCount = 0;
 
         foreach (var order in orders)
         {
-            // PO đang chạy giữ nguyên trạng thái trong bộ nhớ.
+            var existed = _store.FindExistingDbPath(order.OrderNo) is not null;
+
+            var codes = await _client.GetCodesAsync(order.OrderNo, ct).ConfigureAwait(false);
+
+            var before = await CountCodesAsync(order, ct).ConfigureAwait(false);
+            await _store.EnsurePoDbAsync(order, codes, ct).ConfigureAwait(false);
+            var after = await CountCodesAsync(order, ct).ConfigureAwait(false);
+
+            if (!existed)
+            {
+                newPoCount++;
+            }
+
+            if (after > before)
+            {
+                newCodeCount += after - before;
+            }
+        }
+
+        _logger?.LogInformation(
+            "Cào PO từ server: {PoCount} PO ({NewPo} mới, {NewCode} mã mới).",
+            orders.Count, newPoCount, newCodeCount);
+
+        RaiseChanged();
+        return new PoSyncResult(orders.Count, newPoCount, newCodeCount);
+    }
+
+    /// <summary>
+    /// Đọc danh sách PO từ DB local (không gọi mạng).
+    /// </summary>
+    public async Task<IReadOnlyList<ProductionOrderSummary>> GetLocalOrdersAsync(
+        CancellationToken ct = default)
+    {
+        var locals = await _store.ListLocalOrdersAsync(ct).ConfigureAwait(false);
+        var result = new List<ProductionOrderSummary>(locals.Count);
+
+        foreach (var local in locals)
+        {
+            // PO đang chạy: lấy số liệu trực tiếp từ cache RAM (chính xác nhất).
             var running = CurrentOrder;
             if (running is not null
-                && string.Equals(running.OrderNo, order.OrderNo, StringComparison.OrdinalIgnoreCase))
+                && string.Equals(
+                    running.OrderNo, local.OrderNo, StringComparison.OrdinalIgnoreCase))
             {
-                result.Add(new ProductionOrderSummary(order, ScannedCount, CurrentStatus));
+                result.Add(new ProductionOrderSummary(
+                    running, ScannedCount, CurrentStatus));
                 continue;
             }
 
-            var codes = await _client.GetCodesAsync(order.OrderNo, ct).ConfigureAwait(false);
-            await _store.EnsurePoDbAsync(order, codes, ct).ConfigureAwait(false);
-
-            var scanned = await _store
-                .GetScannedCodesAsync(order.OrderNo, order.CreatedUtc, ct)
-                .ConfigureAwait(false);
-
-            _cache.SetValidCodes(order.OrderNo, codes.Select(c => BuildCodeKey(c.Gtin, c.Serial)));
-            _cache.SetScannedCodes(order.OrderNo, scanned.Select(c => BuildCodeKey(c.Gtin, c.Serial)));
-
-            var status = await ReadStatusAsync(order, ct).ConfigureAwait(false);
-            result.Add(new ProductionOrderSummary(order, scanned.Count, status));
+            result.Add(new ProductionOrderSummary(
+                new ProductionOrder
+                {
+                    OrderNo = local.OrderNo,
+                    OrderQty = local.OrderQty,
+                    CreatedUtc = local.CreatedUtc,
+                },
+                local.ScannedCodes,
+                local.Status));
         }
 
-        RaiseChanged();
         return result;
     }
 
     /// <summary>
-    /// Bắt đầu sản xuất cho một PO: khóa PO, nạp tập mã hợp lệ vào RAM cache.
+    /// Bắt đầu sản xuất cho một PO: nạp tập mã từ DB local vào cache RAM.
     /// </summary>
+    /// <remarks>
+    /// Không gọi mạng — PO phải đã được cào về local trước đó.
+    /// </remarks>
     public async Task<bool> StartProductionAsync(
         string orderNo,
         CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(orderNo))
             return false;
+
+        if (_halted)
+        {
+            _logger?.LogWarning(
+                "Máy đang dừng, không thể bắt đầu PO {OrderNo}.", orderNo);
+            return false;
+        }
 
         lock (_gate)
         {
@@ -174,42 +264,53 @@ public sealed class ProductionOrderService
             }
         }
 
-        // Tải lại tập mã từ server (đảm bảo mới nhất) rồi ghi xuống DB PO.
-        var codes = await _client.GetCodesAsync(orderNo, ct).ConfigureAwait(false);
+        // Tìm PO trong DB local (đường dẫn file + CreatedUtc đã lưu sẵn).
+        var local = await FindLocalOrderAsync(orderNo, ct).ConfigureAwait(false);
+        if (local is null)
+        {
+            _logger?.LogWarning(
+                "PO {OrderNo} chưa có trong DB local, hãy cào PO từ server trước.", orderNo);
+            return false;
+        }
+
+        // PO đã bị huỷ → không được chạy lại.
+        if (local.IsCancelled)
+        {
+            _logger?.LogWarning(
+                "PO {OrderNo} đã bị huỷ, không được chạy lại.", orderNo);
+            return false;
+        }
+
+        // Nạp tập mã từ file DB local vào cache RAM.
+        var codes = await _store
+            .GetCodesWithFlagsAsync(orderNo, local.CreatedUtc, ct)
+            .ConfigureAwait(false);
+
         if (codes.Count == 0)
         {
             _logger?.LogWarning("PO {OrderNo} không có mã nào, không thể bắt đầu.", orderNo);
             return false;
         }
 
-        // Giữ đúng PO đã tải về (CreatedUtc từ server) để đường dẫn file DB
-        // khớp với file đã tạo lúc tải PO — nếu tạo PO mới với thời điểm
-        // hiện tại thì sẽ trỏ sang file khác và mất lịch sử đã quét.
-        var order = await FindOrderAsync(orderNo, ct).ConfigureAwait(false)
-            ?? new ProductionOrder
-            {
-                OrderNo = orderNo,
-                OrderQty = codes.Count,
-                CreatedUtc = DateTime.UtcNow,
-            };
+        var order = new ProductionOrder
+        {
+            OrderNo = orderNo,
+            OrderQty = codes.Count,
+            CreatedUtc = local.CreatedUtc,
+        };
 
-        order.OrderQty = codes.Count;
-
-        await _store.EnsurePoDbAsync(order, codes, ct).ConfigureAwait(false);
-
-        var scanned = await _store
-            .GetScannedCodesAsync(order.OrderNo, order.CreatedUtc, ct)
-            .ConfigureAwait(false);
-
-        _cache.SetValidCodes(order.OrderNo, codes.Select(c => BuildCodeKey(c.Gtin, c.Serial)));
-        _cache.SetScannedCodes(order.OrderNo, scanned.Select(c => BuildCodeKey(c.Gtin, c.Serial)));
+        _cache.LoadOrder(orderNo, codes);
 
         await _store.SetMetaAsync(
-            order.OrderNo, order.CreatedUtc, PoStore.MetaStatus,
+            orderNo, local.CreatedUtc, PoStore.MetaStatus,
             ProductionOrderStatus.Running.ToString(), ct).ConfigureAwait(false);
         await _store.SetMetaAsync(
-            order.OrderNo, order.CreatedUtc, PoStore.MetaStartedUtc,
+            orderNo, local.CreatedUtc, PoStore.MetaStartedUtc,
             DateTime.UtcNow.ToString("O"), ct).ConfigureAwait(false);
+
+        await _history
+            .StartRunAsync(orderNo, codes.Count, local.CreatedUtc, ct)
+            .ConfigureAwait(false);
 
         lock (_gate)
         {
@@ -219,7 +320,7 @@ public sealed class ProductionOrderService
 
         _logger?.LogInformation(
             "Bắt đầu sản xuất PO {OrderNo} với {Count} mã.",
-            order.OrderNo, codes.Count);
+            orderNo, codes.Count);
 
         RaiseChanged();
         return true;
@@ -228,6 +329,9 @@ public sealed class ProductionOrderService
     /// <summary>
     /// Hoàn tất sản xuất: giải phóng khóa PO, đánh dấu Completed.
     /// </summary>
+    /// <remarks>
+    /// Idempotent — gọi nhiều lần cũng không sao.
+    /// </remarks>
     public async Task<bool> CompleteProductionAsync(CancellationToken ct = default)
     {
         ProductionOrder? order;
@@ -247,13 +351,161 @@ public sealed class ProductionOrderService
             order.OrderNo, order.CreatedUtc, PoStore.MetaCompletedUtc,
             DateTime.UtcNow.ToString("O"), ct).ConfigureAwait(false);
 
+        await _history.CompleteRunAsync(order.OrderNo, ct).ConfigureAwait(false);
+
         lock (_gate)
         {
             _current = null;
             _currentStatus = ProductionOrderStatus.Available;
         }
 
+        // Giải phóng RAM: chỉ giữ cache của PO đang chạy.
+        _cache.Clear();
+
         _logger?.LogInformation("Hoàn tất sản xuất PO {OrderNo}.", order.OrderNo);
+
+        RaiseChanged();
+        return true;
+    }
+
+    /// <summary>
+    /// Huỷ một PO: dừng sản xuất và đánh dấu đã huỷ (không được chạy lại).
+    /// </summary>
+    /// <param name="orderNo">
+    /// Mã PO. Nếu rỗng thì huỷ PO đang chạy.
+    /// </param>
+    /// <param name="ct">Token hủy.</param>
+    public async Task<bool> CancelProductionAsync(
+        string? orderNo = null,
+        CancellationToken ct = default)
+    {
+        ProductionOrder? order;
+        lock (_gate)
+        {
+            order = _current;
+
+            if (string.IsNullOrWhiteSpace(orderNo))
+            {
+                // Huỷ PO đang chạy.
+                if (order is null)
+                    return false;
+            }
+            else
+            {
+                // Huỷ một PO cụ thể (kể cả khi không đang chạy).
+                if (order is not null
+                    && string.Equals(
+                        order.OrderNo, orderNo, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Dùng PO đang chạy.
+                }
+                else
+                {
+                    order = null;
+                }
+            }
+        }
+
+        // Xác định PO cần huỷ (kể cả khi không đang chạy).
+        var target = order;
+        if (target is null)
+        {
+            var local = await FindLocalOrderAsync(orderNo!, ct).ConfigureAwait(false);
+            if (local is null)
+                return false;
+
+            target = new ProductionOrder
+            {
+                OrderNo = local.OrderNo,
+                OrderQty = local.OrderQty,
+                CreatedUtc = local.CreatedUtc,
+            };
+        }
+
+        await _store.MarkCancelledAsync(target.OrderNo, target.CreatedUtc, ct)
+            .ConfigureAwait(false);
+        await _history.CancelRunAsync(target.OrderNo, ct).ConfigureAwait(false);
+
+        lock (_gate)
+        {
+            if (_current is not null
+                && string.Equals(
+                    _current.OrderNo, target.OrderNo, StringComparison.OrdinalIgnoreCase))
+            {
+                _current = null;
+                _currentStatus = ProductionOrderStatus.Available;
+            }
+        }
+
+        _cache.Clear();
+
+        _logger?.LogInformation("Đã huỷ PO {OrderNo}.", target.OrderNo);
+
+        RaiseChanged();
+        return true;
+    }
+
+    /// <summary>
+    /// Khôi phục PO đang chạy từ lần trước (dùng lúc khởi động app).
+    ///
+    /// <para>
+    /// Đọc lịch sử trong <c>po-history.db</c> để tìm lần chạy đang
+    /// <c>Running</c>, nạp lại tập mã từ file DB PO vào cache RAM và đặt lại
+    /// trạng thái. Camera sẽ tiếp tục ghi kết quả xuống PLC ngay.
+    /// </para>
+    /// </summary>
+    public async Task<bool> RestoreRunningOrderAsync(CancellationToken ct = default)
+    {
+        var run = await _history.GetRunningRunAsync(ct).ConfigureAwait(false);
+        if (run is null)
+        {
+            _logger?.LogInformation("Không có PO nào đang chạy để khôi phục.");
+            return false;
+        }
+
+        var local = await FindLocalOrderAsync(run.OrderNo, ct).ConfigureAwait(false);
+        if (local is null)
+        {
+            _logger?.LogWarning(
+                "PO {OrderNo} đang chạy nhưng không có file DB local, không khôi phục được.",
+                run.OrderNo);
+            return false;
+        }
+
+        if (local.IsCancelled)
+        {
+            _logger?.LogInformation(
+                "PO {OrderNo} đã bị huỷ, không khôi phục.", run.OrderNo);
+            return false;
+        }
+
+        var codes = await _store
+            .GetCodesWithFlagsAsync(run.OrderNo, local.CreatedUtc, ct)
+            .ConfigureAwait(false);
+
+        if (codes.Count == 0)
+        {
+            _logger?.LogWarning(
+                "PO {OrderNo} không có mã nào, không khôi phục được.", run.OrderNo);
+            return false;
+        }
+
+        _cache.LoadOrder(run.OrderNo, codes);
+
+        lock (_gate)
+        {
+            _current = new ProductionOrder
+            {
+                OrderNo = run.OrderNo,
+                OrderQty = codes.Count,
+                CreatedUtc = local.CreatedUtc,
+            };
+            _currentStatus = ProductionOrderStatus.Running;
+        }
+
+        _logger?.LogInformation(
+            "Khôi phục PO {OrderNo} đang chạy từ lần trước ({Scanned}/{Total} mã đã quét).",
+            run.OrderNo, _cache.ScannedCount, _cache.ValidCount);
 
         RaiseChanged();
         return true;
@@ -265,12 +517,18 @@ public sealed class ProductionOrderService
     /// <para>
     /// - Chưa có PO chạy → <see cref="PoCodeValidation.NoProductionOrder"/>
     ///   (camera loại mã, KHÔNG ghi PLC).
+    /// - Máy đang dừng → <see cref="PoCodeValidation.Halted"/>.
     /// - Mã không thuộc PO → <see cref="PoCodeValidation.InvalidForOrder"/> (Fail).
     /// - Mã đã quét trong PO → <see cref="PoCodeValidation.Duplicate"/> (Fail).
     /// </para>
     /// </summary>
     public PoCodeValidation ValidateCode(string gtin, string serial)
     {
+        if (_halted)
+        {
+            return PoCodeValidation.Halted;
+        }
+
         ProductionOrder? order;
         lock (_gate)
         {
@@ -281,10 +539,10 @@ public sealed class ProductionOrderService
 
         var code = BuildCodeKey(gtin, serial);
 
-        if (_cache.IsScanned(order.OrderNo, code))
+        if (_cache.IsScanned(code))
             return PoCodeValidation.Duplicate;
 
-        if (!_cache.IsValidCode(order.OrderNo, code))
+        if (!_cache.Contains(code))
             return PoCodeValidation.InvalidForOrder;
 
         return PoCodeValidation.Valid;
@@ -292,6 +550,11 @@ public sealed class ProductionOrderService
 
     /// <summary>
     /// Đánh dấu mã đã quét hợp lệ (ghi vào cache RAM + DB PO).
+    ///
+    /// <para>
+    /// Khi PO đã quét đủ 100% thì <b>tự động hoàn tất</b> — UI về trạng thái
+    /// "chưa chọn PO".
+    /// </para>
     /// </summary>
     public async Task MarkCodeScannedAsync(string gtin, string serial, CancellationToken ct = default)
     {
@@ -305,17 +568,36 @@ public sealed class ProductionOrderService
             return;
 
         var code = BuildCodeKey(gtin, serial);
-        _cache.MarkScanned(order.OrderNo, code);
+
+        if (!_cache.MarkScanned(code))
+        {
+            // Mã đã được đánh dấu rồi (race giữa 2 luồng camera).
+            return;
+        }
 
         await _store
             .MarkScannedAsync(order.OrderNo, order.CreatedUtc, code, ct)
             .ConfigureAwait(false);
+
+        // Tự động hoàn tất khi đủ 100%.
+        var total = _cache.ValidCount;
+        var scanned = _cache.ScannedCount;
+
+        if (total > 0 && scanned >= total)
+        {
+            await TryAutoCompleteAsync(order, total, ct).ConfigureAwait(false);
+        }
 
         RaiseChanged();
     }
 
     /// <summary>
     /// Gửi các mã chưa kích hoạt của PO đang chạy lên server.
+    ///
+    /// <para>
+    /// Trước khi gửi, kiểm tra từng mã xem đã từng xuất hiện trong lịch sử quét
+    /// của hệ thống hay chưa. Nếu có → <b>dừng máy</b> và huỷ PO.
+    /// </para>
     /// </summary>
     /// <returns>Số mã đã kích hoạt thành công.</returns>
     public async Task<int> ActivatePendingAsync(CancellationToken ct = default)
@@ -328,12 +610,27 @@ public sealed class ProductionOrderService
                 return 0;
         }
 
+        if (_halted)
+        {
+            return 0;
+        }
+
         var pending = await _store
             .GetPendingActivationCodesAsync(order.OrderNo, order.CreatedUtc, ct)
             .ConfigureAwait(false);
 
         if (pending.Count == 0)
             return 0;
+
+        // ===== Kiểm tra trùng lịch sử toàn cục trước khi gửi lên server =====
+        var conflicts = await FindHistoryConflictsAsync(order.OrderNo, pending, ct)
+            .ConfigureAwait(false);
+
+        if (conflicts.Count > 0)
+        {
+            await HaltAsync(order, conflicts, ct).ConfigureAwait(false);
+            return 0;
+        }
 
         var result = await _client
             .ActivateAsync(order.OrderNo, pending, ct)
@@ -351,6 +648,11 @@ public sealed class ProductionOrderService
             .MarkActivatedAsync(order.OrderNo, order.CreatedUtc, pending, ct)
             .ConfigureAwait(false);
 
+        foreach (var code in pending)
+        {
+            _cache.MarkActivated(code);
+        }
+
         _logger?.LogInformation(
             "Đã kích hoạt {Count} mã của PO {OrderNo}.", pending.Count, order.OrderNo);
 
@@ -359,134 +661,148 @@ public sealed class ProductionOrderService
     }
 
     /// <summary>
-    /// Nạp lại cache từ các file DB PO đã tồn tại (dùng lúc khởi động app).
+    /// Tìm các mã trong batch đã từng xuất hiện trong lịch sử quét của hệ thống.
+    ///
+    /// <para>
+    /// Đọc tập serial đã thấy từ DB log quét rồi đối chiếu với batch mã chờ
+    /// kích hoạt — tập serial đã thấy nhỏ hơn nhiều so với toàn bộ mã PO.
+    /// </para>
     /// </summary>
-    public async Task RebuildCacheAsync(CancellationToken ct = default)
+    private async Task<IReadOnlyList<string>> FindHistoryConflictsAsync(
+        string orderNo,
+        IReadOnlyList<string> pending,
+        CancellationToken ct)
     {
-        foreach (var file in _store.ListDbFiles())
+        var seen = await GetSeenSerialsAsync(orderNo, ct).ConfigureAwait(false);
+
+        var conflicts = new List<string>();
+        foreach (var serial in pending)
         {
-            await using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={file}");
-            await connection.OpenAsync(ct).ConfigureAwait(false);
-
-            string orderNo = "";
-            string status = ProductionOrderStatus.Downloaded.ToString();
-            DateTime createdUtc = DateTime.UtcNow;
-
-            await using (var meta = connection.CreateCommand())
+            if (seen.Contains(serial))
             {
-                meta.CommandText = "SELECT Key, Value FROM PoMeta;";
-                await using var reader = await meta.ExecuteReaderAsync(ct).ConfigureAwait(false);
-                while (await reader.ReadAsync(ct).ConfigureAwait(false))
-                {
-                    var key = reader.GetString(0);
-                    var value = reader.GetString(1);
-                    if (string.Equals(key, PoStore.MetaOrderNo, StringComparison.OrdinalIgnoreCase))
-                        orderNo = value;
-                    else if (string.Equals(key, PoStore.MetaStatus, StringComparison.OrdinalIgnoreCase))
-                        status = value;
-                    else if (string.Equals(key, PoStore.MetaCreatedUtc, StringComparison.OrdinalIgnoreCase)
-                             && DateTime.TryParse(
-                                 value, null,
-                                 System.Globalization.DateTimeStyles.RoundtripKind, out var parsed))
-                        createdUtc = parsed;
-                }
+                conflicts.Add(serial);
             }
-
-            if (string.IsNullOrWhiteSpace(orderNo))
-                continue;
-
-            var valid = new List<string>();
-            var scanned = new List<string>();
-
-            await using (var codes = connection.CreateCommand())
-            {
-                codes.CommandText = "SELECT Gtin, Serial, ScannedUtc FROM PoCodes;";
-                await using var reader = await codes.ExecuteReaderAsync(ct).ConfigureAwait(false);
-                while (await reader.ReadAsync(ct).ConfigureAwait(false))
-                {
-                    var key = BuildCodeKey(reader.GetString(0), reader.GetString(1));
-                    valid.Add(key);
-                    if (!reader.IsDBNull(2))
-                        scanned.Add(key);
-                }
-            }
-
-            _cache.SetValidCodes(orderNo, valid);
-            _cache.SetScannedCodes(orderNo, scanned);
-
-            _logger?.LogInformation(
-                "Nạp cache PO {OrderNo}: {Total} mã, {Scanned} đã quét, trạng thái {Status}.",
-                orderNo, valid.Count, scanned.Count, status);
         }
+
+        return conflicts;
     }
 
     /// <summary>
-    /// Tìm thông tin PO (kèm <c>CreatedUtc</c> từ server) theo mã PO.
+    /// Lấy tập serial đã từng xuất hiện trong lịch sử quét (trừ PO hiện tại).
     /// </summary>
-    /// <remarks>
-    /// Ưu tiên đọc từ server để <c>CreatedUtc</c> khớp với lúc PO được tạo;
-    /// nếu server không còn trả về PO này thì đọc từ file DB PO cục bộ.
-    /// </remarks>
-    private async Task<ProductionOrder?> FindOrderAsync(
+    private async Task<HashSet<string>> GetSeenSerialsAsync(
         string orderNo,
         CancellationToken ct)
     {
-        try
+        if (_scanLog is null)
         {
-            var orders = await _client.GetOrdersAsync(ct).ConfigureAwait(false);
-            var match = orders.FirstOrDefault(o =>
-                string.Equals(o.OrderNo, orderNo, StringComparison.OrdinalIgnoreCase));
-
-            if (match is not null)
-                return match;
-        }
-        catch (Exception ex)
-        {
-            _logger?.LogWarning(ex, "Không lấy được danh sách PO từ server: {OrderNo}", orderNo);
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         }
 
-        // Fallback: đọc CreatedUtc từ file DB PO cục bộ.
-        var dbPath = _store.FindExistingDbPath(orderNo);
-        if (dbPath is null)
-            return null;
-
-        var meta = await _store.GetMetaAsync(orderNo, DateTime.UtcNow, ct).ConfigureAwait(false);
-        if (meta.TryGetValue(PoStore.MetaCreatedUtc, out var raw)
-            && DateTime.TryParse(
-                raw, null,
-                System.Globalization.DateTimeStyles.RoundtripKind, out var created))
-        {
-            return new ProductionOrder
-            {
-                OrderNo = orderNo,
-                OrderQty = 0,
-                CreatedUtc = created,
-            };
-        }
-
-        return null;
+        var serials = await _scanLog.GetSeenSerialsAsync(orderNo, ct).ConfigureAwait(false);
+        return new HashSet<string>(serials, StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>
-    /// Đọc trạng thái PO từ file DB (fallback <see cref="ProductionOrderStatus.Downloaded"/>).
+    /// Dừng máy: đặt cờ halt, huỷ PO và phát sự kiện cảnh báo.
     /// </summary>
-    private async Task<ProductionOrderStatus> ReadStatusAsync(
+    private async Task HaltAsync(
         ProductionOrder order,
+        IReadOnlyList<string> conflicts,
         CancellationToken ct)
     {
-        var meta = await _store.GetMetaAsync(order.OrderNo, order.CreatedUtc, ct).ConfigureAwait(false);
-        if (meta.TryGetValue(PoStore.MetaStatus, out var raw)
-            && Enum.TryParse<ProductionOrderStatus>(raw, ignoreCase: true, out var status))
+        _halted = true;
+
+        _logger?.LogError(
+            "Phát hiện {Count} mã đã từng quét trong lịch sử hệ thống: {Serials}. Đã dừng máy.",
+            conflicts.Count, string.Join(", ", conflicts));
+
+        await _store.MarkCancelledAsync(order.OrderNo, order.CreatedUtc, ct)
+            .ConfigureAwait(false);
+        await _history.CancelRunAsync(order.OrderNo, ct).ConfigureAwait(false);
+
+        lock (_gate)
         {
-            return status;
+            _current = null;
+            _currentStatus = ProductionOrderStatus.Available;
         }
 
-        return ProductionOrderStatus.Downloaded;
+        _cache.Clear();
+
+        HistoryConflict?.Invoke(this, conflicts);
+        RaiseChanged();
+    }
+
+    /// <summary>
+    /// Tự động hoàn tất PO khi đã quét đủ 100%.
+    /// </summary>
+    private async Task TryAutoCompleteAsync(
+        ProductionOrder order,
+        int total,
+        CancellationToken ct)
+    {
+        // Chỉ một luồng xử lý hoàn tất tại một thời điểm.
+        if (Interlocked.CompareExchange(ref _completing, 1, 0) != 0)
+        {
+            return;
+        }
+
+        try
+        {
+            // Kiểm tra lại: PO có còn đang chạy không (có thể đã bị huỷ).
+            lock (_gate)
+            {
+                if (_current is null
+                    || !string.Equals(
+                        _current.OrderNo, order.OrderNo, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+            }
+
+            _logger?.LogInformation(
+                "PO {OrderNo} đã quét đủ {Total} mã, tự động hoàn tất.",
+                order.OrderNo, total);
+
+            await CompleteProductionAsync(ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _completing, 0);
+        }
+    }
+
+    /// <summary>
+    /// Tìm PO trong DB local theo mã PO.
+    /// </summary>
+    private async Task<LocalPoInfo?> FindLocalOrderAsync(
+        string orderNo,
+        CancellationToken ct)
+    {
+        var locals = await _store.ListLocalOrdersAsync(ct).ConfigureAwait(false);
+        return locals.FirstOrDefault(p =>
+            string.Equals(p.OrderNo, orderNo, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Đếm số mã hiện có trong file DB của một PO (dùng khi cào để thống kê
+    /// số mã mới).
+    /// </summary>
+    private async Task<int> CountCodesAsync(ProductionOrder order, CancellationToken ct)
+    {
+        var path = _store.FindExistingDbPath(order.OrderNo);
+        if (path is null)
+            return 0;
+
+        var codes = await _store
+            .GetCodesWithFlagsAsync(order.OrderNo, order.CreatedUtc, ct)
+            .ConfigureAwait(false);
+
+        return codes.Count;
     }
 
     /// <summary>Tạo khóa mã chuẩn (GTIN + serial) để so sánh.</summary>
-    private static string BuildCodeKey(string gtin, string serial)
-        => $"{gtin}|{serial}";
+    private static string BuildCodeKey(string gtin, string serial) => $"{gtin}|{serial}";
 
     /// <summary>Báo cho UI biết PO đã thay đổi.</summary>
     private void RaiseChanged() => Changed?.Invoke(this, EventArgs.Empty);
@@ -511,4 +827,7 @@ public sealed record ProductionOrderSummary(
 
     /// <summary>Thời điểm tạo PO.</summary>
     public DateTime CreatedUtc => Order.CreatedUtc;
+
+    /// <summary>True khi PO đã bị huỷ (không được chạy lại).</summary>
+    public bool IsCancelled => Status == ProductionOrderStatus.Cancelled;
 }
