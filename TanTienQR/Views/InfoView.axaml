@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:TanTienQR.ViewModels"
+             xmlns:controls="using:TanTienQR.Controls"
              xmlns:d="http://schemas.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="1040" d:DesignHeight="700"
@@ -152,19 +153,93 @@
                     </TabItem>
 
                     <TabItem Header="Thông tin sản xuất">
-                        <Grid RowDefinitions="Auto,*" RowSpacing="10" Margin="6,8,6,4">
-                            <TextBlock Classes="sectionTitle" Text="THÔNG TIN SẢN XUẤT" />
+                        <Grid RowDefinitions="Auto,*" Margin="10,8,10,6">
+                            <StackPanel Grid.Row="0" Spacing="2" Margin="0,0,0,10">
+                                <TextBlock Classes="sectionTitle"
+                                           FontSize="15"
+                                           Foreground="{StaticResource TextPrimary}"
+                                           Text="Thông tin sản xuất" />
+                                <Border Height="3"
+                                        Width="46"
+                                        HorizontalAlignment="Left"
+                                        CornerRadius="2"
+                                        Background="{StaticResource Accent}" />
+                            </StackPanel>
 
-                            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                                <StackPanel Spacing="10">
+                            <ScrollViewer Grid.Row="1"
+                                          VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel Spacing="9">
 
-                                    <!-- Mã PO + trạng thái -->
-                                    <Border Classes="device" Padding="12">
-                                        <Grid RowDefinitions="Auto,Auto" RowSpacing="8">
-                                            <Grid ColumnDefinitions="*,Auto">
-                                                <StackPanel Spacing="2">
+                                    <!-- ===== Chọn PO và chạy ===== -->
+                                    <Border Classes="device" Padding="11,10">
+                                        <StackPanel Spacing="8">
+
+                                            <TextBlock Classes="label" FontSize="10"
+                                                       Text="CHỌN LỆNH SẢN XUẤT" />
+
+                                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="7">
+                                                <ComboBox MinHeight="33"
+                                                          HorizontalAlignment="Stretch"
+                                                          ItemsSource="{Binding ProductionInfo.Orders.Orders}"
+                                                          SelectedItem="{Binding ProductionInfo.Orders.SelectedOrder}"
+                                                          PlaceholderText="Chọn PO...">
+                                                    <ComboBox.ItemTemplate>
+                                                        <DataTemplate x:DataType="vm:ProductionOrderRowViewModel">
+                                                            <TextBlock FontSize="11.5" Text="{Binding OrderNo}" />
+                                                        </DataTemplate>
+                                                    </ComboBox.ItemTemplate>
+                                                </ComboBox>
+
+                                                <Button Grid.Column="1"
+                                                        Classes="soft"
+                                                        MinHeight="33"
+                                                        MinWidth="0"
+                                                        Padding="9,0"
+                                                        FontSize="11"
+                                                        FontWeight="Normal"
+                                                        VerticalAlignment="Stretch"
+                                                        Content="⇩ Tải PO"
+                                                        IsEnabled="{Binding !ProductionInfo.IsBusy}"
+                                                        Command="{Binding ProductionInfo.Orders.DownloadOrdersCommand}" />
+                                            </Grid>
+
+                                            <Grid ColumnDefinitions="*,*" ColumnSpacing="7">
+                                                <Button Grid.Column="0"
+                                                        Classes="primary"
+                                                        MinHeight="34"
+                                                        MinWidth="0"
+                                                        Padding="8,0"
+                                                        FontSize="12"
+                                                        HorizontalContentAlignment="Center"
+                                                        VerticalContentAlignment="Center"
+                                                        Content="▶ Bắt đầu"
+                                                        IsEnabled="{Binding ProductionInfo.CanStart}"
+                                                        Command="{Binding ProductionInfo.Orders.StartProductionCommand}" />
+
+                                                <Button Grid.Column="1"
+                                                        Classes="soft"
+                                                        MinHeight="34"
+                                                        MinWidth="0"
+                                                        Padding="8,0"
+                                                        FontSize="12"
+                                                        HorizontalContentAlignment="Center"
+                                                        VerticalContentAlignment="Center"
+                                                        Content="✓ Hoàn tất"
+                                                        IsEnabled="{Binding ProductionInfo.CanComplete}"
+                                                        Command="{Binding ProductionInfo.Orders.CompleteProductionCommand}" />
+                                            </Grid>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- ===== Tiến trình + số liệu ===== -->
+                                    <Border Classes="device" Padding="11,10">
+                                        <StackPanel Spacing="9">
+
+                                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="7">
+                                                <StackPanel Spacing="1">
                                                     <TextBlock Classes="label" FontSize="10" Text="LỆNH SẢN XUẤT" />
-                                                    <TextBlock Classes="mono" FontSize="15" FontWeight="Bold"
+                                                    <TextBlock Classes="mono" FontSize="12.5" FontWeight="Bold"
                                                                Foreground="{StaticResource TextPrimary}"
                                                                TextTrimming="CharacterEllipsis"
                                                                Text="{Binding ProductionInfo.OrderNoText}" />
@@ -172,64 +247,99 @@
                                                 <Border Grid.Column="1" Classes="badge"
                                                         VerticalAlignment="Center"
                                                         Classes.running="{Binding ProductionInfo.IsRunning}">
-                                                    <TextBlock Text="{Binding ProductionInfo.StatusText}" />
+                                                    <TextBlock FontSize="10" Text="{Binding ProductionInfo.StatusText}" />
                                                 </Border>
                                             </Grid>
 
-                                            <Grid Grid.Row="1" ColumnDefinitions="*,*" ColumnSpacing="10">
-                                                <StackPanel Grid.Column="0" Spacing="2">
-                                                    <TextBlock Classes="label" FontSize="10" Text="SỐ LƯỢNG ĐƠN" />
-                                                    <TextBlock Classes="mono" FontSize="14" FontWeight="SemiBold"
-                                                               Foreground="{StaticResource TextPrimary}"
-                                                               Text="{Binding ProductionInfo.OrderQtyText}" />
+                                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                                                <!-- Donut tiến trình -->
+                                                <StackPanel Grid.Column="0"
+                                                            Width="82"
+                                                            HorizontalAlignment="Left"
+                                                            Spacing="2">
+                                                    <controls:DonutProgress Width="82"
+                                                                          Height="82"
+                                                                          Value="{Binding ProductionInfo.ProgressPercent}"
+                                                                          Thickness="7" />
+                                                    <TextBlock Classes="label" FontSize="9"
+                                                               HorizontalAlignment="Center"
+                                                               TextAlignment="Center"
+                                                               Text="Tiến trình sản xuất" />
                                                 </StackPanel>
-                                                <StackPanel Grid.Column="1" Spacing="2">
-                                                    <TextBlock Classes="label" FontSize="10" Text="ĐÃ QUÉT / TỔNG" />
-                                                    <TextBlock Classes="mono" FontSize="14" FontWeight="SemiBold"
-                                                               Foreground="{StaticResource TextPrimary}"
-                                                               Text="{Binding ProductionInfo.ProgressText}" />
-                                                </StackPanel>
-                                            </Grid>
-                                        </Grid>
-                                    </Border>
 
-                                    <!-- Tiến trình -->
-                                    <Border Classes="device" Padding="12">
-                                        <StackPanel Spacing="6">
-                                            <Grid ColumnDefinitions="*,Auto">
-                                                <TextBlock Classes="label" FontSize="10" Text="TIẾN TRÌNH SẢN XUẤT" />
-                                                <TextBlock Grid.Column="1" Classes="mono" FontSize="11"
-                                                           Foreground="{StaticResource TextPrimary}"
-                                                           Text="{Binding ProductionInfo.ProgressPercentText}" />
+                                                <!-- Số liệu -->
+                                                <StackPanel Grid.Column="1" Spacing="11" VerticalAlignment="Center">
+                                                    <StackPanel Spacing="1">
+                                                        <TextBlock Classes="label" FontSize="10" Text="SỐ LƯỢNG ĐƠN" />
+                                                        <TextBlock Classes="mono" FontSize="13" FontWeight="SemiBold"
+                                                                   Foreground="{StaticResource TextPrimary}"
+                                                                   Text="{Binding ProductionInfo.OrderQtyText}" />
+                                                    </StackPanel>
+
+                                                    <StackPanel Spacing="1">
+                                                        <TextBlock Classes="label" FontSize="10" Text="ĐÃ QUÉT / TỔNG" />
+                                                        <StackPanel Orientation="Horizontal" Spacing="4">
+                                                            <TextBlock Classes="mono" FontSize="13" FontWeight="SemiBold"
+                                                                       Foreground="{StaticResource TextPrimary}"
+                                                                       Text="{Binding ProductionInfo.ScannedText}" />
+                                                            <TextBlock Classes="mono" FontSize="13"
+                                                                       Foreground="{StaticResource TextMuted}"
+                                                                       Text="/" />
+                                                            <TextBlock Classes="mono" FontSize="13" FontWeight="SemiBold"
+                                                                       Foreground="{StaticResource TextPrimary}"
+                                                                       Text="{Binding ProductionInfo.OrderQtyText}" />
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </StackPanel>
                                             </Grid>
-                                            <ProgressBar Minimum="0" Maximum="100"
-                                                         Value="{Binding ProductionInfo.ProgressPercent}"
-                                                         Height="8" />
                                         </StackPanel>
                                     </Border>
 
-                                    <!-- Mốc thời gian -->
-                                    <Border Classes="device" Padding="12">
-                                        <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
-                                            <Grid ColumnDefinitions="96,*">
-                                                <TextBlock Classes="label" FontSize="10" Text="TẠO PO" VerticalAlignment="Center" />
+                                    <!-- ===== Mốc thời gian (timeline) ===== -->
+                                    <Border Classes="device" Padding="11,10">
+                                        <StackPanel Spacing="0">
+
+                                            <!-- Tạo PO -->
+                                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
+                                                <Ellipse Grid.Column="0" Width="9" Height="9"
+                                                         VerticalAlignment="Top" Margin="0,3,0,0"
+                                                         Fill="{StaticResource Idle}" />
+                                                <TextBlock Grid.Column="1" Classes="label" FontSize="11"
+                                                           Text="Tạo PO" />
                                                 <TextBlock Grid.Column="1" Classes="mono" FontSize="11"
+                                                           HorizontalAlignment="Right"
                                                            Foreground="{StaticResource TextPrimary}"
                                                            Text="{Binding ProductionInfo.CreatedText}" />
                                             </Grid>
-                                            <Grid Grid.Row="1" ColumnDefinitions="96,*">
-                                                <TextBlock Classes="label" FontSize="10" Text="BẮT ĐẦU" VerticalAlignment="Center" />
+
+                                            <!-- Bắt đầu -->
+                                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9" Margin="0,7,0,0">
+                                                <Ellipse Grid.Column="0" Width="9" Height="9"
+                                                         VerticalAlignment="Top" Margin="0,3,0,0"
+                                                         Fill="{StaticResource Accent}" />
+                                                <TextBlock Grid.Column="1" Classes="label" FontSize="11"
+                                                           Text="Bắt đầu" />
                                                 <TextBlock Grid.Column="1" Classes="mono" FontSize="11"
+                                                           HorizontalAlignment="Right"
                                                            Foreground="{StaticResource TextPrimary}"
                                                            Text="{Binding ProductionInfo.StartedText}" />
                                             </Grid>
-                                            <Grid Grid.Row="2" ColumnDefinitions="96,*">
-                                                <TextBlock Classes="label" FontSize="10" Text="HOÀN TẤT" VerticalAlignment="Center" />
+
+                                            <!-- Hoàn tất -->
+                                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9" Margin="0,7,0,0">
+                                                <Ellipse Grid.Column="0" Width="9" Height="9"
+                                                         VerticalAlignment="Top" Margin="0,3,0,0"
+                                                         Fill="Transparent"
+                                                         Stroke="{StaticResource LineColor}"
+                                                         StrokeThickness="1.5" />
+                                                <TextBlock Grid.Column="1" Classes="label" FontSize="11"
+                                                           Text="Hoàn tất" />
                                                 <TextBlock Grid.Column="1" Classes="mono" FontSize="11"
+                                                           HorizontalAlignment="Right"
                                                            Foreground="{StaticResource TextPrimary}"
                                                            Text="{Binding ProductionInfo.CompletedText}" />
                                             </Grid>
-                                        </Grid>
+                                        </StackPanel>
                                     </Border>
 
                                 </StackPanel>

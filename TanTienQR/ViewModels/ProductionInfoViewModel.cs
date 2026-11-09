@@ -11,6 +11,14 @@ namespace TanTienQR.ViewModels;
 /// Nguồn dữ liệu là <see cref="ProductionOrderService"/> — PO đang chạy,
 /// số mã đã quét / tổng số mã, trạng thái và các mốc thời gian.
 /// </para>
+///
+/// <para>
+/// Panel này còn cho phép <b>chọn PO và bắt đầu chạy ngay tại chỗ</b>
+/// (tải PO, chọn PO, bắt đầu / hoàn tất sản xuất) mà không cần chuyển sang
+/// tab "Truy xuất Sản xuất (Local)". Phần chọn PO dùng chung
+/// <see cref="ProductionOrdersViewModel"/> để hai nơi luôn thấy cùng danh sách
+/// và cùng PO đang chạy — không có hai nguồn sự thật.
+/// </para>
 /// </summary>
 internal sealed partial class ProductionInfoViewModel : ViewModelBase, IDisposable
 {
@@ -21,10 +29,16 @@ internal sealed partial class ProductionInfoViewModel : ViewModelBase, IDisposab
     /// <summary>Cờ chống dispose 2 lần.</summary>
     private bool _disposed;
 
-    public ProductionInfoViewModel(ProductionOrderService po)
+    public ProductionInfoViewModel(
+        ProductionOrderService po,
+        ProductionOrdersViewModel orders)
     {
         _po = po;
         _po.Changed += OnPoChanged;
+
+        Orders = orders;
+        Orders.ListChanged += OnOrdersListChanged;
+        Orders.PropertyChanged += OnOrdersPropertyChanged;
 
         Refresh();
     }
@@ -85,6 +99,40 @@ internal sealed partial class ProductionInfoViewModel : ViewModelBase, IDisposab
     /// <summary>True khi chưa có PO nào được chọn.</summary>
     public bool IsEmpty => !IsRunning;
 
+    // ---------- Chọn & chạy PO ngay tại panel ----------
+
+    /// <summary>
+    /// ViewModel quản lý PO dùng chung — cung cấp danh sách PO, PO đang chọn
+    /// và các lệnh tải / bắt đầu / hoàn tất sản xuất.
+    /// </summary>
+    public ProductionOrdersViewModel Orders { get; }
+
+    /// <summary>True khi chưa tải được PO nào từ server.</summary>
+    public bool HasNoOrders => Orders.Orders.Count == 0;
+
+    /// <summary>Chuỗi mô tả trạng thái thao tác (đồng bộ với tab PO).</summary>
+    public string StatusMessage => Orders.StatusMessage;
+
+    /// <summary>True khi có thể bắt đầu sản xuất PO đang chọn.</summary>
+    public bool CanStart => Orders.CanStart;
+
+    /// <summary>True khi có thể hoàn tất sản xuất PO đang chạy.</summary>
+    public bool CanComplete => Orders.CanComplete;
+
+    /// <summary>True khi đang xử lý (disable nút).</summary>
+    public bool IsBusy => Orders.IsBusy;
+
+    /// <summary>
+    /// Mã PO đang chọn trong dropdown (hiển thị "—" nếu chưa chọn).
+    /// </summary>
+    public string SelectedOrderNoText => Orders.SelectedOrder?.OrderNo ?? "—";
+
+    /// <summary>True khi sản xuất đã từng bắt đầu (dùng cho timeline).</summary>
+    public bool HasStarted => StartedText != "—";
+
+    /// <summary>True khi sản xuất đã hoàn tất (dùng cho timeline).</summary>
+    public bool HasCompleted => CompletedText != "—";
+
     /// <summary>
     /// Nạp lại thông tin từ <see cref="ProductionOrderService"/>.
     /// </summary>
@@ -107,6 +155,7 @@ internal sealed partial class ProductionInfoViewModel : ViewModelBase, IDisposab
             OnPropertyChanged(nameof(ProgressPercentText));
             OnPropertyChanged(nameof(StatusBadgeClass));
             OnPropertyChanged(nameof(IsEmpty));
+            RaiseSelectionStateChanged();
             return;
         }
 
@@ -140,6 +189,23 @@ internal sealed partial class ProductionInfoViewModel : ViewModelBase, IDisposab
         OnPropertyChanged(nameof(ProgressPercentText));
         OnPropertyChanged(nameof(StatusBadgeClass));
         OnPropertyChanged(nameof(IsEmpty));
+        RaiseSelectionStateChanged();
+    }
+
+    /// <summary>
+    /// Báo UI cập nhật các thuộc tính phụ thuộc vào ViewModel PO dùng chung
+    /// (danh sách PO, PO đang chọn, trạng thái nút bấm).
+    /// </summary>
+    private void RaiseSelectionStateChanged()
+    {
+        OnPropertyChanged(nameof(HasNoOrders));
+        OnPropertyChanged(nameof(StatusMessage));
+        OnPropertyChanged(nameof(CanStart));
+        OnPropertyChanged(nameof(CanComplete));
+        OnPropertyChanged(nameof(IsBusy));
+        OnPropertyChanged(nameof(SelectedOrderNoText));
+        OnPropertyChanged(nameof(HasStarted));
+        OnPropertyChanged(nameof(HasCompleted));
     }
 
     /// <summary>
@@ -148,7 +214,26 @@ internal sealed partial class ProductionInfoViewModel : ViewModelBase, IDisposab
     private void OnPoChanged(object? sender, EventArgs e)
     {
         // Event có thể phát từ luồng worker -> đưa về luồng UI.
-        Avalonia.Threading.Dispatcher.UIThread.Post(Refresh);
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            Refresh();
+            RaiseSelectionStateChanged();
+        });
+    }
+
+    /// <summary>Danh sách PO vừa được tải lại → cập nhật trạng thái panel.</summary>
+    private void OnOrdersListChanged(object? sender, EventArgs e)
+    {
+        Avalonia.Threading.Dispatcher.UIThread.Post(RaiseSelectionStateChanged);
+    }
+
+    /// <summary>
+    /// Thuộc tính của ViewModel PO dùng chung thay đổi (PO được chọn, trạng
+    /// thái nút, thông báo) → cập nhật các binding tương ứng của panel.
+    /// </summary>
+    private void OnOrdersPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        Avalonia.Threading.Dispatcher.UIThread.Post(RaiseSelectionStateChanged);
     }
 
     /// <inheritdoc/>
@@ -157,6 +242,8 @@ internal sealed partial class ProductionInfoViewModel : ViewModelBase, IDisposab
         if (_disposed) return;
         _disposed = true;
         _po.Changed -= OnPoChanged;
+        Orders.ListChanged -= OnOrdersListChanged;
+        Orders.PropertyChanged -= OnOrdersPropertyChanged;
     }
 
     private static CultureInfo CreateViCulture()

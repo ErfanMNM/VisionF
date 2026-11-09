@@ -25,6 +25,12 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
     /// <summary>Cờ chống dispose 2 lần.</summary>
     private bool _disposed;
 
+    /// <summary>
+    /// Event phát khi danh sách PO được tải lại (dùng bởi panel
+    /// "Thông tin sản xuất" để cập nhật trạng thái nút).
+    /// </summary>
+    public event EventHandler? ListChanged;
+
     public ProductionOrdersViewModel(
         ProductionOrderService po,
         IUserActionLogger actionLog)
@@ -112,6 +118,8 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
                 "ProductionOrder",
                 $"Tai {summaries.Count} PO tu server",
                 UserActionResults.Success);
+
+            ListChanged?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex)
         {
