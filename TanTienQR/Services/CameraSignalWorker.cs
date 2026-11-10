@@ -61,7 +61,7 @@ internal sealed class CameraSignalWorker : BackgroundService
     private readonly ScanFeed _feed;
     private readonly IScanRecordWriter _scanWriter;
     private readonly CameraOptions _opt;
-    private readonly RuntimeCounters _counters;
+    private readonly RuntimeCounters _counters; 
     private readonly ProductionOrderService _po;
     private readonly ILogger<CameraSignalWorker> _logger;
 

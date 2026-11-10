@@ -28,12 +28,6 @@ internal sealed partial class CodeLookupViewModel : ViewModelBase, IDisposable
     /// <summary>Số bản ghi tối đa tải về một lần tra cứu.</summary>
     private const int MaxRows = 200;
 
-    /// <summary>
-    /// Số bản ghi tối đa hiển thị dưới dạng "danh sách gần đây" khi mở tab
-    /// mà chưa nhập mã nào.
-    /// </summary>
-    private const int RecentRows = 50;
-
     private readonly IScanRecordQuery _query;
     private readonly IScanRecordWriter _writer;
     private readonly HandheldScannerService _scanner;
@@ -97,16 +91,66 @@ internal sealed partial class CodeLookupViewModel : ViewModelBase, IDisposable
     /// <summary>Lần quét gần nhất của mã (card tóm tắt).</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasResult))]
+    [NotifyPropertyChangedFor(nameof(IsActivated))]
+    [NotifyPropertyChangedFor(nameof(IsPendingActivation))]
+    [NotifyPropertyChangedFor(nameof(ActivationStatusText))]
+    [NotifyPropertyChangedFor(nameof(ActivationBadgeClass))]
     public partial CodeLookupRowViewModel? Latest { get; set; }
 
-    /// <summary>Lịch sử đầy đủ các lần quét của mã.</summary>
+    /// <summary>
+    /// Các lần quét của mã (dùng cho bảng thông tin chi tiết bên dưới).
+    /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsEmpty))]
     public partial IReadOnlyList<CodeLookupRowViewModel> Rows { get; set; } = [];
 
     /// <summary>Tổng số bản ghi khớp (có thể lớn hơn số dòng đang hiển thị).</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ScanCountText))]
     public partial long TotalCount { get; set; }
+
+    /// <summary>
+    /// True khi mã đã được kích hoạt (đã gửi lên server).
+    ///
+    /// <para>
+    /// Xác định theo PO: mã đã quét với kết quả Pass và thuộc PO nào đó
+    /// thì coi như đã kích hoạt — tương đương logic
+    /// <c>GetActiveByQRContent</c> trong FScan.cs của dự án tham khảo.
+    /// </para>
+    /// </summary>
+    public bool IsActivated => Latest is not null && Latest.IsPass && Latest.HasOrder;
+
+    /// <summary>
+    /// True khi mã quét được nhưng chưa kích hoạt (Pass nhưng không thuộc
+    /// PO nào, hoặc quét nhưng không đạt).
+    /// </summary>
+    public bool IsPendingActivation =>
+        Latest is not null && !IsActivated && Latest.StatusText == "Pass";
+
+    /// <summary>Thông điệp trạng thái kích hoạt (dùng cho banner kết quả).</summary>
+    public string ActivationStatusText => Latest switch
+    {
+        null => string.Empty,
+        _ when IsActivated => "Mã đã kích hoạt",
+        _ when IsPendingActivation => "Mã chưa kích hoạt (Pass)",
+        _ => $"Mã có status: {Latest.StatusText}",
+    };
+
+    /// <summary>Class style cho banner trạng thái kích hoạt.</summary>
+    public string ActivationBadgeClass => Latest switch
+    {
+        null => "",
+        _ when IsActivated => "running",
+        _ when IsPendingActivation => "warning",
+        _ => "fault",
+    };
+
+    /// <summary>
+    /// Số lần mã này đã được quét (tổng số bản ghi khớp).
+    /// </summary>
+    public string ScanCountText => TotalCount > 0
+        ? $"{TotalCount} lần quét"
+        : "Chưa quét lần nào";
 
     /// <summary>Tóm tắt bộ lọc đang áp dụng.</summary>
     public string FilterSummary =>
@@ -198,36 +242,25 @@ internal sealed partial class CodeLookupViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
-    /// Nạp danh sách mã quét gần đây (dùng khi mở tab mà chưa nhập mã).
+    /// Nạp dữ liệu khi mở tab.
+    ///
+    /// <para>
+    /// KHÔNG tự đổ bảng lịch sử: bảng chỉ hiển thị thông tin của mã vừa
+    /// tra cứu (giống FScan.cs của dự án tham khảo). Mở tab không có gì để
+    /// hiển thị — người dùng phải nhập/quét mã trước.
+    /// </para>
     /// </summary>
     [RelayCommand]
     public async Task LoadAsync()
     {
+        // Chỉ đồng bộ bản ghi đang chờ ghi xuống DB, không nạp danh sách.
         try
         {
             await _writer.FlushAsync().ConfigureAwait(true);
-
-            var result = await _query
-                .GetAsync(filter: null, page: 1, pageSize: RecentRows)
-                .ConfigureAwait(true);
-
-            var rows = new List<CodeLookupRowViewModel>(result.Items.Count);
-            foreach (var item in result.Items)
-            {
-                rows.Add(new CodeLookupRowViewModel(item));
-            }
-
-            // Chỉ hiển thị danh sách gần đây khi người dùng CHƯA tra cứu mã nào
-            // (không ghi đè kết quả tra cứu đang xem).
-            if (string.IsNullOrWhiteSpace(CodeInput))
-            {
-                Rows = rows;
-                TotalCount = result.TotalCount;
-            }
         }
         catch (Exception ex)
         {
-            StatusMessage = "Không đọc được lịch sử quét mã: " + ex.Message;
+            StatusMessage = "Không đồng bộ được dữ liệu quét mã: " + ex.Message;
         }
     }
 
@@ -308,6 +341,14 @@ public sealed class CodeLookupRowViewModel
         GtinText = string.IsNullOrWhiteSpace(entity.Gtin) ? "—" : entity.Gtin;
         RawText = string.IsNullOrWhiteSpace(entity.Raw) ? "—" : entity.Raw;
 
+        OrderNoText = string.IsNullOrWhiteSpace(entity.OrderNo) ? "—" : entity.OrderNo;
+        HasOrder = !string.IsNullOrWhiteSpace(entity.OrderNo);
+
+        BatchNoText = string.IsNullOrWhiteSpace(entity.BatchNo)
+            || string.Equals(entity.BatchNo, ScanBatchDefaults.NoBatch, StringComparison.Ordinal)
+                ? "—"
+                : entity.BatchNo;
+
         StatusText = entity.Status switch
         {
             ScanStatuses.Pass => "Pass",
@@ -339,6 +380,15 @@ public sealed class CodeLookupRowViewModel
 
     /// <summary>Nội dung gốc camera gửi lên.</summary>
     public string RawText { get; }
+
+    /// <summary>Mã lệnh sản xuất (PO) mà mã này thuộc về ("—" nếu không có).</summary>
+    public string OrderNoText { get; }
+
+    /// <summary>True khi mã thuộc một PO (dùng để suy ra trạng thái kích hoạt).</summary>
+    public bool HasOrder { get; }
+
+    /// <summary>Số batch sản xuất ("—" nếu mặc định / không có).</summary>
+    public string BatchNoText { get; }
 
     /// <summary>Trạng thái (Pass / Fail / Quá tải).</summary>
     public string StatusText { get; }

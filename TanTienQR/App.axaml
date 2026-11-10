@@ -386,6 +386,18 @@
         <Style Selector="Button.primary TextBlock">
             <Setter Property="Foreground" Value="White" />
         </Style>
+        <!-- Nut primary bi khoa (dang xu ly / khong du dieu kien) -->
+        <Style Selector="Button.primary:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#EDEFF2" />
+            <Setter Property="BorderBrush" Value="#E2E8F0" />
+        </Style>
+        <Style Selector="Button.primary:disabled TextBlock">
+            <Setter Property="Foreground" Value="#9AA8B2" />
+        </Style>
+        <Style Selector="Button.primary:disabled Path">
+            <Setter Property="Stroke" Value="#9AA8B2" />
+            <Setter Property="Fill" Value="Transparent" />
+        </Style>
 
         <!-- Nut phu trong thanh bo loc -->
         <Style Selector="Button.soft">
@@ -403,6 +415,18 @@
             <Setter Property="Background" Value="{StaticResource BgRaised}" />
             <Setter Property="BorderBrush" Value="{StaticResource LineColor}" />
             <Setter Property="CornerRadius" Value="10" />
+        </Style>
+        <!-- Nut soft bi khoa -->
+        <Style Selector="Button.soft:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#F1F5F9" />
+            <Setter Property="BorderBrush" Value="#E2E8F0" />
+        </Style>
+        <Style Selector="Button.soft:disabled TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
+        </Style>
+        <Style Selector="Button.soft:disabled Path">
+            <Setter Property="Stroke" Value="{StaticResource TextMuted}" />
+            <Setter Property="Fill" Value="Transparent" />
         </Style>
         <!-- Nút trắng viền xám (giống mẫu: Tải PO / Hoàn tất) -->
         <Style Selector="Button.whitebtn">
@@ -524,6 +548,20 @@
             <Setter Property="StrokeLineCap" Value="Round" />
             <Setter Property="StrokeJoin" Value="Round" />
             <Setter Property="VerticalAlignment" Value="Center" />
+            <!-- Icon ve bang stroke -> phai set Stroke mac dinh, neu khong
+                 icon se trong suot va khong thay duoc tren nut nao. -->
+            <Setter Property="Stroke" Value="{StaticResource TextPrimary}" />
+            <Setter Property="Fill" Value="Transparent" />
+        </Style>
+        <!-- Icon cua nut primary ( nen xanh) -> stroke trang -->
+        <Style Selector="Button.primary Path">
+            <Setter Property="Stroke" Value="White" />
+            <Setter Property="Fill" Value="Transparent" />
+        </Style>
+        <!-- Icon cua nut soft ( nen xam nhat) -> stroke chu dam -->
+        <Style Selector="Button.soft Path">
+            <Setter Property="Stroke" Value="{StaticResource TextPrimary}" />
+            <Setter Property="Fill" Value="Transparent" />
         </Style>
         <Style Selector="Button.iconbtn TextBlock">
             <Setter Property="VerticalAlignment" Value="Center" />

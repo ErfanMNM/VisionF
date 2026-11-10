@@ -264,7 +264,7 @@
                         </ComboBox>
 
                         <Button Grid.Column="1"
-                                Classes="whitebtn,iconbtn"
+                                Classes="whitebtn iconbtn"
                                 MinWidth="108"
                                 ToolTip.Tip="Tải PO / Cập nhật danh sách PO từ server"
                                 IsEnabled="{Binding !ProductionInfo.IsBusy}"
@@ -279,7 +279,7 @@
                     <!-- Bắt đầu / Huỷ PO — 2 nút bằng nhau như mẫu -->
                     <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
                         <Button Grid.Column="0"
-                                Classes="startbtn,iconbtn"
+                                Classes="startbtn iconbtn"
                                 FontSize="14"
                                 HorizontalAlignment="Stretch"
                                 IsEnabled="{Binding ProductionInfo.CanStart}"
@@ -292,7 +292,7 @@
 
                         <!-- PO đủ 100% thì tự hoàn tất — luôn hiện nút Huỷ, disable khi chưa đủ điều kiện -->
                         <Button Grid.Column="1"
-                                Classes="whitebtn,danger,iconbtn"
+                                Classes="whitebtn danger iconbtn"
                                 FontSize="14"
                                 HorizontalAlignment="Stretch"
                                 IsEnabled="{Binding ProductionInfo.CanCancel}"
