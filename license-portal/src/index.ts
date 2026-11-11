@@ -46,7 +46,7 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
   // ---- API can dang nhap ----
   const user = await currentUser(request, env);
   if (!user) {
-    return json({ error: 'Chua dang nhap.' }, 401);
+    return json({ error: 'Chưa đăng nhập.' }, 401);
   }
 
   if (path === '/api/licenses' && method === 'GET') {
@@ -91,11 +91,11 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
     const row = await env.DB.prepare(
       'SELECT key_id, public_key, algorithm FROM signing_keys WHERE active = 1 ORDER BY created_at DESC LIMIT 1',
     ).first<{ key_id: string; public_key: string; algorithm: string }>();
-    if (!row) return json({ error: 'Chua cau hinh khoa ky.' }, 404);
+    if (!row) return json({ error: 'Chưa cấu hình khóa ký.' }, 404);
     return json(row);
   }
 
-  return json({ error: 'Endpoint khong ton tai.' }, 404);
+  return json({ error: 'Endpoint không tồn tại.' }, 404);
 }
 
 // ---------------------------------------------------------------- handlers
@@ -105,13 +105,13 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
   try {
     body = await request.json();
   } catch {
-    return json({ error: 'Du lieu gui len khong hop le.' }, 400);
+    return json({ error: 'Dữ liệu gửi lên không hợp lệ.' }, 400);
   }
 
   const username = (body.username ?? '').trim();
   const password = body.password ?? '';
   if (!username || !password) {
-    return json({ error: 'Vui long nhap ten dang nhap va mat khau.' }, 400);
+    return json({ error: 'Vui lòng nhập tên đăng nhập và mật khẩu.' }, 400);
   }
 
   // Uu tien dung tai khoan trong D1; neu rong dung secret env.
@@ -125,11 +125,11 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
   if (!expectedHash || username !== expectedUser) {
     // Van phai tinh hash de tránh leak thoi gian.
     await verifyPassword(password, 'pbkdf2$1000$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=');
-    return json({ error: 'Ten dang nhap hoac mat khau sai.' }, 401);
+    return json({ error: 'Tên đăng nhập hoặc mật khẩu sai.' }, 401);
   }
 
   const ok = await verifyPassword(password, expectedHash);
-  if (!ok) return json({ error: 'Ten dang nhap hoac mat khau sai.' }, 401);
+  if (!ok) return json({ error: 'Tên đăng nhập hoặc mật khẩu sai.' }, 401);
 
   const token = await createSession(username, env.SESSION_SECRET);
   await env.DB.prepare(
@@ -195,7 +195,7 @@ async function handleIssue(request: Request, env: Env, user: string): Promise<Re
   try {
     body = await request.json();
   } catch {
-    return json({ error: 'Du lieu gui len khong hop le.' }, 400);
+    return json({ error: 'Dữ liệu gửi lên không hợp lệ.' }, 400);
   }
 
   try {
@@ -224,12 +224,12 @@ async function handleIssue(request: Request, env: Env, user: string): Promise<Re
 
 async function handleDownload(env: Env, url: URL): Promise<Response> {
   const key = (url.searchParams.get('key') ?? '').trim();
-  if (!key) return json({ error: 'Thieu key.' }, 400);
+  if (!key) return json({ error: 'Thiếu key.' }, 400);
 
   const row = await env.DB.prepare(
     'SELECT data_b64, sig_b64 FROM licenses WHERE license_key = ?',
   ).bind(key).first<{ data_b64: string; sig_b64: string }>();
-  if (!row) return json({ error: 'Khong tim thay license.' }, 404);
+  if (!row) return json({ error: 'Không tìm thấy license.' }, 404);
 
   const file = { v: 1, data: row.data_b64, sig: row.sig_b64 };
   return new Response(JSON.stringify(file), {
@@ -246,11 +246,11 @@ async function handleRevoke(request: Request, env: Env, user: string): Promise<R
   try {
     body = await request.json();
   } catch {
-    return json({ error: 'Du lieu gui len khong hop le.' }, 400);
+    return json({ error: 'Dữ liệu gửi lên không hợp lệ.' }, 400);
   }
 
   const key = (body.licenseKey ?? '').trim();
-  if (!key) return json({ error: 'Thieu license key.' }, 400);
+  if (!key) return json({ error: 'Thiếu license key.' }, 400);
 
   const ok = await revokeLicense(env, key, body.reason ?? '', user);
   if (!ok) return json({ error: 'Khong tim thay license.' }, 404);
@@ -262,11 +262,11 @@ async function handleRenew(request: Request, env: Env, user: string): Promise<Re
   try {
     body = await request.json();
   } catch {
-    return json({ error: 'Du lieu gui len khong hop le.' }, 400);
+    return json({ error: 'Dữ liệu gửi lên không hợp lệ.' }, 400);
   }
 
   const key = (body.licenseKey ?? '').trim();
-  if (!key) return json({ error: 'Thieu license key.' }, 400);
+  if (!key) return json({ error: 'Thiếu license key.' }, 400);
 
   try {
     const result = await renewLicense(env, key, Number(body.daysValid ?? 30), user);
@@ -290,10 +290,10 @@ async function handleVerify(request: Request, env: Env): Promise<Response> {
   try {
     body = await request.json();
   } catch {
-    return json({ error: 'Du lieu gui len khong hop le.' }, 400);
+    return json({ error: 'Dữ liệu gửi lên không hợp lệ.' }, 400);
   }
   const key = (body.licenseKey ?? '').trim();
-  if (!key) return json({ error: 'Thieu license key.' }, 400);
+  if (!key) return json({ error: 'Thiếu license key.' }, 400);
 
   const result = await verifyStoredLicense(env, key);
   return json(result, result.ok ? 200 : 400);

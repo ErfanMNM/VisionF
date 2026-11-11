@@ -22,7 +22,7 @@
   ],
 
   "vars": {
-    "APP_NAME": "Tan Tien License Portal",
-    "DEFAULT_PRODUCT": "DemoQR"
+    "APP_NAME": "TanTienQR License Portal",
+    "DEFAULT_PRODUCT": "TanTienQR"
   }
 }

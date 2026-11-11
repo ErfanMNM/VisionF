@@ -6,7 +6,7 @@
         x:Class="LicenseTool.MainWindow"
         x:DataType="local:MainViewModel"
         xmlns:local="using:LicenseTool"
-        Title="LicenseTool · Cấp phép DemoQR (nội bộ)"
+        Title="LicenseTool · Cấp phép TanTienQR (nội bộ)"
         Width="920" Height="700"
         MinWidth="820" MinHeight="620"
         WindowStartupLocation="CenterScreen">
@@ -22,7 +22,7 @@
                    HorizontalAlignment="Center" VerticalAlignment="Center" />
       </Border>
       <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-        <TextBlock Text="Cấp phép DemoQR" FontSize="22" FontWeight="Bold" />
+        <TextBlock Text="Cấp phép TanTienQR" FontSize="22" FontWeight="Bold" />
         <TextBlock Classes="label" Text="Công cụ nội bộ — dùng để tạo file license.lic cho từng máy khách." />
       </StackPanel>
       <Border Grid.Column="2" Classes="badge bad" VerticalAlignment="Center" Margin="0,6,0,0">
@@ -63,7 +63,7 @@
                   <Border Classes="step"><TextBlock Classes="stepNum" Text="2" /></Border>
                   <TextBlock Classes="sectionTitle" VerticalAlignment="Center" Text="Thông tin máy khách" />
                 </StackPanel>
-                <TextBlock Classes="label" Text="Mã máy (HWID) — khách chạy DemoQR.exe sẽ thấy mã này, gửi cho bạn. Nhập dạng nhóm hay liền đều được." />
+                <TextBlock Classes="label" Text="Mã máy (HWID) — khách chạy TanTienQR.exe sẽ thấy mã này, gửi cho bạn. Nhập dạng nhóm hay liền đều được." />
                 <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="10">
                   <TextBox Grid.Column="0" Classes="mono" Text="{Binding HwidRaw}"
                            PlaceholderText="Ví dụ: 1D6B-D107-BBC2-75D4-515B-A4FB-E035-10ED" />
@@ -81,7 +81,7 @@
                   </StackPanel>
                   <StackPanel Grid.Column="1" Spacing="5">
                     <TextBlock Classes="label" Text="Sản phẩm" />
-                    <TextBox Text="{Binding Product}" PlaceholderText="DemoQR hoặc TanTienQR" />
+                    <TextBox Text="{Binding Product}" PlaceholderText="TanTienQR" />
                   </StackPanel>
                   <StackPanel Grid.Column="2" Spacing="5">
                     <TextBlock Classes="label" Text="Hiệu lực (ngày)" />
@@ -145,10 +145,10 @@
               <StackPanel Spacing="8">
                 <TextBlock Classes="sectionTitle" Text="🔄  Quy trình cấp phép" />
                 <Separator Background="{StaticResource LineColor}" Margin="0,2" />
-                <TextBlock TextWrapping="Wrap" Text="①  Khách chạy DemoQR.exe trên máy của họ — app báo thiếu license và hiện mã máy (HWID)." />
+                <TextBlock TextWrapping="Wrap" Text="①  Khách chạy TanTienQR.exe trên máy của họ — app báo thiếu license và hiện mã máy (HWID)." />
                 <TextBlock TextWrapping="Wrap" Text="②  Khách gửi HWID cho bạn (đọc qua điện thoại hoặc chụp màn hình)." />
                 <TextBlock TextWrapping="Wrap" Text="③  Bạn mở tab “Cấp license”: nạp private key → dán HWID → nhập tên khách + số ngày → bấm Cấp license." />
-                <TextBlock TextWrapping="Wrap" Text="④  Gửi file license.lic cho khách, dặn họ chép cạnh file DemoQR.exe rồi chạy lại." />
+                <TextBlock TextWrapping="Wrap" Text="④  Gửi file license.lic cho khách, dặn họ chép cạnh file TanTienQR.exe rồi chạy lại." />
               </StackPanel>
             </Border>
             <Border Classes="panel">
@@ -156,7 +156,7 @@
                 <TextBlock Classes="sectionTitle" Text="🛡️  Bảo mật và xoay vòng khóa" />
                 <Separator Background="{StaticResource LineColor}" Margin="0,2" />
                 <TextBlock TextWrapping="Wrap" Text="•  Chỉ giữ private.key trên máy của bạn — không commit git, không copy cho khách." />
-                <TextBlock TextWrapping="Wrap" Text="•  Public key nằm trong ClassLibraryMT/Licensing/LicenseKeys.cs — đổi key là phải build lại DemoQR." />
+                <TextBlock TextWrapping="Wrap" Text="•  Public key nằm trong ClassLibraryMT/Licensing/LicenseKeys.cs — đổi key là phải build lại TanTienQR." />
                 <TextBlock TextWrapping="Wrap" Text="•  Mỗi license ghi kèm kid (8 ký tự hex) của key đã ký. App dùng kid để tra đúng public key." />
                 <TextBlock TextWrapping="Wrap" Text="•  Nhiều key có thể cùng tồn tại: LicenseKeys.All giữ các key theo kid. License cũ vẫn chạy." />
                 <TextBlock TextWrapping="Wrap" Text="•  Nếu lộ private.key: bấm “Tạo cặp key mới” → dán public key mới vào LicenseKeys.cs → build lại app → cấp lại license cho khách." />

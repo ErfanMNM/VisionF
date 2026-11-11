@@ -63,4 +63,4 @@ CREATE TABLE IF NOT EXISTS signing_keys (
 );
 
 -- Bang san pham mac dinh.
-INSERT OR IGNORE INTO products (code, name) VALUES ('DemoQR', 'Demo QR');
+INSERT OR IGNORE INTO products (code, name) VALUES ('TanTienQR', 'Tan Tien QR');

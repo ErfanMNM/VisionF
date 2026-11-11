@@ -20,7 +20,7 @@ public static class LicenseValidator
     public static string DefaultLicensePath =>
         Path.Combine(AppContext.BaseDirectory, "license.lic");
 
-    public static LicenseCheck Validate(string? licenseFilePath = null, string product = "DemoQR")
+    public static LicenseCheck Validate(string? licenseFilePath = null, string product = "TanTienQR")
     {
         var path = licenseFilePath ?? DefaultLicensePath;
 

@@ -18,7 +18,7 @@ const WRANGLER_CONFIG = join(ROOT, 'wrangler.jsonc');
 
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'tantien512';
-const PRODUCT = process.env.DEFAULT_PRODUCT || 'DemoQR';
+const PRODUCT = process.env.DEFAULT_PRODUCT || 'TanTienQR';
 const DB_NAME = 'tantien-license';
 
 function log(msg) { console.log(msg); }

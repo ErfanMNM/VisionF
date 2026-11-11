@@ -7,7 +7,7 @@ using ClassLibraryMT.Licensing;
 // xac nhan app se chay duoc tren may thuc te.
 
 var path = args.Length > 0 ? args[0] : "license.lic";
-var product = args.Length > 1 ? args[1] : "DemoQR";
+var product = args.Length > 1 ? args[1] : "TanTienQR";
 
 if (!File.Exists(path))
 {

@@ -1,4 +1,4 @@
-/* Tan Tien License Portal — UI logic */
+/* TanTienQR — Giao diện cấp license */
 
 const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => Array.from(document.querySelectorAll(sel));
@@ -6,7 +6,7 @@ const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 let currentUser = null;
 let lastIssued = null; // { licenseKey, licenseText }
 
-// ------------------------------------------------------------------ helpers
+// ------------------------------------------------------------------ Tiện ích
 
 function show(el) { el.classList.remove('hidden'); }
 function hide(el) { el.classList.add('hidden'); }
@@ -36,7 +36,7 @@ async function api(path, options = {}) {
   try { data = await res.json(); } catch { data = null; }
 
   if (!res.ok) {
-    const message = (data && data.error) || `Loi ${res.status}`;
+    const message = (data && data.error) || `Lỗi ${res.status}`;
     throw new Error(message);
   }
   return data;
@@ -58,7 +58,7 @@ function formatDate(iso) {
   });
 }
 
-// ------------------------------------------------------------------ tabs
+// ------------------------------------------------------------------ Tabs
 
 $$('.tab').forEach((tab) => {
   tab.addEventListener('click', () => {
@@ -74,7 +74,7 @@ $$('.tab').forEach((tab) => {
   });
 });
 
-// ------------------------------------------------------------------ login
+// ------------------------------------------------------------------ Đăng nhập
 
 $('#login-form').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -102,7 +102,7 @@ $('#login-form').addEventListener('submit', async (e) => {
 });
 
 $('#logout-btn').addEventListener('click', async () => {
-  try { await api('/api/logout', { method: 'POST' }); } catch { /* ignore */ }
+  try { await api('/api/logout', { method: 'POST' }); } catch { /* bỏ qua */ }
   currentUser = null;
   hide($('#main-screen'));
   show($('#login-screen'));
@@ -117,7 +117,7 @@ function enterMain() {
   loadLicenses();
 }
 
-// ------------------------------------------------------------------ products
+// ------------------------------------------------------------------ Sản phẩm
 
 async function loadProducts() {
   try {
@@ -128,12 +128,12 @@ async function loadProducts() {
     const filterCurrent = filter.value;
 
     select.innerHTML = '';
-    filter.innerHTML = '<option value="">Tat ca san pham</option>';
+    filter.innerHTML = '<option value="">Tất cả sản phẩm</option>';
 
     for (const p of data.products) {
       const opt = document.createElement('option');
       opt.value = p.code;
-      opt.textContent = p.code;
+      opt.textContent = p.name && p.name !== p.code ? `${p.code} — ${p.name}` : p.code;
       select.appendChild(opt);
 
       const opt2 = document.createElement('option');
@@ -149,16 +149,16 @@ async function loadProducts() {
   }
 }
 
-// ------------------------------------------------------------------ issue
+// ------------------------------------------------------------------ Cấp license
 
 $('#paste-hwid').addEventListener('click', async () => {
   const input = $('#hwid');
   try {
     const text = await navigator.clipboard.readText();
     input.value = text.trim();
-    toast('Da dan ma may.');
+    toast('Đã dán mã máy.');
   } catch {
-    toast('Khong doc duoc clipboard. Hay dan thu cong.', 'error');
+    toast('Không đọc được clipboard. Hãy dán thủ công.', 'error');
     input.focus();
   }
 });
@@ -169,7 +169,7 @@ $('#issue-btn').addEventListener('click', async () => {
 
   const btn = $('#issue-btn');
   btn.disabled = true;
-  btn.textContent = 'Dang cap...';
+  btn.textContent = 'Đang cấp...';
 
   try {
     const data = await api('/api/licenses', {
@@ -186,16 +186,16 @@ $('#issue-btn').addEventListener('click', async () => {
     lastIssued = { licenseKey: data.licenseKey, licenseText: data.licenseText };
 
     setText('#result-key', data.licenseKey);
-    setText('#result-expiry', 'Het han: ' + formatDate(data.expiresAt));
+    setText('#result-expiry', 'Hết hạn: ' + formatDate(data.expiresAt));
     $('#result-text').value = data.licenseText;
 
     const details = $('#result-detail');
     details.innerHTML = `
-      <dt>Khach hang</dt><dd>${escapeHtml(data.payload.customer)}</dd>
+      <dt>Khách hàng</dt><dd>${escapeHtml(data.payload.customer)}</dd>
       <dt>HWID</dt><dd>${escapeHtml(data.hwidDisplay)}</dd>
-      <dt>San pham</dt><dd>${escapeHtml(data.payload.product)}</dd>
-      <dt>Cap luc</dt><dd>${escapeHtml(formatDate(data.payload.issued))}</dd>
-      <dt>Het han</dt><dd>${escapeHtml(formatDate(data.payload.expires))}</dd>
+      <dt>Sản phẩm</dt><dd>${escapeHtml(data.payload.product)}</dd>
+      <dt>Cấp lúc</dt><dd>${escapeHtml(formatDate(data.payload.issued))}</dd>
+      <dt>Hết hạn</dt><dd>${escapeHtml(formatDate(data.payload.expires))}</dd>
       <dt>Key ID</dt><dd>${escapeHtml(data.payload.kid)}</dd>
     `;
 
@@ -206,14 +206,14 @@ $('#issue-btn').addEventListener('click', async () => {
     $('#hwid').value = '';
     $('#note').value = '';
 
-    toast('Cap license thanh cong: ' + data.licenseKey, 'success');
+    toast('Cấp license thành công: ' + data.licenseKey, 'success');
     loadLicenses();
   } catch (err) {
     errorBox.textContent = err.message;
     show(errorBox);
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Cap license';
+    btn.textContent = 'Cấp license';
   }
 });
 
@@ -221,11 +221,11 @@ $('#copy-license').addEventListener('click', async () => {
   const text = $('#result-text').value;
   try {
     await navigator.clipboard.writeText(text);
-    toast('Da copy noi dung license.', 'success');
+    toast('Đã copy nội dung license.', 'success');
   } catch {
     const ta = $('#result-text');
     ta.select();
-    toast('Nhan Ctrl+C de copy.', 'error');
+    toast('Nhấn Ctrl+C để copy.', 'error');
   }
 });
 
@@ -242,11 +242,11 @@ $('#download-license').addEventListener('click', () => {
   URL.revokeObjectURL(url);
 });
 
-// ------------------------------------------------------------------ list
+// ------------------------------------------------------------------ Danh sách
 
 async function loadLicenses() {
   const body = $('#licenses-body');
-  body.innerHTML = '<tr><td colspan="7" class="empty-cell">Dang tai...</td></tr>';
+  body.innerHTML = '<tr><td colspan="7" class="empty-cell">Đang tải...</td></tr>';
 
   const params = new URLSearchParams({
     q: $('#search').value.trim(),
@@ -258,7 +258,7 @@ async function loadLicenses() {
   try {
     const data = await api('/api/licenses?' + params.toString());
     renderLicenses(data.licenses);
-    setText('#licenses-count', 'Tong so: ' + data.total + ' license');
+    setText('#licenses-count', 'Tổng số: ' + data.total + ' license');
   } catch (err) {
     body.innerHTML = `<tr><td colspan="7" class="empty-cell">${escapeHtml(err.message)}</td></tr>`;
   }
@@ -268,7 +268,7 @@ function renderLicenses(licenses) {
   const body = $('#licenses-body');
 
   if (!licenses || licenses.length === 0) {
-    body.innerHTML = '<tr><td colspan="7" class="empty-cell">Khong co license nao.</td></tr>';
+    body.innerHTML = '<tr><td colspan="7" class="empty-cell">Không có license nào.</td></tr>';
     return;
   }
 
@@ -276,16 +276,16 @@ function renderLicenses(licenses) {
   body.innerHTML = licenses.map((l) => {
     let status = 'active';
     let badgeClass = 'badge-active';
-    let statusText = 'Con hieu luc';
+    let statusText = 'Còn hiệu lực';
 
     if (l.revoked_at) {
       status = 'revoked';
       badgeClass = 'badge-revoked';
-      statusText = 'Da thu hoi';
+      statusText = 'Đã thu hồi';
     } else if (new Date(l.expires_at).getTime() <= now) {
       status = 'expired';
       badgeClass = 'badge-expired';
-      statusText = 'Het han';
+      statusText = 'Hết hạn';
     }
 
     const title = l.revoke_reason
@@ -302,10 +302,10 @@ function renderLicenses(licenses) {
         <td><span class="badge ${badgeClass}"${title}>${statusText}</span></td>
         <td>
           <div class="row-actions">
-            <button class="icon-btn" data-act="download" data-key="${escapeHtml(l.license_key)}">Tai</button>
-            <button class="icon-btn" data-act="renew" data-key="${escapeHtml(l.license_key)}">Gia han</button>
+            <button class="icon-btn" data-act="download" data-key="${escapeHtml(l.license_key)}">Tải</button>
+            <button class="icon-btn" data-act="renew" data-key="${escapeHtml(l.license_key)}">Gia hạn</button>
             ${status !== 'revoked'
-              ? `<button class="icon-btn danger" data-act="revoke" data-key="${escapeHtml(l.license_key)}">Thu hoi</button>`
+              ? `<button class="icon-btn danger" data-act="revoke" data-key="${escapeHtml(l.license_key)}">Thu hồi</button>`
               : ''}
           </div>
         </td>
@@ -324,15 +324,15 @@ $('#licenses-body').addEventListener('click', (e) => {
     window.location.href = '/api/licenses/download?key=' + encodeURIComponent(key);
   } else if (act === 'renew') {
     openModal({
-      title: 'Gia han license',
-      text: 'Cap license moi cho may ' + key + '. License cu se bi thu hoi.',
+      title: 'Gia hạn license',
+      text: 'Cấp license mới cho máy ' + key + '. License cũ sẽ bị thu hồi.',
       mode: 'renew',
       key,
     });
   } else if (act === 'revoke') {
     openModal({
-      title: 'Thu hoi license',
-      text: 'Thao tac nay khong the hoan tac. License ' + key + ' se khong con hieu luc.',
+      title: 'Thu hồi license',
+      text: 'Thao tác này không thể hoàn tác. License ' + key + ' sẽ không còn hiệu lực.',
       mode: 'revoke',
       key,
     });
@@ -348,7 +348,7 @@ $('#filter-product').addEventListener('change', loadLicenses);
 $('#filter-status').addEventListener('change', loadLicenses);
 $('#reload-btn').addEventListener('click', () => { loadProducts(); loadLicenses(); });
 
-// ------------------------------------------------------------------ modal
+// ------------------------------------------------------------------ Hộp thoại
 
 let modalState = null;
 
@@ -366,13 +366,13 @@ function openModal({ title, text, mode, key }) {
     show(reasonLabel); show(reasonInput);
     hide(daysLabel); hide(daysInput);
     reasonInput.value = '';
-    setText('#modal-confirm', 'Thu hoi');
+    setText('#modal-confirm', 'Thu hồi');
     $('#modal-confirm').className = 'btn btn-danger';
   } else {
     hide(reasonLabel); hide(reasonInput);
     show(daysLabel); show(daysInput);
     daysInput.value = '30';
-    setText('#modal-confirm', 'Gia han');
+    setText('#modal-confirm', 'Gia hạn');
     $('#modal-confirm').className = 'btn btn-primary';
   }
 
@@ -399,7 +399,7 @@ $('#modal-confirm').addEventListener('click', async () => {
         method: 'POST',
         body: { licenseKey: modalState.key, reason: $('#modal-reason').value.trim() },
       });
-      toast('Da thu hoi license.', 'success');
+      toast('Đã thu hồi license.', 'success');
     } else {
       const data = await api('/api/licenses/renew', {
         method: 'POST',
@@ -407,11 +407,11 @@ $('#modal-confirm').addEventListener('click', async () => {
       });
       lastIssued = { licenseKey: data.licenseKey, licenseText: data.licenseText };
       setText('#result-key', data.licenseKey);
-      setText('#result-expiry', 'Het han: ' + formatDate(data.expiresAt));
+      setText('#result-expiry', 'Hết hạn: ' + formatDate(data.expiresAt));
       $('#result-text').value = data.licenseText;
       hide($('#issue-empty'));
       show($('#issue-result'));
-      toast('Da gia han: ' + data.licenseKey, 'success');
+      toast('Đã gia hạn: ' + data.licenseKey, 'success');
     }
     closeModal();
     loadLicenses();
@@ -426,11 +426,11 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && modalState) closeModal();
 });
 
-// ------------------------------------------------------------------ keys / audit
+// ------------------------------------------------------------------ Khóa ký / Nhật ký
 
 async function loadPublicKey() {
   const box = $('#key-info');
-  box.textContent = 'Dang tai...';
+  box.textContent = 'Đang tải...';
   try {
     const data = await api('/api/public-key');
     box.innerHTML = `
@@ -446,11 +446,11 @@ async function loadPublicKey() {
 
 async function loadAudit() {
   const body = $('#audit-body');
-  body.innerHTML = '<tr><td colspan="4" class="empty-cell">Dang tai...</td></tr>';
+  body.innerHTML = '<tr><td colspan="4" class="empty-cell">Đang tải...</td></tr>';
   try {
     const data = await api('/api/audit');
     if (!data.entries || data.entries.length === 0) {
-      body.innerHTML = '<tr><td colspan="4" class="empty-cell">Chua co hoat dong nao.</td></tr>';
+      body.innerHTML = '<tr><td colspan="4" class="empty-cell">Chưa có hoạt động nào.</td></tr>';
       return;
     }
     body.innerHTML = data.entries.map((a) => `
@@ -466,7 +466,7 @@ async function loadAudit() {
   }
 }
 
-// ------------------------------------------------------------------ boot
+// ------------------------------------------------------------------ Khởi động
 
 (async function boot() {
   try {

@@ -16,7 +16,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     [ObservableProperty] private string hwidRaw = "";
     [ObservableProperty] private string customer = "";
-    [ObservableProperty] private string product = "DemoQR";
+    [ObservableProperty] private string product = "TanTienQR";
     [ObservableProperty] private int daysValid = 365;
     [ObservableProperty] private string licenseOutPath = "license.lic";
     [ObservableProperty] private string verifyPath = "";
@@ -209,7 +209,7 @@ public sealed partial class MainViewModel : ObservableObject
         try
         {
             var outPath = string.IsNullOrWhiteSpace(LicenseOutPath) ? "license.lic" : LicenseOutPath;
-            var productName = string.IsNullOrWhiteSpace(Product) ? "DemoQR" : Product.Trim();
+            var productName = string.IsNullOrWhiteSpace(Product) ? "TanTienQR" : Product.Trim();
             var lic = LicenseSigner.Create(_privateKeyText, HwidRaw, Customer.Trim(), DaysValid, productName);
             await File.WriteAllTextAsync(outPath, lic, new UTF8Encoding(false));
             SetStatus($"Đã cấp license (product={productName}, kid={KeyId}, {new FileInfo(outPath).Length} bytes): {outPath}", true);
@@ -241,7 +241,7 @@ public sealed partial class MainViewModel : ObservableObject
             SetStatus("Hãy chọn file license.lic cần kiểm tra.", false);
             return;
         }
-        var productName = string.IsNullOrWhiteSpace(Product) ? "DemoQR" : Product.Trim();
+        var productName = string.IsNullOrWhiteSpace(Product) ? "TanTienQR" : Product.Trim();
         var c = LicenseValidator.Validate(VerifyPath, productName);
         if (c.Ok && c.Payload is not null)
             SetStatus(
