@@ -71,6 +71,50 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
     public ObservableCollection<PlcParamRowViewModel> ParameterRows { get; } = [];
 
     /// <summary>
+    /// Dòng tham số đang được chọn (dùng cho thanh thao tác cố định dưới bảng).
+    ///
+    /// Null khi chưa chọn dòng nào — các nút trên thanh thao tác sẽ bị khoá.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSelectedRow))]
+    [NotifyPropertyChangedFor(nameof(SelectedRowName))]
+    [NotifyPropertyChangedFor(nameof(SelectedRowAddress))]
+    public partial PlcParamRowViewModel? SelectedRow { get; set; }
+
+    /// <summary>True khi đang có dòng được chọn.</summary>
+    public bool HasSelectedRow => SelectedRow is not null;
+
+    /// <summary>Tên tham số đang chọn (rỗng nếu chưa chọn dòng nào).</summary>
+    public string SelectedRowName => SelectedRow?.Name ?? string.Empty;
+
+    /// <summary>Địa chỉ ô nhớ của dòng đang chọn (rỗng nếu chưa chọn dòng nào).</summary>
+    public string SelectedRowAddress => SelectedRow?.Address ?? string.Empty;
+
+    /// <summary>
+    /// Dòng đang được mở bàn phím số nhỏ (null = bàn phím đang đóng).
+    ///
+    /// Bàn phím số nhỏ nằm trong panel "Ô NHỚ PLC" nên nó phải biết chính xác
+    /// dòng nào đang gõ để ghi đúng giá trị.
+    /// </summary>
+    [ObservableProperty]
+    public partial PlcParamRowViewModel? KeypadRow { get; set; }
+
+    /// <summary>True khi bàn phím số nhỏ đang mở.</summary>
+    public bool IsKeypadOpen => KeypadRow is not null;
+
+    /// <summary>
+    /// Tiêu đề hiển thị trên đầu bàn phím số nhỏ (tên + kiểu của ô nhớ đang gõ).
+    /// </summary>
+    public string KeypadTitle => KeypadRow is null
+        ? string.Empty
+        : $"{KeypadRow.Name} · {KeypadRow.ValueTypeText}";
+
+    /// <summary>
+    /// Bàn phím số nhỏ (dùng cho ô nhập Short / Int32 trong bảng ô nhớ PLC).
+    /// </summary>
+    public PlcValueKeypadViewModel Keypad { get; } = new();
+
+    /// <summary>
     /// Các dòng tham số đang soạn (nhấn "+" để thêm nhanh, chưa lưu vào DB).
     /// </summary>
     public ObservableCollection<NewParamRowViewModel> DraftRows { get; } = [];
@@ -161,6 +205,32 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
     public void Attach(Window? window) => _window = window;
 
     /// <summary>
+    /// Đổi dòng đang chọn -> đóng bàn phím số nhỏ (nó thuộc dòng cũ).
+    /// </summary>
+    /// <param name="value">Dòng mới.</param>
+    partial void OnSelectedRowChanged(PlcParamRowViewModel? value)
+    {
+        if (!ReferenceEquals(value, KeypadRow))
+        {
+            KeypadRow = null;
+        }
+    }
+
+    /// <summary>
+    /// Bàn phím số nhỏ mở / đóng -> cập nhật cờ trạng thái cho UI và đồng bộ
+    /// dòng đang gõ sang ViewModel của bàn phím.
+    /// </summary>
+    /// <param name="value">Dòng đang gõ.</param>
+    partial void OnKeypadRowChanged(PlcParamRowViewModel? value)
+    {
+        OnPropertyChanged(nameof(IsKeypadOpen));
+        OnPropertyChanged(nameof(KeypadTitle));
+
+        // Bàn phím nhỏ đóng -> dòng đang gõ cũng phải trống.
+        Keypad.Row = value;
+    }
+
+    /// <summary>
     /// Bật webview camera (gọi khi người dùng mở tab Chỉnh PLC lần đầu).
     ///
     /// Khởi tạo WebView2 khá nặng nên chỉ làm khi thật sự cần xem camera.
@@ -246,11 +316,18 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
     {
         var parameters = await _plc.GetParametersAsync().ConfigureAwait(true);
 
+        var previousId = SelectedRow?.Id;
+
         ParameterRows.Clear();
         foreach (var parameter in parameters)
         {
             ParameterRows.Add(new PlcParamRowViewModel(parameter));
         }
+
+        // Giữ dòng đang chọn nếu nó vẫn tồn tại sau khi tải lại danh sách.
+        SelectedRow = previousId is null
+            ? null
+            : ParameterRows.FirstOrDefault(r => r.Id == previousId);
 
         var recipes = await _plc.GetRecipesAsync().ConfigureAwait(true);
 
@@ -441,6 +518,112 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Chọn một dòng trong bảng (dùng cho thanh thao tác cố định dưới bảng).
+    ///
+    /// Bấm lại vào dòng đang chọn sẽ bỏ chọn — giống hành vi của bảng trên
+    /// desktop khi bấm chọn / bỏ chọn.
+    /// </summary>
+    /// <param name="row">Dòng được bấm.</param>
+    [RelayCommand]
+    private void SelectRow(PlcParamRowViewModel? row)
+    {
+        if (row is null)
+        {
+            return;
+        }
+
+        if (ReferenceEquals(SelectedRow, row))
+        {
+            ClearSelection();
+            return;
+        }
+
+        ClearSelection();
+
+        row.IsSelected = true;
+        SelectedRow = row;
+    }
+
+    /// <summary>
+    /// Bỏ chọn dòng hiện tại (đóng thanh thao tác về trạng thái rảnh).
+    /// </summary>
+    [RelayCommand]
+    private void ClearSelection()
+    {
+        if (SelectedRow is not null)
+        {
+            SelectedRow.IsSelected = false;
+        }
+
+        SelectedRow = null;
+        CloseKeypad();
+    }
+
+    // ------------------------------------------------------------------
+    // Thanh thao tac cho dong da chon
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// Đọc giá trị của dòng đang chọn từ PLC.
+    /// </summary>
+    [RelayCommand]
+    private async Task ReadSelectedAsync()
+    {
+        var row = SelectedRow;
+        if (row is null)
+        {
+            return;
+        }
+
+        await ReadParameterAsync(row).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Ghi giá trị đang nhập của dòng đang chọn xuống PLC.
+    /// </summary>
+    [RelayCommand]
+    private async Task WriteSelectedAsync()
+    {
+        var row = SelectedRow;
+        if (row is null)
+        {
+            return;
+        }
+
+        await WriteParameterAsync(row).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Mở hộp thoại sửa cho dòng đang chọn.
+    /// </summary>
+    [RelayCommand]
+    private async Task EditSelectedAsync()
+    {
+        var row = SelectedRow;
+        if (row is null)
+        {
+            return;
+        }
+
+        await EditParameterAsync(row).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Xoá dòng đang chọn.
+    /// </summary>
+    [RelayCommand]
+    private async Task DeleteSelectedAsync()
+    {
+        var row = SelectedRow;
+        if (row is null)
+        {
+            return;
+        }
+
+        await DeleteParameterAsync(row).ConfigureAwait(true);
+    }
+
+    /// <summary>
     /// Bật/tắt mở rộng dòng đang soạn để xem chi tiết.
     /// </summary>
     /// <param name="draft">Dòng cần xổ / thu.</param>
@@ -553,8 +736,17 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
             return;
         }
 
+        // Kiem tra kieu du lieu TRUOC khi ghi: gia tri sai kieu thi bao loi
+        // ngay tren dong va KHONG gui xuong PLC.
+        if (!row.ValidateInput(out var validationError))
+        {
+            row.StatusText = validationError;
+            row.IsError = true;
+            return;
+        }
+
         var result = await _plc
-            .WriteParameterAsync(row.Parameter, row.InputValue)
+            .WriteParameterAsync(row.Parameter, row.NormalizedInputValue)
             .ConfigureAwait(true);
 
         if (result.IsSuccess)
@@ -666,13 +858,38 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
         try
         {
             // 1) Gom gia tri nguoi dang nhap.
+            //    Dong nao co gia tri sai kieu -> bao loi ngay tren dong va
+            //    KHONG ghi xuong PLC (cung khong luu vao recipe).
             var values = new Dictionary<long, string>();
+            var invalidRows = new List<string>();
+
             foreach (var row in ParameterRows)
             {
-                if (!string.IsNullOrWhiteSpace(row.InputValue))
+                if (string.IsNullOrWhiteSpace(row.InputValue))
                 {
-                    values[row.Id] = row.InputValue.Trim();
+                    continue;
                 }
+
+                if (!row.ValidateInput(out var validationError))
+                {
+                    row.StatusText = validationError;
+                    row.IsError = true;
+                    invalidRows.Add($"{row.Name} ({row.Address}): {validationError}");
+                    continue;
+                }
+
+                row.StatusText = string.Empty;
+                row.IsError = false;
+                values[row.Id] = row.NormalizedInputValue;
+            }
+
+            if (invalidRows.Count > 0)
+            {
+                SetStatus(
+                    "Giá trị không hợp lệ, không thể áp dụng: "
+                    + string.Join("; ", invalidRows),
+                    isError: true);
+                return;
             }
 
             if (values.Count == 0)
@@ -745,6 +962,184 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
         {
             IsBusy = false;
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Ban phim so nho (dung cho o nhap gia tri Short / Int32)
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// Mở bàn phím số nhỏ cho một dòng (chỉ dòng kiểu số nguyên).
+    ///
+    /// Dùng cho ô "NHẬP" của kiểu Short / Int32. Bàn phím này thay thế bàn
+    /// phím ảo chữ của toàn ứng dụng — nên ô nhập tương ứng được đánh dấu
+    /// để <c>KeyboardService</c> không mở bàn phím toàn cục.
+    /// </summary>
+    /// <param name="row">Dòng cần mở bàn phím số.</param>
+    [RelayCommand]
+    private void OpenKeypad(PlcParamRowViewModel? row)
+    {
+        if (row is null || !row.IsNumericType)
+        {
+            return;
+        }
+
+        KeypadRow = row;
+    }
+
+    /// <summary>
+    /// Đóng bàn phím số nhỏ (không thay đổi giá trị đang nhập).
+    /// </summary>
+    [RelayCommand]
+    private void CloseKeypad()
+    {
+        KeypadRow = null;
+    }
+
+    /// <summary>
+    /// Bấm một phím số trên bàn phím nhỏ -> nối thêm chữ số vào giá trị.
+    /// </summary>
+    /// <param name="digit">Chữ số cần nhập (0-9).</param>
+    [RelayCommand]
+    private void KeypadDigit(string? digit)
+    {
+        var row = KeypadRow;
+        if (row is null || string.IsNullOrEmpty(digit))
+        {
+            return;
+        }
+
+        foreach (var c in digit)
+        {
+            if (!char.IsAsciiDigit(c))
+            {
+                continue;
+            }
+
+            var current = row.InputValue.Trim();
+
+            // Bỏ dấu "-" đầu chuỗi khi nối thêm số -> tránh "-1" -> "-12".
+            if (current.StartsWith('-'))
+            {
+                current = current[1..];
+            }
+
+            var next = current + c;
+
+            // Không cho vượt quá độ dài hợp lệ của kiểu dữ liệu.
+            if (next.Length > 11)
+            {
+                next = next[..11];
+            }
+
+            row.InputValue = next;
+        }
+
+        row.StatusText = string.Empty;
+        row.IsError = false;
+    }
+
+    /// <summary>
+    /// Bấm phím "C" trên bàn phím nhỏ -> xoá trắng giá trị đang nhập.
+    /// </summary>
+    [RelayCommand]
+    private void KeypadClear()
+    {
+        var row = KeypadRow;
+        if (row is null)
+        {
+            return;
+        }
+
+        row.InputValue = string.Empty;
+        row.StatusText = string.Empty;
+        row.IsError = false;
+    }
+
+    /// <summary>
+    /// Bấm phím "±" trên bàn phím nhỏ -> đảo dấu giá trị đang nhập.
+    /// </summary>
+    [RelayCommand]
+    private void KeypadToggleSign()
+    {
+        var row = KeypadRow;
+        if (row is null)
+        {
+            return;
+        }
+
+        var current = row.InputValue.Trim();
+        if (current.Length == 0)
+        {
+            return;
+        }
+
+        row.InputValue = current.StartsWith('-') ? current[1..] : "-" + current;
+        row.StatusText = string.Empty;
+        row.IsError = false;
+    }
+
+    /// <summary>
+    /// Nút "+" trên bàn phím nhỏ -> tăng giá trị hiện tại lên 1.
+    /// </summary>
+    [RelayCommand]
+    private void KeypadIncrement()
+    {
+        var row = KeypadRow;
+        if (row is null)
+        {
+            return;
+        }
+
+        row.NumericValue = row.NumericValue + 1;
+        row.StatusText = string.Empty;
+        row.IsError = false;
+    }
+
+    /// <summary>
+    /// Nút "-" trên bàn phím nhỏ -> giảm giá trị hiện tại đi 1.
+    /// </summary>
+    [RelayCommand]
+    private void KeypadDecrement()
+    {
+        var row = KeypadRow;
+        if (row is null)
+        {
+            return;
+        }
+
+        row.NumericValue = row.NumericValue - 1;
+        row.StatusText = string.Empty;
+        row.IsError = false;
+    }
+
+    /// <summary>
+    /// Nút "OK" trên bàn phím nhỏ -> chốt giá trị và đóng bàn phím.
+    ///
+    /// Nếu giá trị không hợp lệ với kiểu dữ liệu thì báo lỗi ngay trên dòng
+    /// và GIỮ bàn phím mở để người dùng sửa tiếp.
+    /// </summary>
+    [RelayCommand]
+    private void KeypadCommit()
+    {
+        var row = KeypadRow;
+        if (row is null)
+        {
+            return;
+        }
+
+        if (!row.ValidateInput(out var error))
+        {
+            row.StatusText = error;
+            row.IsError = true;
+            return;
+        }
+
+        row.InputValue = row.NormalizedInputValue;
+        row.StatusText = string.Empty;
+        row.IsError = false;
+
+        KeypadRow = null;
     }
 
     // ------------------------------------------------------------------

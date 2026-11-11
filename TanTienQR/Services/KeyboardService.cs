@@ -56,6 +56,40 @@ public sealed class KeyboardService
     public VirtualKeyboardViewModel Keyboard => _keyboard;
 
     /// <summary>
+    /// Đánh dấu một ô nhập để bàn phím ảo toàn cục KHÔNG mở.
+    ///
+    /// Một số ô nhập trong ứng dụng có bàn phím riêng (vd bàn phím số nhỏ
+    /// trong bảng ô nhớ PLC) — nếu bàn phím toàn cục cũng mở thì người dùng
+    /// sẽ thấy hai bàn phím chồng lên nhau.
+    ///
+    /// Cách dùng: đặt <c>Tag="plc-keypad"</c> cho TextBox (xem
+    /// <see cref="PlcKeypadTag"/>) hoặc đặt <c>Name="PlcKeypad"</c>.
+    /// </summary>
+    public const string PlcKeypadTag = "plc-keypad";
+
+    /// <summary>
+    /// Tên control của ô nhập dùng bàn phím riêng (cũng bị bỏ qua).
+    /// </summary>
+    public const string PlcKeypadName = "PlcKeypad";
+
+    /// <summary>
+    /// Kiểm tra ô nhập này có dùng bàn phím riêng hay không.
+    ///
+    /// </summary>
+    /// <param name="textBox">Ô nhập cần kiểm tra.</param>
+    /// <returns>True nếu bàn phím toàn cục không nên mở cho ô này.</returns>
+    public static bool UsesOwnKeypad(TextBox textBox)
+    {
+        if (textBox.Tag is string tag
+            && string.Equals(tag, PlcKeypadTag, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        return string.Equals(textBox.Name, PlcKeypadName, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Gắn theo dõi focus cho một cửa sổ.
     /// </summary>
     /// <param name="topLevel">Cửa sổ cần theo dõi.</param>
@@ -147,6 +181,13 @@ public sealed class KeyboardService
             return;
         }
 
+        // Ô nhập có bàn phím riêng (vd ô nhập số trong bảng ô nhớ PLC)
+        // -> KHÔNG mở bàn phím toàn cục, tránh hai bàn phím chồng nhau.
+        if (UsesOwnKeypad(textBox))
+        {
+            return;
+        }
+
         _focused = textBox;
         OpenKeyboard(textBox, sender as TopLevel);
     }
@@ -168,6 +209,13 @@ public sealed class KeyboardService
 
         var textBox = FindTextBox(e.Source as Visual);
         if (textBox is null)
+        {
+            return;
+        }
+
+        // Ô nhập có bàn phím riêng -> bàn phím nhỏ của ô đó lo phần nhập,
+        // không mở thêm bàn phím toàn cục.
+        if (UsesOwnKeypad(textBox))
         {
             return;
         }

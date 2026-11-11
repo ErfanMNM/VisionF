@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="TanTienQR.App"
              xmlns:local="using:TanTienQR"
+             xmlns:conv="using:TanTienQR.Converters"
              RequestedThemeVariant="Light">
 
     <Application.DataTemplates>
@@ -50,6 +51,9 @@
             <CornerRadius x:Key="RadiusCard">16</CornerRadius>
             <CornerRadius x:Key="RadiusSmall">14</CornerRadius>
             <CornerRadius x:Key="RadiusField">10</CornerRadius>
+
+            <!-- Hien thi ten kieu du lieu / che do truy cap PLC (Short thay Int16…) -->
+            <conv:PlcEnumDisplayConverter x:Key="PlcEnumDisplay" />
         </ResourceDictionary>
     </Application.Resources>
 

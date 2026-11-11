@@ -595,56 +595,32 @@ internal sealed class PlcSettingsService : IPlcSettingsService
         value = 0;
         error = string.Empty;
 
-        var text = raw?.Trim() ?? string.Empty;
-        if (text.Length == 0)
+        // Dùng chung bộ kiểm tra với UI để hai nơi có cùng quy tắc.
+        if (!PlcValueValidator.TryValidate(type, raw, out error))
         {
-            error = "Gia tri khong duoc de trong.";
             return false;
         }
+
+        var text = raw!.Trim();
 
         switch (type)
         {
             case PlcValueType.Int16:
-                if (!short.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var s))
-                {
-                    error = $"'{text}' khong phai so nguyen 16 bit.";
-                    return false;
-                }
-
-                value = s;
+                value = short.Parse(text, CultureInfo.InvariantCulture);
                 return true;
 
             case PlcValueType.Int32:
-                if (!int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var i))
-                {
-                    error = $"'{text}' khong phai so nguyen 32 bit.";
-                    return false;
-                }
-
-                value = i;
+                value = int.Parse(text, CultureInfo.InvariantCulture);
                 return true;
 
             case PlcValueType.Float:
-                if (!float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var f)
-                    || float.IsNaN(f)
-                    || float.IsInfinity(f))
-                {
-                    error = $"'{text}' khong phai so thuc hop le.";
-                    return false;
-                }
-
-                value = f;
+                value = float.Parse(text, CultureInfo.InvariantCulture);
                 return true;
 
             case PlcValueType.Bool:
-                if (TryParseBool(text, out var b))
-                {
-                    value = b ? 1 : 0;
-                    return true;
-                }
-
-                error = $"'{text}' khong phai gia tri boolean (true/false, 1/0, on/off).";
-                return false;
+                PlcValueValidator.TryParseBool(text, out var flag);
+                value = flag ? 1 : 0;
+                return true;
 
             default:
                 error = "Kieu du lieu khong ho tro.";
@@ -655,22 +631,8 @@ internal sealed class PlcSettingsService : IPlcSettingsService
     /// <summary>
     /// Parse chuỗi thành boolean (chấp nhận true/false, 1/0, on/off, co/khong).
     /// </summary>
-    private static bool TryParseBool(string text, out bool value)
-    {
-        value = false;
-
-        switch (text.Trim().ToLowerInvariant())
-        {
-            case "1" or "true" or "on" or "yes" or "co":
-                value = true;
-                return true;
-            case "0" or "false" or "off" or "no" or "khong":
-                value = false;
-                return true;
-            default:
-                return false;
-        }
-    }
+    private static bool TryParseBool(string text, out bool value) =>
+        PlcValueValidator.TryParseBool(text, out value);
 
     /// <summary>
     /// Chuẩn hoá giá trị để hiển thị/lưu trữ.

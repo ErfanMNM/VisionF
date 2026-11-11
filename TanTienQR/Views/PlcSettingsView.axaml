@@ -1,6 +1,7 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:TanTienQR.ViewModels"
+             xmlns:controls="using:TanTienQR.Controls"
              xmlns:d="http://schemas.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="720"
@@ -104,6 +105,67 @@
         <!-- ===== Dòng đang soạn (mới) ===== -->
         <Style Selector="Border.draftRow">
             <Setter Property="Background" Value="{StaticResource AccentSoft}" />
+        </Style>
+
+        <!-- ===== Dòng đang chọn: nền nhạt + viền accent bên trái ===== -->
+        <Style Selector="Border.rowSelected">
+            <Setter Property="Background" Value="{StaticResource AccentSoft}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineAccent}" />
+            <Setter Property="BorderThickness" Value="3,0,0,1" />
+        </Style>
+
+        <!-- ===== Viền accent bên trái của dòng đang chọn ===== -->
+        <Style Selector="Border.rowAccent">
+            <Setter Property="Background" Value="{StaticResource Accent}" />
+            <Setter Property="Width" Value="3" />
+            <Setter Property="CornerRadius" Value="2" />
+        </Style>
+
+        <!-- ===== Bộ chọn Bool: 2 nút ON / OFF ===== -->
+        <Style Selector="Button.boolPick">
+            <Setter Property="Height" Value="30" />
+            <Setter Property="MinWidth" Value="40" />
+            <Setter Property="Padding" Value="8,0" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.boolPick /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource BgPanel}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineColor}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="7" />
+        </Style>
+        <Style Selector="Button.boolPick:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource AccentSoft}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+        </Style>
+        <Style Selector="Button.boolPick.on /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource Accent}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+        </Style>
+        <Style Selector="Button.boolPick.on TextBlock">
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+        <Style Selector="Button.boolPick.off /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource BgRaised}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineColor}" />
+        </Style>
+
+        <!-- ===== Ô nhập số có nút mở bàn phím số nhỏ ===== -->
+        <Style Selector="Button.keypadOpen">
+            <Setter Property="Height" Value="26" />
+            <Setter Property="Width" Value="26" />
+            <Setter Property="MinWidth" Value="26" />
+            <Setter Property="MinHeight" Value="26" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="13" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Cursor" Value="Hand" />
         </Style>
     </UserControl.Styles>
 
@@ -322,7 +384,7 @@
 
                 <!-- Bảng ô nhớ (gọn) -->
                 <Border Grid.Row="1" Classes="panel" Padding="0">
-                    <Grid RowDefinitions="Auto,Auto,*,Auto">
+                    <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
 
                         <!-- Header panel -->
                         <Grid Grid.Row="0"
@@ -347,7 +409,7 @@
                                        Classes="overline"
                                        FontSize="10.5"
                                        VerticalAlignment="Center"
-                                       Text="Nhấn ▼ để xem chi tiết" />
+                                       Text="Chạm một dòng để chọn" />
                             <!-- Thêm tham số mới -->
                             <Button Grid.Column="2"
                                     Classes="primary"
@@ -373,7 +435,7 @@
                                 BorderThickness="0,1,0,1"
                                 Padding="14,7"
                                 Background="#F8F9FB">
-                            <Grid ColumnDefinitions="Auto,*,96,104,Auto" ColumnSpacing="8">
+                            <Grid ColumnDefinitions="Auto,*,84,104" ColumnSpacing="8">
                                 <TextBlock Grid.Column="1" Classes="th" Text="TÊN" />
                                 <TextBlock Grid.Column="2" Classes="th" Text="GIÁ TRỊ" />
                                 <TextBlock Grid.Column="3" Classes="th" Text="NHẬP" />
@@ -381,8 +443,9 @@
                         </Border>
 
                         <!-- Danh sách: gồm dòng đang soạn + dòng đã lưu -->
-                        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
-                            <StackPanel>
+                        <Panel Grid.Row="2">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel>
 
                                 <!-- ======== DÒNG ĐANG SOẠN (mới) ======== -->
                                 <ItemsControl ItemsSource="{Binding PlcSettings.DraftRows}">
@@ -394,8 +457,8 @@
                                                     Padding="14,8">
                                                 <StackPanel Spacing="7">
 
-                                                    <!-- Hàng nhập chính -->
-                                                    <Grid ColumnDefinitions="Auto,*,104,Auto" ColumnSpacing="8">
+                                                    <!-- Hàng nhập chính: tên + địa chỉ xếp dọc để tên hiện đủ -->
+                                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
                                                         <!-- Nút xổ -->
                                                         <Button Grid.Column="0"
                                                                 Classes="soft iconBtn"
@@ -422,21 +485,19 @@
                                                             </Panel>
                                                         </Button>
 
-                                                        <!-- Tên -->
-                                                        <TextBox Grid.Column="1"
-                                                                 Classes="field cellInput"
-                                                                 PlaceholderText="Tên tham số (vd: Delay Camera)"
-                                                                 Text="{Binding Name}" />
-
-                                                        <!-- Địa chỉ tóm tắt -->
-                                                        <TextBox Grid.Column="2"
-                                                                 Classes="field cellInput"
-                                                                 PlaceholderText="Ô nhớ (D12)"
-                                                                 Text="{Binding Address}" />
+                                                        <!-- Tên + địa chỉ: xếp dọc, tên luôn hiện đủ -->
+                                                        <StackPanel Grid.Column="1" Spacing="4">
+                                                            <TextBox Classes="field cellInput"
+                                                                     PlaceholderText="Tên tham số (vd: Delay Camera)"
+                                                                     Text="{Binding Name}" />
+                                                            <TextBox Classes="field cellInput"
+                                                                     PlaceholderText="Ô nhớ (vd: D12 hoặc D12.05)"
+                                                                     Text="{Binding Address}" />
+                                                        </StackPanel>
 
                                                         <!-- Nút lưu / huỷ -->
-                                                        <StackPanel Grid.Column="3"
-                                                                    Orientation="Horizontal"
+                                                        <StackPanel Grid.Column="2"
+                                                                    Orientation="Vertical"
                                                                     Spacing="4"
                                                                     VerticalAlignment="Center">
                                                             <Button Classes="primary iconBtn"
@@ -484,7 +545,13 @@
                                                                   Padding="8,0"
                                                                   VerticalContentAlignment="Center"
                                                                   ItemsSource="{Binding AvailableValueTypes}"
-                                                                  SelectedItem="{Binding ValueType}" />
+                                                                  SelectedItem="{Binding ValueType}">
+                                                            <ComboBox.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <TextBlock Text="{Binding Converter={StaticResource PlcEnumDisplay}}" />
+                                                                </DataTemplate>
+                                                            </ComboBox.ItemTemplate>
+                                                        </ComboBox>
                                                         <TextBlock Grid.Column="2"
                                                                    Classes="fieldLabel"
                                                                    FontSize="10"
@@ -498,7 +565,13 @@
                                                                   Padding="8,0"
                                                                   VerticalContentAlignment="Center"
                                                                   ItemsSource="{Binding AvailableAccessModes}"
-                                                                  SelectedItem="{Binding AccessMode}" />
+                                                                  SelectedItem="{Binding AccessMode}">
+                                                            <ComboBox.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <TextBlock Text="{Binding Converter={StaticResource PlcEnumDisplay}}" />
+                                                                </DataTemplate>
+                                                            </ComboBox.ItemTemplate>
+                                                        </ComboBox>
                                                         <TextBlock Grid.Column="4"
                                                                    Classes="fieldLabel"
                                                                    FontSize="10"
@@ -528,11 +601,13 @@
                                         <DataTemplate x:DataType="vm:PlcParamRowViewModel">
                                             <Border BorderBrush="{StaticResource LineColor}"
                                                     BorderThickness="0,0,0,1"
-                                                    Padding="14,6">
+                                                    Padding="14,6"
+                                                    Classes.rowSelected="{Binding IsSelected}"
+                                                    PointerPressed="OnRowPointerPressed">
                                                 <StackPanel Spacing="5">
 
-                                                    <!-- Hàng gọn -->
-                                                    <Grid ColumnDefinitions="Auto,*,96,104,Auto" ColumnSpacing="8">
+                                                    <!-- Hàng gọn: tên + giá trị + ô nhập -->
+                                                    <Grid ColumnDefinitions="Auto,*,84,104" ColumnSpacing="8">
 
                                                         <!-- Nút xổ -->
                                                         <Button Grid.Column="0"
@@ -560,8 +635,11 @@
                                                             </Panel>
                                                         </Button>
 
-                                                        <!-- Tên + mô tả -->
-                                                        <StackPanel Grid.Column="1" Spacing="0" VerticalAlignment="Center">
+                                                        <!-- Tên + mô tả (cột co giãn: luôn có chỗ đọc) -->
+                                                        <StackPanel Grid.Column="1"
+                                                                    Spacing="0"
+                                                                    MinWidth="90"
+                                                                    VerticalAlignment="Center">
                                                             <TextBlock FontSize="12"
                                                                        FontWeight="SemiBold"
                                                                        Foreground="{StaticResource TextPrimary}"
@@ -580,70 +658,59 @@
                                                                    FontWeight="Bold"
                                                                    Foreground="{StaticResource Accent}"
                                                                    VerticalAlignment="Center"
+                                                                   TextTrimming="CharacterEllipsis"
                                                                    Text="{Binding CurrentValue}" />
 
-                                                        <!-- Ô nhập giá trị -->
-                                                        <TextBox Grid.Column="3"
-                                                                 Classes="field cellInput"
-                                                                 PlaceholderText="Nhập…"
-                                                                 Text="{Binding InputValue}" />
+                                                        <!-- Ô nhập giá trị: tuỳ theo kiểu dữ liệu -->
+                                                        <Grid Grid.Column="3" ColumnDefinitions="*,Auto" ColumnSpacing="4">
 
-                                                        <!-- Thao tác -->
-                                                        <StackPanel Grid.Column="4"
-                                                                    Orientation="Horizontal"
-                                                                    Spacing="3"
-                                                                    VerticalAlignment="Center">
-                                                            <Button Classes="soft iconBtn"
-                                                                    ToolTip.Tip="Đọc giá trị từ PLC"
-                                                                    IsVisible="{Binding CanRead}"
-                                                                    Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).PlcSettings.ReadParameterCommand}"
-                                                                    CommandParameter="{Binding}">
-                                                                <Path Width="13" Height="13"
-                                                                      Stretch="Uniform"
-                                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                                                      StrokeThickness="1.6"
-                                                                      StrokeLineCap="Round"
-                                                                      StrokeJoin="Round"
-                                                                      Data="{StaticResource Icon.Download}" />
-                                                            </Button>
-                                                            <Button Classes="soft iconBtn"
-                                                                    ToolTip.Tip="Ghi giá trị xuống PLC"
-                                                                    IsVisible="{Binding CanWrite}"
-                                                                    Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).PlcSettings.WriteParameterCommand}"
-                                                                    CommandParameter="{Binding}">
-                                                                <Path Width="13" Height="13"
-                                                                      Stretch="Uniform"
-                                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                                                      StrokeThickness="1.6"
-                                                                      StrokeLineCap="Round"
-                                                                      StrokeJoin="Round"
-                                                                      Data="{StaticResource Icon.Upload}" />
-                                                            </Button>
-                                                            <Button Classes="soft iconBtn"
-                                                                    ToolTip.Tip="Sửa thông số"
-                                                                    Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).PlcSettings.EditParameterCommand}"
-                                                                    CommandParameter="{Binding}">
-                                                                <Path Width="12" Height="12"
-                                                                      Stretch="Uniform"
-                                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                                                      StrokeThickness="1.6"
-                                                                      StrokeLineCap="Round"
-                                                                      StrokeJoin="Round"
-                                                                      Data="{StaticResource Icon.Settings}" />
-                                                            </Button>
-                                                            <Button Classes="soft iconBtn danger"
-                                                                    ToolTip.Tip="Xoá thông số"
-                                                                    Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).PlcSettings.DeleteParameterCommand}"
-                                                                    CommandParameter="{Binding}">
-                                                                <Path Width="12" Height="12"
-                                                                      Stretch="Uniform"
-                                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                                                      StrokeThickness="1.6"
-                                                                      StrokeLineCap="Round"
-                                                                      StrokeJoin="Round"
-                                                                      Data="{StaticResource Icon.Trash}" />
-                                                            </Button>
-                                                        </StackPanel>
+                                                            <!-- Bool: bộ chọn ON / OFF -->
+                                                            <StackPanel Grid.Column="0"
+                                                                        Orientation="Horizontal"
+                                                                        Spacing="4"
+                                                                        VerticalAlignment="Center"
+                                                                        IsVisible="{Binding IsBoolType}">
+                                                                <Button Classes="boolPick"
+                                                                        Classes.on="{Binding BoolValue}"
+                                                                        Content="ON"
+                                                                        ToolTip.Tip="Chọn giá trị TRUE cho ô nhớ này"
+                                                                        Command="{Binding SetBoolCommand}"
+                                                                        CommandParameter="True" />
+                                                                <Button Classes="boolPick"
+                                                                        Classes.off="{Binding IsBoolOff}"
+                                                                        Content="OFF"
+                                                                        ToolTip.Tip="Chọn giá trị FALSE cho ô nhớ này"
+                                                                        Command="{Binding SetBoolCommand}"
+                                                                        CommandParameter="False" />
+                                                            </StackPanel>
+
+                                                            <!-- Short / Int32: ô nhập số + nút mở bàn phím số nhỏ -->
+                                                            <Grid Grid.Column="0"
+                                                                  ColumnDefinitions="*,Auto"
+                                                                  ColumnSpacing="4">
+                                                                <TextBox Grid.Column="0"
+                                                                         Classes="field cellInput"
+                                                                         Tag="plc-keypad"
+                                                                         Name="PlcKeypad"
+                                                                         TextInputOptions.ContentType="Number"
+                                                                         PlaceholderText="Nhập…"
+                                                                         Text="{Binding InputValue}" />
+                                                                <Button Grid.Column="1"
+                                                                        Classes="soft keypadOpen"
+                                                                        ToolTip.Tip="Mở bàn phím số"
+                                                                        IsVisible="{Binding IsNumericType}"
+                                                                        Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).PlcSettings.OpenKeypadCommand}"
+                                                                        CommandParameter="{Binding}">
+                                                                    <Path Width="13" Height="13"
+                                                                          Stretch="Uniform"
+                                                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                                          StrokeThickness="1.6"
+                                                                          StrokeLineCap="Round"
+                                                                          StrokeJoin="Round"
+                                                                          Data="{StaticResource Icon.List}" />
+                                                                </Button>
+                                                            </Grid>
+                                                        </Grid>
                                                     </Grid>
 
                                                     <!-- Chi tiết (xổ xuống) -->
@@ -699,46 +766,189 @@
                                                                    TextTrimming="CharacterEllipsis"
                                                                    Text="{Binding Description}" />
                                                     </Grid>
+
+                                                    <!-- Lỗi / trạng thái của dòng -->
+                                                    <TextBlock FontSize="10.5"
+                                                               Foreground="{StaticResource Danger}"
+                                                               TextWrapping="Wrap"
+                                                               IsVisible="{Binding IsError}"
+                                                               Text="{Binding StatusText}" />
                                                 </StackPanel>
                                             </Border>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
+                                </StackPanel>
+                            </ScrollViewer>
+
+                            <!-- Chưa có tham số -->
+                            <StackPanel VerticalAlignment="Center"
+                                        HorizontalAlignment="Center"
+                                        Spacing="7"
+                                        IsVisible="{Binding !PlcSettings.IsTableEmpty}">
+                                <Border Width="42" Height="42"
+                                        CornerRadius="14"
+                                        Background="{StaticResource BgRaised}">
+                                    <Path Width="20" Height="20"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          Stretch="Uniform"
+                                          Stroke="{StaticResource TextMuted}"
+                                          StrokeThickness="1.6"
+                                          StrokeLineCap="Round"
+                                          StrokeJoin="Round"
+                                          Data="{StaticResource Icon.Table}" />
+                                </Border>
+                                <TextBlock Text="Chưa có ô nhớ nào"
+                                           FontSize="13"
+                                           FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextMuted}"
+                                           HorizontalAlignment="Center" />
+                                <TextBlock Classes="label"
+                                           FontSize="11"
+                                           HorizontalAlignment="Center"
+                                           Text="Bấm “+ Tham số” để thêm ô nhớ cần đọc hoặc ghi." />
                             </StackPanel>
-                        </ScrollViewer>
 
-                        <!-- Chưa có tham số -->
-                        <StackPanel Grid.Row="2"
-                                    VerticalAlignment="Center"
-                                    HorizontalAlignment="Center"
-                                    Spacing="7"
-                                    IsVisible="{Binding !PlcSettings.IsTableEmpty}">
-                            <Border Width="42" Height="42"
-                                    CornerRadius="14"
-                                    Background="{StaticResource BgRaised}">
-                                <Path Width="20" Height="20"
-                                      HorizontalAlignment="Center"
-                                      VerticalAlignment="Center"
-                                      Stretch="Uniform"
-                                      Stroke="{StaticResource TextMuted}"
-                                      StrokeThickness="1.6"
-                                      StrokeLineCap="Round"
-                                      StrokeJoin="Round"
-                                      Data="{StaticResource Icon.Table}" />
+                            <!-- ===== Bàn phím số nhỏ (overlay) =====
+                                 Nổi lên trên danh sách, neo góc phải. Không đẩy danh sách,
+                                 không che mất footer. -->
+                            <Border HorizontalAlignment="Right"
+                                    VerticalAlignment="Bottom"
+                                    Margin="0,0,8,8"
+                                    Padding="8"
+                                    CornerRadius="12"
+                                    Background="{StaticResource BgPanel}"
+                                    BorderBrush="{StaticResource LineAccent}"
+                                    BorderThickness="1"
+                                    BoxShadow="0 6 20 0 #22000000"
+                                    IsVisible="{Binding PlcSettings.IsKeypadOpen}">
+                                <StackPanel Spacing="6">
+
+                                    <!-- Đầu bàn phím: tên ô nhớ + nút đóng -->
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                        <TextBlock Grid.Column="0"
+                                                   FontSize="10.5"
+                                                   FontWeight="Bold"
+                                                   Foreground="{StaticResource TextMuted}"
+                                                   VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Text="{Binding PlcSettings.KeypadTitle}" />
+                                        <Button Grid.Column="1"
+                                                Classes="soft iconBtn"
+                                                ToolTip.Tip="Đóng bàn phím số"
+                                                Command="{Binding PlcSettings.CloseKeypadCommand}">
+                                            <Path Width="11" Height="11"
+                                                  Stretch="Uniform"
+                                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                  StrokeThickness="1.7"
+                                                  StrokeLineCap="Round"
+                                                  StrokeJoin="Round"
+                                                  Data="{StaticResource Icon.Close}" />
+                                        </Button>
+                                    </Grid>
+
+                                    <controls:PlcValueKeypad DataContext="{Binding PlcSettings.Keypad}" />
+                                </StackPanel>
                             </Border>
-                            <TextBlock Text="Chưa có ô nhớ nào"
-                                       FontSize="13"
-                                       FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextMuted}"
-                                       HorizontalAlignment="Center" />
-                            <TextBlock Classes="label"
-                                       FontSize="11"
-                                       HorizontalAlignment="Center"
-                                       Text="Bấm “+ Tham số” để thêm ô nhớ cần đọc hoặc ghi." />
-                        </StackPanel>
+                        </Panel>
 
-                        <!-- Footer: các thao tác đọc / ghi / áp dụng -->
+                        <!-- ===== Thanh thao tac cho dong da chon =====
+                             Co dinh o day: luon nhin thay du danh sach duoc cuon.
+                             4 nut (Doc / Ghi / Sua / Xoa) tac dong tren DONG DANG CHON. -->
                         <Border Grid.Row="3"
+                                BorderBrush="{StaticResource LineColor}"
+                                BorderThickness="0,1,0,1"
+                                Padding="14,8"
+                                Background="{StaticResource BgBase}">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                <!-- Dong dang chon -->
+                                <StackPanel Grid.Column="0" Spacing="0" VerticalAlignment="Center">
+                                    <TextBlock FontSize="10"
+                                               FontWeight="Bold"
+                                               Foreground="{StaticResource TextMuted}"
+                                               Text="ĐANG CHỌN" />
+                                    <TextBlock FontSize="11.5"
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimary}"
+                                               TextTrimming="CharacterEllipsis"
+                                               IsVisible="{Binding PlcSettings.HasSelectedRow}"
+                                               Text="{Binding PlcSettings.SelectedRowName}" />
+                                    <TextBlock Classes="label"
+                                               FontSize="10"
+                                               TextTrimming="CharacterEllipsis"
+                                               IsVisible="{Binding PlcSettings.HasSelectedRow}"
+                                               Text="{Binding PlcSettings.SelectedRowAddress}" />
+                                    <TextBlock Classes="label"
+                                               FontSize="10.5"
+                                               TextTrimming="CharacterEllipsis"
+                                               IsVisible="{Binding !PlcSettings.HasSelectedRow}"
+                                               Text="Chạm một dòng trong bảng để chọn." />
+                                </StackPanel>
+
+                                <!-- 4 nut thao tac: Đọc / Ghi / Sửa / Xoá -->
+                                <StackPanel Grid.Column="1"
+                                            Orientation="Horizontal"
+                                            Spacing="6"
+                                            VerticalAlignment="Center">
+                                    <!-- Đọc -->
+                                    <Button Classes="soft iconBtn"
+                                            ToolTip.Tip="Đọc giá trị từ PLC"
+                                            IsEnabled="{Binding PlcSettings.HasSelectedRow}"
+                                            Command="{Binding PlcSettings.ReadSelectedCommand}">
+                                        <Path Width="13" Height="13"
+                                              Stretch="Uniform"
+                                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                              StrokeThickness="1.6"
+                                              StrokeLineCap="Round"
+                                              StrokeJoin="Round"
+                                              Data="{StaticResource Icon.Download}" />
+                                    </Button>
+                                    <!-- Ghi -->
+                                    <Button Classes="soft iconBtn"
+                                            ToolTip.Tip="Ghi giá trị xuống PLC"
+                                            IsEnabled="{Binding PlcSettings.HasSelectedRow}"
+                                            Command="{Binding PlcSettings.WriteSelectedCommand}">
+                                        <Path Width="13" Height="13"
+                                              Stretch="Uniform"
+                                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                              StrokeThickness="1.6"
+                                              StrokeLineCap="Round"
+                                              StrokeJoin="Round"
+                                              Data="{StaticResource Icon.Upload}" />
+                                    </Button>
+                                    <!-- Sửa -->
+                                    <Button Classes="soft iconBtn"
+                                            ToolTip.Tip="Sửa thông số"
+                                            IsEnabled="{Binding PlcSettings.HasSelectedRow}"
+                                            Command="{Binding PlcSettings.EditSelectedCommand}">
+                                        <Path Width="12" Height="12"
+                                              Stretch="Uniform"
+                                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                              StrokeThickness="1.6"
+                                              StrokeLineCap="Round"
+                                              StrokeJoin="Round"
+                                              Data="{StaticResource Icon.Settings}" />
+                                    </Button>
+                                    <!-- Xoá -->
+                                    <Button Classes="soft iconBtn danger"
+                                            ToolTip.Tip="Xoá thông số"
+                                            IsEnabled="{Binding PlcSettings.HasSelectedRow}"
+                                            Command="{Binding PlcSettings.DeleteSelectedCommand}">
+                                        <Path Width="12" Height="12"
+                                              Stretch="Uniform"
+                                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                              StrokeThickness="1.6"
+                                              StrokeLineCap="Round"
+                                              StrokeJoin="Round"
+                                              Data="{StaticResource Icon.Trash}" />
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <!-- Footer: các thao tac đọc / ghi / áp dụng -->
+                        <Border Grid.Row="4"
                                 BorderBrush="{StaticResource LineColor}"
                                 BorderThickness="0,1,0,0"
                                 Padding="14,10"

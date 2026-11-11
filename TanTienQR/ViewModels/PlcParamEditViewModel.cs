@@ -78,8 +78,8 @@ internal sealed partial class PlcParamEditViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
 
-    /// <summary>Các kiểu dữ liệu có thể chọn.</summary>
-    public IReadOnlyList<PlcValueType> AvailableValueTypes => PlcEnumNames.AllValueTypes;
+    /// <summary>Các kiểu dữ liệu có thể chọn (Bool / Short / Int32).</summary>
+    public IReadOnlyList<PlcValueType> AvailableValueTypes => PlcEnumNames.SupportedValueTypes;
 
     /// <summary>Các chế độ truy cập có thể chọn.</summary>
     public IReadOnlyList<PlcAccessMode> AvailableAccessModes => PlcEnumNames.AllAccessModes;

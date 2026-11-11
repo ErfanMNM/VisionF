@@ -61,7 +61,13 @@
                         <ComboBox Classes="field"
                                   Height="42"
                                   ItemsSource="{Binding AvailableValueTypes}"
-                                  SelectedItem="{Binding ValueType}" />
+                                  SelectedItem="{Binding ValueType}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Converter={StaticResource PlcEnumDisplay}}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
                     </StackPanel>
 
                     <!-- Chế độ truy cập -->
@@ -70,7 +76,13 @@
                         <ComboBox Classes="field"
                                   Height="42"
                                   ItemsSource="{Binding AvailableAccessModes}"
-                                  SelectedItem="{Binding AccessMode}" />
+                                  SelectedItem="{Binding AccessMode}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Converter={StaticResource PlcEnumDisplay}}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
                     </StackPanel>
 
                     <!-- Mô tả -->

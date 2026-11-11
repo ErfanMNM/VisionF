@@ -1,5 +1,6 @@
 using System;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using TanTienQR.ViewModels;
 
@@ -19,6 +20,31 @@ public partial class PlcSettingsView : UserControl
     }
 
     private MainViewModel? ViewModel => DataContext as MainViewModel;
+
+    /// <summary>
+    /// Chạm vào một dòng trong bảng ô nhớ -> chọn dòng đó.
+    ///
+    /// Thanh thao tác cố định dưới bảng sẽ tác động lên dòng đang chọn.
+    /// </summary>
+    /// <param name="sender">Dòng bị chạm.</param>
+    /// <param name="e">Tham số sự kiện.</param>
+    private void OnRowPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        // Không chọn lại khi bấm vào ô nhập / nút bên trong dòng — người dùng
+        // đang thao tác trực tiếp với ô đó, không phải chọn dòng.
+        if (e.Source is Control source
+            && source is TextBox or Button or ComboBox)
+        {
+            return;
+        }
+
+        if (sender is not Border { DataContext: PlcParamRowViewModel row })
+        {
+            return;
+        }
+
+        ViewModel?.PlcSettings.SelectRowCommand.Execute(row);
+    }
 
     /// <summary>
     /// Tải lại trang camera (khi trang trắng hoặc lỗi thì điều hướng lại từ đầu).
