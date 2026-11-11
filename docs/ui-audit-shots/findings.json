@@ -1,0 +1,516 @@
+{
+  "generatedAt": "2026-11-12 00:48:05",
+  "viewsCaptured": [
+    "Info",
+    "Production",
+    "Config",
+    "PlcSettings",
+    "History",
+    "ProductionOrders",
+    "CodeLookup",
+    "Accounts",
+    "Dev",
+    "LicenseWindow",
+    "PasswordChangeWindow",
+    "UserEditWindow",
+    "RecipeDeleteConfirmWindow",
+    "PlcParamEditWindow",
+    "LoginShellWindow",
+    "LicensePanel",
+    "WindowMenuPopup"
+  ],
+  "viewsFailed": [],
+  "notes": [
+    "Tab \u0027Info\u0027: section=Info, title=\u0027Th\u00F4ng tin\u0027, dev=False, users=True, config=True, history=True, production=True.",
+    "Tab \u0027Production\u0027: section=Production, title=\u0027S\u1EA3n xu\u1EA5t\u0027, dev=False, users=True, config=True, history=True, production=True.",
+    "Tab \u0027Config\u0027: section=Configuration, title=\u0027C\u1EA5u h\u00ECnh\u0027, dev=False, users=True, config=True, history=True, production=True.",
+    "Tab \u0027PlcSettings\u0027: section=PlcSettings, title=\u0027Ch\u1EC9nh PLC\u0027, dev=False, users=True, config=True, history=True, production=True.",
+    "Tab \u0027History\u0027: section=History, title=\u0027L\u1ECBch s\u1EED thao t\u00E1c\u0027, dev=False, users=True, config=True, history=True, production=True.",
+    "Tab \u0027ProductionOrders\u0027: section=ProductionOrders, title=\u0027Truy xu\u1EA5t S\u1EA3n xu\u1EA5t (Local)\u0027, dev=False, users=True, config=True, history=True, production=True.",
+    "Tab \u0027CodeLookup\u0027: section=CodeLookup, title=\u0027Tra c\u1EE9u m\u00E3\u0027, dev=False, users=True, config=True, history=True, production=True.",
+    "Tab \u0027Accounts\u0027: section=Accounts, title=\u0027T\u00E0i kho\u1EA3n\u0027, dev=False, users=True, config=True, history=True, production=True.",
+    "Tab \u0027Dev\u0027: section=Accounts, title=\u0027T\u00E0i kho\u1EA3n\u0027, dev=False, users=True, config=True, history=True, production=True."
+  ],
+  "findings": [
+    {
+      "View": "Info",
+      "Kind": "sibling-width-mismatch",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/InfoView(0)/PART_ContentPresenter/Grid(0)/Grid(0)/Border(2)/Grid(0)",
+      "Detail": "C\u00E1c \u00F4 c\u00F9ng c\u1ED9t -1 trong Grid l\u1EC7ch chi\u1EC1u r\u1ED9ng (max 954 vs min 914, ch\u00EAnh 40px). /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=0:w=914, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=1:w=954",
+      "Screenshot": "MainWindow__Info.png"
+    },
+    {
+      "View": "Info",
+      "Kind": "empty-container",
+      "Severity": "Cosmetic",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/InfoView(0)/PART_ContentPresenter/Grid(0)/Grid(0)/Border(2)/Grid(0)/Grid(1)/ScrollViewer(1)/Grid(0)/PART_ContentPresenter/ItemsControl(0)/Border(0)/PART_ItemsPresenter/StackPanel(0)",
+      "Detail": "StackPanel r\u1ED7ng nh\u01B0ng chi\u1EBFm 954x532px \u2014 kho\u1EA3ng tr\u1ED1ng th\u1EEBa trong layout.",
+      "Screenshot": "MainWindow__Info.png"
+    },
+    {
+      "View": "Info",
+      "Kind": "empty-container",
+      "Severity": "Cosmetic",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/InfoView(0)/PART_ContentPresenter/Grid(0)/Grid(1)/Border(2)/Grid(0)/ScrollViewer(1)/Grid(0)/PART_ContentPresenter/ItemsControl(0)/Border(0)/PART_ItemsPresenter/StackPanel(0)",
+      "Detail": "StackPanel r\u1ED7ng nh\u01B0ng chi\u1EBFm 318x135px \u2014 kho\u1EA3ng tr\u1ED1ng th\u1EEBa trong layout.",
+      "Screenshot": "MainWindow__Info.png"
+    },
+    {
+      "View": "PlcSettings",
+      "Kind": "sibling-width-mismatch",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/PlcSettingsView(0)/PART_ContentPresenter/Grid(0)/Grid(2)/Grid(0)/Border(1)/Grid(0)",
+      "Detail": "C\u00E1c \u00F4 c\u00F9ng c\u1ED9t -1 trong Grid l\u1EC7ch chi\u1EC1u r\u1ED9ng (max 428 vs min 400, ch\u00EAnh 28px). /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=0:w=400, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=1:w=428, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=2:w=428, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=3:w=428, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=4:w=428",
+      "Screenshot": "MainWindow__PlcSettings.png"
+    },
+    {
+      "View": "PlcSettings",
+      "Kind": "sibling-width-mismatch",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/PlcSettingsView(0)/PART_ContentPresenter/Grid(0)/Grid(2)/Border(1)/Grid(0)",
+      "Detail": "C\u00E1c \u00F4 c\u00F9ng c\u1ED9t -1 trong Grid l\u1EC7ch chi\u1EC1u r\u1ED9ng (max 874 vs min 846, ch\u00EAnh 28px). /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=0:w=846, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=1:w=846, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=2:w=874",
+      "Screenshot": "MainWindow__PlcSettings.png"
+    },
+    {
+      "View": "PlcSettings",
+      "Kind": "empty-container",
+      "Severity": "Cosmetic",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/PlcSettingsView(0)/PART_ContentPresenter/Grid(0)/Grid(2)/Grid(0)/Border(1)/Grid(0)/Panel(2)/ScrollViewer(0)/Grid(0)/PART_ContentPresenter/StackPanel(0)",
+      "Detail": "StackPanel r\u1ED7ng nh\u01B0ng chi\u1EBFm 428x341px \u2014 kho\u1EA3ng tr\u1ED1ng th\u1EEBa trong layout.",
+      "Screenshot": "MainWindow__PlcSettings.png"
+    },
+    {
+      "View": "History",
+      "Kind": "sibling-height-mismatch",
+      "Severity": "Minor",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/HistoryView(0)/PART_ContentPresenter/Grid(0)/Border(1)/Grid(0)/Grid(0)/StackPanel(0)/CalendarDatePicker(1)/DataValidationErrors(0)/DockPanel(0)/PART_ContentPresenter/LayoutRoot/Grid(1)/PART_Button/Grid(0)",
+      "Detail": "C\u00E1c \u00F4 c\u00F9ng h\u00E0ng 0 trong Grid l\u1EC7ch chi\u1EC1u cao (max 7 vs min 3, ch\u00EAnh 4px). /Panel/PART_VisualLayerManager/PART_ContentP\u2026@col=0:h=7, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@col=0:h=3",
+      "Screenshot": "MainWindow__History.png"
+    },
+    {
+      "View": "History",
+      "Kind": "sibling-width-mismatch",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/HistoryView(0)/PART_ContentPresenter/Grid(0)/Border(1)/Grid(0)/Grid(0)/StackPanel(0)/CalendarDatePicker(1)/DataValidationErrors(0)/DockPanel(0)/PART_ContentPresenter/LayoutRoot/Grid(1)/PART_Button/Grid(0)",
+      "Detail": "C\u00E1c \u00F4 c\u00F9ng c\u1ED9t 0 trong Grid l\u1EC7ch chi\u1EC1u r\u1ED9ng (max 20 vs min 3, ch\u00EAnh 17px). /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=0:w=20, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=0:w=3, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=1:w=20, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=1:w=13",
+      "Screenshot": "MainWindow__History.png"
+    },
+    {
+      "View": "History",
+      "Kind": "sibling-height-mismatch",
+      "Severity": "Minor",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/HistoryView(0)/PART_ContentPresenter/Grid(0)/Border(1)/Grid(0)/Grid(0)/StackPanel(1)/CalendarDatePicker(1)/DataValidationErrors(0)/DockPanel(0)/PART_ContentPresenter/LayoutRoot/Grid(1)/PART_Button/Grid(0)",
+      "Detail": "C\u00E1c \u00F4 c\u00F9ng h\u00E0ng 0 trong Grid l\u1EC7ch chi\u1EC1u cao (max 7 vs min 3, ch\u00EAnh 4px). /Panel/PART_VisualLayerManager/PART_ContentP\u2026@col=0:h=7, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@col=0:h=3",
+      "Screenshot": "MainWindow__History.png"
+    },
+    {
+      "View": "History",
+      "Kind": "sibling-width-mismatch",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/HistoryView(0)/PART_ContentPresenter/Grid(0)/Border(1)/Grid(0)/Grid(0)/StackPanel(1)/CalendarDatePicker(1)/DataValidationErrors(0)/DockPanel(0)/PART_ContentPresenter/LayoutRoot/Grid(1)/PART_Button/Grid(0)",
+      "Detail": "C\u00E1c \u00F4 c\u00F9ng c\u1ED9t 0 trong Grid l\u1EC7ch chi\u1EC1u r\u1ED9ng (max 20 vs min 3, ch\u00EAnh 17px). /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=0:w=20, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=0:w=3, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=1:w=20, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=1:w=13",
+      "Screenshot": "MainWindow__History.png"
+    },
+    {
+      "View": "History",
+      "Kind": "fixed-width-too-small",
+      "Severity": "Minor",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/HistoryView(0)/PART_ContentPresenter/Grid(0)/Border(1)/Grid(0)/Grid(0)/StackPanel(0)/CalendarDatePicker(1)/DataValidationErrors(0)/DockPanel(0)/PART_ContentPresenter/LayoutRoot/Grid(1)/PART_Button",
+      "Detail": "Width c\u1ED1 \u0111\u1ECBnh 20px nh\u1ECF h\u01A1n DesiredSize.Width 26px (thi\u1EBFu 6px) \u2192 n\u1ED9i dung b\u1ECB c\u1EAFt. Type=Button Text=\u0022(null)\u0022",
+      "Screenshot": "MainWindow__History.png"
+    },
+    {
+      "View": "History",
+      "Kind": "fixed-width-too-small",
+      "Severity": "Minor",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/HistoryView(0)/PART_ContentPresenter/Grid(0)/Border(1)/Grid(0)/Grid(0)/StackPanel(1)/CalendarDatePicker(1)/DataValidationErrors(0)/DockPanel(0)/PART_ContentPresenter/LayoutRoot/Grid(1)/PART_Button",
+      "Detail": "Width c\u1ED1 \u0111\u1ECBnh 20px nh\u1ECF h\u01A1n DesiredSize.Width 26px (thi\u1EBFu 6px) \u2192 n\u1ED9i dung b\u1ECB c\u1EAFt. Type=Button Text=\u0022(null)\u0022",
+      "Screenshot": "MainWindow__History.png"
+    },
+    {
+      "View": "ProductionOrders",
+      "Kind": "sibling-width-mismatch",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/ProductionOrdersView(0)/PART_ContentPresenter/Grid(0)/Border(2)/Grid(0)",
+      "Detail": "C\u00E1c \u00F4 c\u00F9ng c\u1ED9t -1 trong Grid l\u1EC7ch chi\u1EC1u r\u1ED9ng (max 1322 vs min 1282, ch\u00EAnh 40px). /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=0:w=1282, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=1:w=1282, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=2:w=1322",
+      "Screenshot": "MainWindow__ProductionOrders.png"
+    },
+    {
+      "View": "ProductionOrders",
+      "Kind": "empty-container",
+      "Severity": "Cosmetic",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/ProductionOrdersView(0)/PART_ContentPresenter/Grid(0)/Border(2)/Grid(0)/Grid(2)/ScrollViewer(1)/Grid(0)/PART_ContentPresenter/ItemsControl(0)/Border(0)/PART_ItemsPresenter/StackPanel(0)",
+      "Detail": "StackPanel r\u1ED7ng nh\u01B0ng chi\u1EBFm 1322x508px \u2014 kho\u1EA3ng tr\u1ED1ng th\u1EEBa trong layout.",
+      "Screenshot": "MainWindow__ProductionOrders.png"
+    },
+    {
+      "View": "CodeLookup",
+      "Kind": "sibling-width-mismatch",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/CodeLookupView(0)/PART_ContentPresenter/Grid(0)/Border(2)/Grid(0)",
+      "Detail": "C\u00E1c \u00F4 c\u00F9ng c\u1ED9t -1 trong Grid l\u1EC7ch chi\u1EC1u r\u1ED9ng (max 1322 vs min 1294, ch\u00EAnh 28px). /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=0:w=1294, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=2:w=1322",
+      "Screenshot": "MainWindow__CodeLookup.png"
+    },
+    {
+      "View": "CodeLookup",
+      "Kind": "fixed-width-too-small",
+      "Severity": "Minor",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/CodeLookupView(0)/PART_ContentPresenter/Grid(0)/Border(1)/Grid(0)/TextBox(0)/DataValidationErrors(0)/DockPanel(0)/PART_ContentPresenter/Panel(0)/Border(1)/Grid(0)/ContentPresenter(0)/Path(0)",
+      "Detail": "Width c\u1ED1 \u0111\u1ECBnh 17px nh\u1ECF h\u01A1n DesiredSize.Width 29px (thi\u1EBFu 12px) \u2192 n\u1ED9i dung b\u1ECB c\u1EAFt. Type=Path Text=\u0022(null)\u0022",
+      "Screenshot": "MainWindow__CodeLookup.png"
+    },
+    {
+      "View": "LicensePanel",
+      "Kind": "outside-window",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/InfoView(0)/PART_ContentPresenter/Grid(0)/Grid(1)/Border(2)",
+      "Detail": "Element tr\u00E0n ra ngo\u00E0i v\u00F9ng c\u1EEDa s\u1ED5. X=988 Y=693 W=352 H=140; tr\u00E0n ph\u1EA3i=-20px, tr\u00E0n d\u01B0\u1EDBi=13px (c\u1EEDa s\u1ED5 1360x820). Text=\u0022(null)\u0022",
+      "Screenshot": "MainWindow__LicensePanel.png"
+    },
+    {
+      "View": "LicensePanel",
+      "Kind": "outside-window-horizontal",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/AccountsView(4)/PART_ContentPresenter/Grid(0)/Border(2)/Grid(0)/ScrollViewer(1)/Grid(0)/PART_ContentPresenter/ItemsControl(0)/Border(0)/PART_ItemsPresenter/StackPanel(0)/ContentPresenter(0)/Border(0)/Grid(0)/StackPanel(5)",
+      "Detail": "N\u1ED9i dung cu\u1ED9n tr\u00E0n ngang ra ngo\u00E0i c\u1EEDa s\u1ED5. X=1105 Y=274 W=261; tr\u00E0n ph\u1EA3i=6px, tr\u00E0n tr\u00E1i=-1105px (c\u1EEDa s\u1ED5 r\u1ED9ng 1360px). Text=\u0022(null)\u0022",
+      "Screenshot": "MainWindow__LicensePanel.png"
+    },
+    {
+      "View": "LicensePanel",
+      "Kind": "outside-window-horizontal",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/AccountsView(4)/PART_ContentPresenter/Grid(0)/Border(2)/Grid(0)/ScrollViewer(1)/Grid(0)/PART_ContentPresenter/ItemsControl(0)/Border(0)/PART_ItemsPresenter/StackPanel(0)/ContentPresenter(0)/Border(0)/Grid(0)/StackPanel(5)/Button(3)",
+      "Detail": "N\u1ED9i dung cu\u1ED9n tr\u00E0n ngang ra ngo\u00E0i c\u1EEDa s\u1ED5. X=1314 Y=274 W=52; tr\u00E0n ph\u1EA3i=6px, tr\u00E0n tr\u00E1i=-1314px (c\u1EEDa s\u1ED5 r\u1ED9ng 1360px). Text=\u0022(null)\u0022",
+      "Screenshot": "MainWindow__LicensePanel.png"
+    },
+    {
+      "View": "LicensePanel",
+      "Kind": "outside-window-horizontal",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/AccountsView(4)/PART_ContentPresenter/Grid(0)/Border(2)/Grid(0)/ScrollViewer(1)/Grid(0)/PART_ContentPresenter/ItemsControl(0)/Border(0)/PART_ItemsPresenter/StackPanel(0)/ContentPresenter(0)/Border(0)/Grid(0)/StackPanel(5)/Button(3)/PART_ContentPresenter",
+      "Detail": "N\u1ED9i dung cu\u1ED9n tr\u00E0n ngang ra ngo\u00E0i c\u1EEDa s\u1ED5. X=1314 Y=274 W=52; tr\u00E0n ph\u1EA3i=6px, tr\u00E0n tr\u00E1i=-1314px (c\u1EEDa s\u1ED5 r\u1ED9ng 1360px). Text=\u0022(null)\u0022",
+      "Screenshot": "MainWindow__LicensePanel.png"
+    },
+    {
+      "View": "LicensePanel",
+      "Kind": "child-overflows-parent",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/InfoView(0)/PART_ContentPresenter/Grid(0)/Grid(1)/Border(2)",
+      "Detail": "Element tr\u00E0n ra ngo\u00E0i \u00F4 c\u1EE7a cha (Grid). Con: X=988 Y=693 W=352 H=140 \u2192 ph\u1EA3i=1340, d\u01B0\u1EDBi=833. Cha: X=988 Y=126 W=352 H=676 \u2192 ph\u1EA3i=1340, d\u01B0\u1EDBi=802. Tr\u00E0n ngang=0px, tr\u00E0n d\u1ECDc=31px.",
+      "Screenshot": "MainWindow__LicensePanel.png"
+    },
+    {
+      "View": "LicensePanel",
+      "Kind": "sibling-width-mismatch",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/InfoView(0)/PART_ContentPresenter/Grid(0)/Grid(0)/Border(2)/Grid(0)",
+      "Detail": "C\u00E1c \u00F4 c\u00F9ng c\u1ED9t -1 trong Grid l\u1EC7ch chi\u1EC1u r\u1ED9ng (max 722 vs min 682, ch\u00EAnh 40px). /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=0:w=682, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=1:w=722",
+      "Screenshot": "MainWindow__LicensePanel.png"
+    },
+    {
+      "View": "LicensePanel",
+      "Kind": "sibling-height-mismatch",
+      "Severity": "Minor",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/HistoryView(3)/PART_ContentPresenter/Grid(0)/Border(1)/Grid(0)/Grid(0)/StackPanel(0)/CalendarDatePicker(1)/DataValidationErrors(0)/DockPanel(0)/PART_ContentPresenter/LayoutRoot/Grid(1)/PART_Button/Grid(0)",
+      "Detail": "C\u00E1c \u00F4 c\u00F9ng h\u00E0ng 0 trong Grid l\u1EC7ch chi\u1EC1u cao (max 7 vs min 3, ch\u00EAnh 4px). /Panel/PART_VisualLayerManager/PART_ContentP\u2026@col=0:h=7, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@col=0:h=3",
+      "Screenshot": "MainWindow__LicensePanel.png"
+    },
+    {
+      "View": "LicensePanel",
+      "Kind": "sibling-width-mismatch",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/HistoryView(3)/PART_ContentPresenter/Grid(0)/Border(1)/Grid(0)/Grid(0)/StackPanel(0)/CalendarDatePicker(1)/DataValidationErrors(0)/DockPanel(0)/PART_ContentPresenter/LayoutRoot/Grid(1)/PART_Button/Grid(0)",
+      "Detail": "C\u00E1c \u00F4 c\u00F9ng c\u1ED9t 0 trong Grid l\u1EC7ch chi\u1EC1u r\u1ED9ng (max 20 vs min 3, ch\u00EAnh 17px). /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=0:w=20, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=0:w=3, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=1:w=20, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=1:w=13",
+      "Screenshot": "MainWindow__LicensePanel.png"
+    },
+    {
+      "View": "LicensePanel",
+      "Kind": "sibling-height-mismatch",
+      "Severity": "Minor",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/HistoryView(3)/PART_ContentPresenter/Grid(0)/Border(1)/Grid(0)/Grid(0)/StackPanel(1)/CalendarDatePicker(1)/DataValidationErrors(0)/DockPanel(0)/PART_ContentPresenter/LayoutRoot/Grid(1)/PART_Button/Grid(0)",
+      "Detail": "C\u00E1c \u00F4 c\u00F9ng h\u00E0ng 0 trong Grid l\u1EC7ch chi\u1EC1u cao (max 7 vs min 3, ch\u00EAnh 4px). /Panel/PART_VisualLayerManager/PART_ContentP\u2026@col=0:h=7, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@col=0:h=3",
+      "Screenshot": "MainWindow__LicensePanel.png"
+    },
+    {
+      "View": "LicensePanel",
+      "Kind": "sibling-width-mismatch",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/HistoryView(3)/PART_ContentPresenter/Grid(0)/Border(1)/Grid(0)/Grid(0)/StackPanel(1)/CalendarDatePicker(1)/DataValidationErrors(0)/DockPanel(0)/PART_ContentPresenter/LayoutRoot/Grid(1)/PART_Button/Grid(0)",
+      "Detail": "C\u00E1c \u00F4 c\u00F9ng c\u1ED9t 0 trong Grid l\u1EC7ch chi\u1EC1u r\u1ED9ng (max 20 vs min 3, ch\u00EAnh 17px). /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=0:w=20, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=0:w=3, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=1:w=20, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=1:w=13",
+      "Screenshot": "MainWindow__LicensePanel.png"
+    },
+    {
+      "View": "LicensePanel",
+      "Kind": "sibling-width-mismatch",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/PlcSettingsView(5)/PART_ContentPresenter/Grid(0)/Grid(2)/Grid(0)/Border(1)/Grid(0)",
+      "Detail": "C\u00E1c \u00F4 c\u00F9ng c\u1ED9t -1 trong Grid l\u1EC7ch chi\u1EC1u r\u1ED9ng (max 428 vs min 400, ch\u00EAnh 28px). /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=0:w=400, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=1:w=428, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=2:w=428, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=3:w=428, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=4:w=428",
+      "Screenshot": "MainWindow__LicensePanel.png"
+    },
+    {
+      "View": "LicensePanel",
+      "Kind": "sibling-width-mismatch",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/PlcSettingsView(5)/PART_ContentPresenter/Grid(0)/Grid(2)/Border(1)/Grid(0)",
+      "Detail": "C\u00E1c \u00F4 c\u00F9ng c\u1ED9t -1 trong Grid l\u1EC7ch chi\u1EC1u r\u1ED9ng (max 642 vs min 614, ch\u00EAnh 28px). /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=0:w=614, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=1:w=614, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=2:w=642",
+      "Screenshot": "MainWindow__LicensePanel.png"
+    },
+    {
+      "View": "LicensePanel",
+      "Kind": "sibling-width-mismatch",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/CodeLookupView(7)/PART_ContentPresenter/Grid(0)/Border(2)/Grid(0)",
+      "Detail": "C\u00E1c \u00F4 c\u00F9ng c\u1ED9t -1 trong Grid l\u1EC7ch chi\u1EC1u r\u1ED9ng (max 1090 vs min 1062, ch\u00EAnh 28px). /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=0:w=1062, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=2:w=1090",
+      "Screenshot": "MainWindow__LicensePanel.png"
+    },
+    {
+      "View": "LicensePanel",
+      "Kind": "sibling-width-mismatch",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/ProductionOrdersView(8)/PART_ContentPresenter/Grid(0)/Border(2)/Grid(0)",
+      "Detail": "C\u00E1c \u00F4 c\u00F9ng c\u1ED9t -1 trong Grid l\u1EC7ch chi\u1EC1u r\u1ED9ng (max 1090 vs min 1050, ch\u00EAnh 40px). /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=0:w=1050, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=1:w=1050, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=2:w=1090",
+      "Screenshot": "MainWindow__LicensePanel.png"
+    },
+    {
+      "View": "LicensePanel",
+      "Kind": "fixed-width-too-small",
+      "Severity": "Minor",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/HistoryView(3)/PART_ContentPresenter/Grid(0)/Border(1)/Grid(0)/Grid(0)/StackPanel(0)/CalendarDatePicker(1)/DataValidationErrors(0)/DockPanel(0)/PART_ContentPresenter/LayoutRoot/Grid(1)/PART_Button",
+      "Detail": "Width c\u1ED1 \u0111\u1ECBnh 20px nh\u1ECF h\u01A1n DesiredSize.Width 26px (thi\u1EBFu 6px) \u2192 n\u1ED9i dung b\u1ECB c\u1EAFt. Type=Button Text=\u0022(null)\u0022",
+      "Screenshot": "MainWindow__LicensePanel.png"
+    },
+    {
+      "View": "LicensePanel",
+      "Kind": "fixed-width-too-small",
+      "Severity": "Minor",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/HistoryView(3)/PART_ContentPresenter/Grid(0)/Border(1)/Grid(0)/Grid(0)/StackPanel(1)/CalendarDatePicker(1)/DataValidationErrors(0)/DockPanel(0)/PART_ContentPresenter/LayoutRoot/Grid(1)/PART_Button",
+      "Detail": "Width c\u1ED1 \u0111\u1ECBnh 20px nh\u1ECF h\u01A1n DesiredSize.Width 26px (thi\u1EBFu 6px) \u2192 n\u1ED9i dung b\u1ECB c\u1EAFt. Type=Button Text=\u0022(null)\u0022",
+      "Screenshot": "MainWindow__LicensePanel.png"
+    },
+    {
+      "View": "LicensePanel",
+      "Kind": "fixed-width-too-small",
+      "Severity": "Minor",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/CodeLookupView(7)/PART_ContentPresenter/Grid(0)/Border(1)/Grid(0)/TextBox(0)/DataValidationErrors(0)/DockPanel(0)/PART_ContentPresenter/Panel(0)/Border(1)/Grid(0)/ContentPresenter(0)/Path(0)",
+      "Detail": "Width c\u1ED1 \u0111\u1ECBnh 17px nh\u1ECF h\u01A1n DesiredSize.Width 29px (thi\u1EBFu 12px) \u2192 n\u1ED9i dung b\u1ECB c\u1EAFt. Type=Path Text=\u0022(null)\u0022",
+      "Screenshot": "MainWindow__LicensePanel.png"
+    },
+    {
+      "View": "LicensePanel",
+      "Kind": "empty-container",
+      "Severity": "Cosmetic",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/InfoView(0)/PART_ContentPresenter/Grid(0)/Grid(0)/Border(2)/Grid(0)/Grid(1)/ScrollViewer(1)/Grid(0)/PART_ContentPresenter/ItemsControl(0)/Border(0)/PART_ItemsPresenter/StackPanel(0)",
+      "Detail": "StackPanel r\u1ED7ng nh\u01B0ng chi\u1EBFm 722x424px \u2014 kho\u1EA3ng tr\u1ED1ng th\u1EEBa trong layout.",
+      "Screenshot": "MainWindow__LicensePanel.png"
+    },
+    {
+      "View": "LicensePanel",
+      "Kind": "empty-container",
+      "Severity": "Cosmetic",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/InfoView(0)/PART_ContentPresenter/Grid(0)/Grid(1)/Border(2)/Grid(0)/ScrollViewer(1)/Grid(0)/PART_ContentPresenter/ItemsControl(0)/Border(0)/PART_ItemsPresenter/StackPanel(0)",
+      "Detail": "StackPanel r\u1ED7ng nh\u01B0ng chi\u1EBFm 318x89px \u2014 kho\u1EA3ng tr\u1ED1ng th\u1EEBa trong layout.",
+      "Screenshot": "MainWindow__LicensePanel.png"
+    },
+    {
+      "View": "LicensePanel",
+      "Kind": "empty-container",
+      "Severity": "Cosmetic",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/PlcSettingsView(5)/PART_ContentPresenter/Grid(0)/Grid(2)/Grid(0)/Border(1)/Grid(0)/Panel(2)/ScrollViewer(0)/Grid(0)/PART_ContentPresenter/StackPanel(0)",
+      "Detail": "StackPanel r\u1ED7ng nh\u01B0ng chi\u1EBFm 428x233px \u2014 kho\u1EA3ng tr\u1ED1ng th\u1EEBa trong layout.",
+      "Screenshot": "MainWindow__LicensePanel.png"
+    },
+    {
+      "View": "LicensePanel",
+      "Kind": "empty-container",
+      "Severity": "Cosmetic",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/ProductionOrdersView(8)/PART_ContentPresenter/Grid(0)/Border(2)/Grid(0)/Grid(2)/ScrollViewer(1)/Grid(0)/PART_ContentPresenter/ItemsControl(0)/Border(0)/PART_ItemsPresenter/StackPanel(0)",
+      "Detail": "StackPanel r\u1ED7ng nh\u01B0ng chi\u1EBFm 1090x400px \u2014 kho\u1EA3ng tr\u1ED1ng th\u1EEBa trong layout.",
+      "Screenshot": "MainWindow__LicensePanel.png"
+    },
+    {
+      "View": "WindowMenuPopup",
+      "Kind": "outside-window",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/InfoView(0)/PART_ContentPresenter/Grid(0)/Grid(1)/Border(2)",
+      "Detail": "Element tr\u00E0n ra ngo\u00E0i v\u00F9ng c\u1EEDa s\u1ED5. X=988 Y=693 W=352 H=140; tr\u00E0n ph\u1EA3i=-20px, tr\u00E0n d\u01B0\u1EDBi=13px (c\u1EEDa s\u1ED5 1360x820). Text=\u0022(null)\u0022",
+      "Screenshot": "MainWindow__WindowMenuPopup.png"
+    },
+    {
+      "View": "WindowMenuPopup",
+      "Kind": "outside-window-horizontal",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/AccountsView(4)/PART_ContentPresenter/Grid(0)/Border(2)/Grid(0)/ScrollViewer(1)/Grid(0)/PART_ContentPresenter/ItemsControl(0)/Border(0)/PART_ItemsPresenter/StackPanel(0)/ContentPresenter(0)/Border(0)/Grid(0)/StackPanel(5)",
+      "Detail": "N\u1ED9i dung cu\u1ED9n tr\u00E0n ngang ra ngo\u00E0i c\u1EEDa s\u1ED5. X=1105 Y=274 W=261; tr\u00E0n ph\u1EA3i=6px, tr\u00E0n tr\u00E1i=-1105px (c\u1EEDa s\u1ED5 r\u1ED9ng 1360px). Text=\u0022(null)\u0022",
+      "Screenshot": "MainWindow__WindowMenuPopup.png"
+    },
+    {
+      "View": "WindowMenuPopup",
+      "Kind": "outside-window-horizontal",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/AccountsView(4)/PART_ContentPresenter/Grid(0)/Border(2)/Grid(0)/ScrollViewer(1)/Grid(0)/PART_ContentPresenter/ItemsControl(0)/Border(0)/PART_ItemsPresenter/StackPanel(0)/ContentPresenter(0)/Border(0)/Grid(0)/StackPanel(5)/Button(3)",
+      "Detail": "N\u1ED9i dung cu\u1ED9n tr\u00E0n ngang ra ngo\u00E0i c\u1EEDa s\u1ED5. X=1314 Y=274 W=52; tr\u00E0n ph\u1EA3i=6px, tr\u00E0n tr\u00E1i=-1314px (c\u1EEDa s\u1ED5 r\u1ED9ng 1360px). Text=\u0022(null)\u0022",
+      "Screenshot": "MainWindow__WindowMenuPopup.png"
+    },
+    {
+      "View": "WindowMenuPopup",
+      "Kind": "outside-window-horizontal",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/AccountsView(4)/PART_ContentPresenter/Grid(0)/Border(2)/Grid(0)/ScrollViewer(1)/Grid(0)/PART_ContentPresenter/ItemsControl(0)/Border(0)/PART_ItemsPresenter/StackPanel(0)/ContentPresenter(0)/Border(0)/Grid(0)/StackPanel(5)/Button(3)/PART_ContentPresenter",
+      "Detail": "N\u1ED9i dung cu\u1ED9n tr\u00E0n ngang ra ngo\u00E0i c\u1EEDa s\u1ED5. X=1314 Y=274 W=52; tr\u00E0n ph\u1EA3i=6px, tr\u00E0n tr\u00E1i=-1314px (c\u1EEDa s\u1ED5 r\u1ED9ng 1360px). Text=\u0022(null)\u0022",
+      "Screenshot": "MainWindow__WindowMenuPopup.png"
+    },
+    {
+      "View": "WindowMenuPopup",
+      "Kind": "text-truncated",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PopupOverlayLayer(1)/OverlayPopupHost(1)/LayoutTransformControl(0)/PART_VisualLayerManager/PART_ContentPresenter/Border(0)/StackPanel(0)/TextBlock(0)",
+      "Detail": "TextBlock b\u1ECB c\u1EAFt: DesiredSize=48x24 vs Bounds=220x14 (thi\u1EBFu -172px ngang / 10px d\u1ECDc). Text=\u0022C\u1EECA S\u1ED4\u0022 Trimming=None MaxLines=0 FontSize=10.",
+      "Screenshot": "MainWindow__WindowMenuPopup.png"
+    },
+    {
+      "View": "WindowMenuPopup",
+      "Kind": "child-overflows-parent",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/InfoView(0)/PART_ContentPresenter/Grid(0)/Grid(1)/Border(2)",
+      "Detail": "Element tr\u00E0n ra ngo\u00E0i \u00F4 c\u1EE7a cha (Grid). Con: X=988 Y=693 W=352 H=140 \u2192 ph\u1EA3i=1340, d\u01B0\u1EDBi=833. Cha: X=988 Y=126 W=352 H=676 \u2192 ph\u1EA3i=1340, d\u01B0\u1EDBi=802. Tr\u00E0n ngang=0px, tr\u00E0n d\u1ECDc=31px.",
+      "Screenshot": "MainWindow__WindowMenuPopup.png"
+    },
+    {
+      "View": "WindowMenuPopup",
+      "Kind": "sibling-width-mismatch",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/InfoView(0)/PART_ContentPresenter/Grid(0)/Grid(0)/Border(2)/Grid(0)",
+      "Detail": "C\u00E1c \u00F4 c\u00F9ng c\u1ED9t -1 trong Grid l\u1EC7ch chi\u1EC1u r\u1ED9ng (max 722 vs min 682, ch\u00EAnh 40px). /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=0:w=682, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=1:w=722",
+      "Screenshot": "MainWindow__WindowMenuPopup.png"
+    },
+    {
+      "View": "WindowMenuPopup",
+      "Kind": "sibling-height-mismatch",
+      "Severity": "Minor",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/HistoryView(3)/PART_ContentPresenter/Grid(0)/Border(1)/Grid(0)/Grid(0)/StackPanel(0)/CalendarDatePicker(1)/DataValidationErrors(0)/DockPanel(0)/PART_ContentPresenter/LayoutRoot/Grid(1)/PART_Button/Grid(0)",
+      "Detail": "C\u00E1c \u00F4 c\u00F9ng h\u00E0ng 0 trong Grid l\u1EC7ch chi\u1EC1u cao (max 7 vs min 3, ch\u00EAnh 4px). /Panel/PART_VisualLayerManager/PART_ContentP\u2026@col=0:h=7, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@col=0:h=3",
+      "Screenshot": "MainWindow__WindowMenuPopup.png"
+    },
+    {
+      "View": "WindowMenuPopup",
+      "Kind": "sibling-width-mismatch",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/HistoryView(3)/PART_ContentPresenter/Grid(0)/Border(1)/Grid(0)/Grid(0)/StackPanel(0)/CalendarDatePicker(1)/DataValidationErrors(0)/DockPanel(0)/PART_ContentPresenter/LayoutRoot/Grid(1)/PART_Button/Grid(0)",
+      "Detail": "C\u00E1c \u00F4 c\u00F9ng c\u1ED9t 0 trong Grid l\u1EC7ch chi\u1EC1u r\u1ED9ng (max 20 vs min 3, ch\u00EAnh 17px). /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=0:w=20, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=0:w=3, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=1:w=20, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=1:w=13",
+      "Screenshot": "MainWindow__WindowMenuPopup.png"
+    },
+    {
+      "View": "WindowMenuPopup",
+      "Kind": "sibling-height-mismatch",
+      "Severity": "Minor",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/HistoryView(3)/PART_ContentPresenter/Grid(0)/Border(1)/Grid(0)/Grid(0)/StackPanel(1)/CalendarDatePicker(1)/DataValidationErrors(0)/DockPanel(0)/PART_ContentPresenter/LayoutRoot/Grid(1)/PART_Button/Grid(0)",
+      "Detail": "C\u00E1c \u00F4 c\u00F9ng h\u00E0ng 0 trong Grid l\u1EC7ch chi\u1EC1u cao (max 7 vs min 3, ch\u00EAnh 4px). /Panel/PART_VisualLayerManager/PART_ContentP\u2026@col=0:h=7, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@col=0:h=3",
+      "Screenshot": "MainWindow__WindowMenuPopup.png"
+    },
+    {
+      "View": "WindowMenuPopup",
+      "Kind": "sibling-width-mismatch",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/HistoryView(3)/PART_ContentPresenter/Grid(0)/Border(1)/Grid(0)/Grid(0)/StackPanel(1)/CalendarDatePicker(1)/DataValidationErrors(0)/DockPanel(0)/PART_ContentPresenter/LayoutRoot/Grid(1)/PART_Button/Grid(0)",
+      "Detail": "C\u00E1c \u00F4 c\u00F9ng c\u1ED9t 0 trong Grid l\u1EC7ch chi\u1EC1u r\u1ED9ng (max 20 vs min 3, ch\u00EAnh 17px). /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=0:w=20, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=0:w=3, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=1:w=20, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=1:w=13",
+      "Screenshot": "MainWindow__WindowMenuPopup.png"
+    },
+    {
+      "View": "WindowMenuPopup",
+      "Kind": "sibling-width-mismatch",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/PlcSettingsView(5)/PART_ContentPresenter/Grid(0)/Grid(2)/Grid(0)/Border(1)/Grid(0)",
+      "Detail": "C\u00E1c \u00F4 c\u00F9ng c\u1ED9t -1 trong Grid l\u1EC7ch chi\u1EC1u r\u1ED9ng (max 428 vs min 400, ch\u00EAnh 28px). /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=0:w=400, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=1:w=428, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=2:w=428, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=3:w=428, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=4:w=428",
+      "Screenshot": "MainWindow__WindowMenuPopup.png"
+    },
+    {
+      "View": "WindowMenuPopup",
+      "Kind": "sibling-width-mismatch",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/PlcSettingsView(5)/PART_ContentPresenter/Grid(0)/Grid(2)/Border(1)/Grid(0)",
+      "Detail": "C\u00E1c \u00F4 c\u00F9ng c\u1ED9t -1 trong Grid l\u1EC7ch chi\u1EC1u r\u1ED9ng (max 642 vs min 614, ch\u00EAnh 28px). /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=0:w=614, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=1:w=614, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=2:w=642",
+      "Screenshot": "MainWindow__WindowMenuPopup.png"
+    },
+    {
+      "View": "WindowMenuPopup",
+      "Kind": "sibling-width-mismatch",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/CodeLookupView(7)/PART_ContentPresenter/Grid(0)/Border(2)/Grid(0)",
+      "Detail": "C\u00E1c \u00F4 c\u00F9ng c\u1ED9t -1 trong Grid l\u1EC7ch chi\u1EC1u r\u1ED9ng (max 1090 vs min 1062, ch\u00EAnh 28px). /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=0:w=1062, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=2:w=1090",
+      "Screenshot": "MainWindow__WindowMenuPopup.png"
+    },
+    {
+      "View": "WindowMenuPopup",
+      "Kind": "sibling-width-mismatch",
+      "Severity": "Major",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/ProductionOrdersView(8)/PART_ContentPresenter/Grid(0)/Border(2)/Grid(0)",
+      "Detail": "C\u00E1c \u00F4 c\u00F9ng c\u1ED9t -1 trong Grid l\u1EC7ch chi\u1EC1u r\u1ED9ng (max 1090 vs min 1050, ch\u00EAnh 40px). /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=0:w=1050, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=1:w=1050, /Panel/PART_VisualLayerManager/PART_ContentP\u2026@row=2:w=1090",
+      "Screenshot": "MainWindow__WindowMenuPopup.png"
+    },
+    {
+      "View": "WindowMenuPopup",
+      "Kind": "fixed-width-too-small",
+      "Severity": "Minor",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/HistoryView(3)/PART_ContentPresenter/Grid(0)/Border(1)/Grid(0)/Grid(0)/StackPanel(0)/CalendarDatePicker(1)/DataValidationErrors(0)/DockPanel(0)/PART_ContentPresenter/LayoutRoot/Grid(1)/PART_Button",
+      "Detail": "Width c\u1ED1 \u0111\u1ECBnh 20px nh\u1ECF h\u01A1n DesiredSize.Width 26px (thi\u1EBFu 6px) \u2192 n\u1ED9i dung b\u1ECB c\u1EAFt. Type=Button Text=\u0022(null)\u0022",
+      "Screenshot": "MainWindow__WindowMenuPopup.png"
+    },
+    {
+      "View": "WindowMenuPopup",
+      "Kind": "fixed-width-too-small",
+      "Severity": "Minor",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/HistoryView(3)/PART_ContentPresenter/Grid(0)/Border(1)/Grid(0)/Grid(0)/StackPanel(1)/CalendarDatePicker(1)/DataValidationErrors(0)/DockPanel(0)/PART_ContentPresenter/LayoutRoot/Grid(1)/PART_Button",
+      "Detail": "Width c\u1ED1 \u0111\u1ECBnh 20px nh\u1ECF h\u01A1n DesiredSize.Width 26px (thi\u1EBFu 6px) \u2192 n\u1ED9i dung b\u1ECB c\u1EAFt. Type=Button Text=\u0022(null)\u0022",
+      "Screenshot": "MainWindow__WindowMenuPopup.png"
+    },
+    {
+      "View": "WindowMenuPopup",
+      "Kind": "fixed-width-too-small",
+      "Severity": "Minor",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/CodeLookupView(7)/PART_ContentPresenter/Grid(0)/Border(1)/Grid(0)/TextBox(0)/DataValidationErrors(0)/DockPanel(0)/PART_ContentPresenter/Panel(0)/Border(1)/Grid(0)/ContentPresenter(0)/Path(0)",
+      "Detail": "Width c\u1ED1 \u0111\u1ECBnh 17px nh\u1ECF h\u01A1n DesiredSize.Width 29px (thi\u1EBFu 12px) \u2192 n\u1ED9i dung b\u1ECB c\u1EAFt. Type=Path Text=\u0022(null)\u0022",
+      "Screenshot": "MainWindow__WindowMenuPopup.png"
+    },
+    {
+      "View": "WindowMenuPopup",
+      "Kind": "fixed-height-too-small",
+      "Severity": "Minor",
+      "Element": "/Panel/PART_VisualLayerManager/PopupOverlayLayer(1)/OverlayPopupHost(1)/LayoutTransformControl(0)/PART_VisualLayerManager/PART_ContentPresenter/Border(0)/StackPanel(0)/Border(3)",
+      "Detail": "Height c\u1ED1 \u0111\u1ECBnh 1px nh\u1ECF h\u01A1n DesiredSize.Height 13px (thi\u1EBFu 12px) \u2192 n\u1ED9i dung b\u1ECB c\u1EAFt. Type=Border Text=\u0022(null)\u0022",
+      "Screenshot": "MainWindow__WindowMenuPopup.png"
+    },
+    {
+      "View": "WindowMenuPopup",
+      "Kind": "empty-container",
+      "Severity": "Cosmetic",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/InfoView(0)/PART_ContentPresenter/Grid(0)/Grid(0)/Border(2)/Grid(0)/Grid(1)/ScrollViewer(1)/Grid(0)/PART_ContentPresenter/ItemsControl(0)/Border(0)/PART_ItemsPresenter/StackPanel(0)",
+      "Detail": "StackPanel r\u1ED7ng nh\u01B0ng chi\u1EBFm 722x424px \u2014 kho\u1EA3ng tr\u1ED1ng th\u1EEBa trong layout.",
+      "Screenshot": "MainWindow__WindowMenuPopup.png"
+    },
+    {
+      "View": "WindowMenuPopup",
+      "Kind": "empty-container",
+      "Severity": "Cosmetic",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/InfoView(0)/PART_ContentPresenter/Grid(0)/Grid(1)/Border(2)/Grid(0)/ScrollViewer(1)/Grid(0)/PART_ContentPresenter/ItemsControl(0)/Border(0)/PART_ItemsPresenter/StackPanel(0)",
+      "Detail": "StackPanel r\u1ED7ng nh\u01B0ng chi\u1EBFm 318x89px \u2014 kho\u1EA3ng tr\u1ED1ng th\u1EEBa trong layout.",
+      "Screenshot": "MainWindow__WindowMenuPopup.png"
+    },
+    {
+      "View": "WindowMenuPopup",
+      "Kind": "empty-container",
+      "Severity": "Cosmetic",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/PlcSettingsView(5)/PART_ContentPresenter/Grid(0)/Grid(2)/Grid(0)/Border(1)/Grid(0)/Panel(2)/ScrollViewer(0)/Grid(0)/PART_ContentPresenter/StackPanel(0)",
+      "Detail": "StackPanel r\u1ED7ng nh\u01B0ng chi\u1EBFm 428x233px \u2014 kho\u1EA3ng tr\u1ED1ng th\u1EEBa trong layout.",
+      "Screenshot": "MainWindow__WindowMenuPopup.png"
+    },
+    {
+      "View": "WindowMenuPopup",
+      "Kind": "empty-container",
+      "Severity": "Cosmetic",
+      "Element": "/Panel/PART_VisualLayerManager/PART_ContentPresenter/Grid(0)/Grid(4)/Grid(1)/ProductionOrdersView(8)/PART_ContentPresenter/Grid(0)/Border(2)/Grid(0)/Grid(2)/ScrollViewer(1)/Grid(0)/PART_ContentPresenter/ItemsControl(0)/Border(0)/PART_ItemsPresenter/StackPanel(0)",
+      "Detail": "StackPanel r\u1ED7ng nh\u01B0ng chi\u1EBFm 1090x400px \u2014 kho\u1EA3ng tr\u1ED1ng th\u1EEBa trong layout.",
+      "Screenshot": "MainWindow__WindowMenuPopup.png"
+    }
+  ]
+}

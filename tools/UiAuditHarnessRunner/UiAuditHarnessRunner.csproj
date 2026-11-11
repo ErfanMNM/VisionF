@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    UiAuditHarness — công cụ kiểm tra giao diện (UI audit) chạy OFF-SCREEN.
+
+    Mục đích: dựng toàn bộ cửa sổ/view của TanTienQR trong Avalonia.Headless,
+    render ra PNG để đo lỗi bố cục (lệch, tràn, bị cắt chữ, ...).
+
+    KHÔNG BAO GIỜ hiện cửa sổ lên màn hình người dùng.
+    KHÔNG BAO GIỜ ghi vào dữ liệu thật của app (chạy trong sandbox riêng).
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>UiAuditHarnessRunner</RootNamespace>
+    <AssemblyName>UiAuditHarnessRunner</AssemblyName>
+
+    <!-- Không cần manifest khi chạy headless -->
+    <ApplicationManifest />
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Headless" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Controls.WebView" Version="12.1.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\TanTienQR\TanTienQR.csproj" />
+  </ItemGroup>
+
+</Project>
