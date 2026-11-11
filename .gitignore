@@ -377,3 +377,11 @@ logs/
 appsettings.Development.json
 appsettings.Local.json
 
+# Thu muc tam dung de test - khong commit
+.tmp-*/
+tmp-*/
+
+# Cloudflare Wrangler (state local, secrets) - khong commit
+.wrangler/
+.dev.vars
+
