@@ -1,0 +1,185 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:TanTienQR.ViewModels"
+             xmlns:d="http://schemas.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="240" d:DesignHeight="250"
+             x:Class="TanTienQR.Controls.PlcValueKeypad"
+             x:DataType="vm:PlcValueKeypadViewModel">
+
+    <UserControl.Styles>
+        <!-- ===== Phím số =====
+             Focusable=False để bấm phím KHÔNG cướp focus khỏi ô nhập —
+         nếu không, bàn phím số nhỏ sẽ tự đóng mỗi lần bấm. -->
+        <Style Selector="Button.kp">
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="RenderTransform" Value="none" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.06" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.kp /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource BgPanel}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineColor}" />
+            <Setter Property="BorderThickness" Value="1,1,1,2" />
+            <Setter Property="CornerRadius" Value="9" />
+            <Setter Property="BoxShadow" Value="0 1 3 0 #14000000" />
+        </Style>
+        <Style Selector="Button.kp:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource AccentSoft}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+        </Style>
+        <Style Selector="Button.kp:pressed">
+            <Setter Property="RenderTransform" Value="scale(0.95)" />
+        </Style>
+        <Style Selector="Button.kp:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource Accent}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+            <Setter Property="BoxShadow" Value="none" />
+            <Setter Property="TextElement.Foreground" Value="White" />
+        </Style>
+
+        <!-- ===== Phím chức năng (C, ±) ===== -->
+        <Style Selector="Button.kp.fn">
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
+        </Style>
+        <Style Selector="Button.kp.fn /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource BgRaised}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineColor}" />
+        </Style>
+        <Style Selector="Button.kp.fn:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource AccentSoft}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+        </Style>
+
+        <!-- ===== Nút +/- nhanh (tăng / giảm 1) ===== -->
+        <Style Selector="Button.kp.step">
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="{StaticResource Accent}" />
+        </Style>
+        <Style Selector="Button.kp.step /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource AccentSoft}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineAccent}" />
+        </Style>
+        <Style Selector="Button.kp.step:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource Accent}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+            <Setter Property="TextElement.Foreground" Value="White" />
+        </Style>
+        <Style Selector="Button.kp.step:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#F1F5F9" />
+            <Setter Property="BorderBrush" Value="#E2E8F0" />
+        </Style>
+        <Style Selector="Button.kp.step:disabled TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
+        </Style>
+
+        <!-- ===== Phím OK (chốt giá trị) ===== -->
+        <Style Selector="Button.kp.ok">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+        <Style Selector="Button.kp.ok /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource Accent}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+            <Setter Property="BoxShadow" Value="0 2 6 0 #33000000" />
+        </Style>
+        <Style Selector="Button.kp.ok:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Opacity" Value="0.9" />
+        </Style>
+
+        <!-- ===== Ô hiển thị giá trị đang nhập ===== -->
+        <Style Selector="TextBox.kpvalue">
+            <Setter Property="Background" Value="{StaticResource BgPanel}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineAccent}" />
+            <Setter Property="BorderThickness" Value="1.5" />
+            <Setter Property="CornerRadius" Value="9" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="CaretBrush" Value="{StaticResource Accent}" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="HorizontalContentAlignment" Value="Right" />
+        </Style>
+        <Style Selector="TextBox.kpvalue /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="{StaticResource BgPanel}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineAccent}" />
+            <Setter Property="BorderThickness" Value="1.5" />
+            <Setter Property="CornerRadius" Value="9" />
+        </Style>
+    </UserControl.Styles>
+
+    <!-- Khung ngoài: bo goc + đổ bóng nhẹ để nổi lên khỏi bảng. -->
+    <Border Background="{StaticResource BgRaised}"
+            BorderBrush="{StaticResource LineColor}"
+            BorderThickness="1"
+            CornerRadius="12"
+            BoxShadow="0 4 14 0 #1A000000"
+            Padding="8">
+
+        <StackPanel Spacing="6">
+
+            <!-- ===== Thanh trên: tên tham số + giá trị đang nhập ===== -->
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                <StackPanel Grid.Column="0" Spacing="0" VerticalAlignment="Center">
+                    <TextBlock FontSize="10"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource TextMuted}"
+                               TextTrimming="CharacterEllipsis"
+                               Text="{Binding DisplayHint}" />
+                </StackPanel>
+                <TextBox Grid.Column="1"
+                         Classes="kpvalue"
+                         Width="86"
+                         IsEnabled="False"
+                         Text="{Binding DisplayValue, Mode=OneWay}" />
+            </Grid>
+
+            <!-- ===== Bàn phím số 4 x 4 =====
+                 Hàng 1: 7 8 9 [C]
+                 Hàng 2: 4 5 6 [±]
+                 Hàng 3: 1 2 3 [+1]
+                 Hàng 4: 0 (2 cột) [-1] [OK] -->
+            <Grid ColumnDefinitions="*,*,*,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="5" ColumnSpacing="5">
+
+                <!-- Hàng 1 -->
+                <Button Grid.Row="0" Grid.Column="0" Classes="kp" Height="40" Content="7" Tag="7" Click="OnDigitClick" />
+                <Button Grid.Row="0" Grid.Column="1" Classes="kp" Height="40" Content="8" Tag="8" Click="OnDigitClick" />
+                <Button Grid.Row="0" Grid.Column="2" Classes="kp" Height="40" Content="9" Tag="9" Click="OnDigitClick" />
+                <Button Grid.Row="0" Grid.Column="3" Classes="kp fn" Height="40" Content="C" Click="OnClearClick" />
+
+                <!-- Hàng 2 -->
+                <Button Grid.Row="1" Grid.Column="0" Classes="kp" Height="40" Content="4" Tag="4" Click="OnDigitClick" />
+                <Button Grid.Row="1" Grid.Column="1" Classes="kp" Height="40" Content="5" Tag="5" Click="OnDigitClick" />
+                <Button Grid.Row="1" Grid.Column="2" Classes="kp" Height="40" Content="6" Tag="6" Click="OnDigitClick" />
+                <Button Grid.Row="1" Grid.Column="3" Classes="kp fn" Height="40" Content="±" Click="OnSignClick" />
+
+                <!-- Hàng 3 -->
+                <Button Grid.Row="2" Grid.Column="0" Classes="kp" Height="40" Content="1" Tag="1" Click="OnDigitClick" />
+                <Button Grid.Row="2" Grid.Column="1" Classes="kp" Height="40" Content="2" Tag="2" Click="OnDigitClick" />
+                <Button Grid.Row="2" Grid.Column="2" Classes="kp" Height="40" Content="3" Tag="3" Click="OnDigitClick" />
+                <Button Grid.Row="2" Grid.Column="3" Classes="kp step" Height="40" Content="+1" Click="OnIncrementClick" />
+
+                <!-- Hàng 4: 0 chiếm 2 cột, rồi -1 và OK -->
+                <Button Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2" Classes="kp" Height="40" Content="0" Tag="0" Click="OnDigitClick" />
+                <Button Grid.Row="3" Grid.Column="2" Classes="kp step" Height="40" Content="-1" Click="OnDecrementClick" />
+                <Button Grid.Row="3" Grid.Column="3" Classes="kp ok" Height="40" Click="OnCommitClick" Content="OK" />
+            </Grid>
+        </StackPanel>
+    </Border>
+</UserControl>
