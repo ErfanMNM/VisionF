@@ -74,6 +74,7 @@
                     <TextBlock Classes="fieldLabel" Text="MẬT KHẨU *" />
                     <TextBox Classes="field"
                              Height="42"
+                             VerticalContentAlignment="Center"
                              PasswordChar="•"
                              PlaceholderText="Nhập mật khẩu để xác nhận"
                              Text="{Binding Password}" />

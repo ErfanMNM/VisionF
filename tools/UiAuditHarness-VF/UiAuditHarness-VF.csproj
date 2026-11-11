@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    UiAuditHarness-VF — công cụ audit giao diện OFF-SCREEN cho TanTienQR.
+
+    KHÔNG sửa bất kỳ file nguồn ứng dụng nào. Harness tự dựng DI container
+    (mirror App.OnFrameworkInitializationCompleted), mở các cửa sổ View thật
+    trong chế độ Avalonia.Headless, chụp PNG + dump visual tree, rồi chạy các
+    kiểm tra bố cục tự động.
+
+    Sandbox: toàn bộ DB được trỏ tới thư mục sandbox bằng đường dẫn tuyệt đối.
+    Cổng mạng đều trỏ về cổng chết / bị tắt để không đụng instance ứng dụng
+    đang chạy của người dùng.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>UiAuditHarness</RootNamespace>
+    <AssemblyName>UiAuditHarnessVF</AssemblyName>
+    <IsAotCompatible>false</IsAotCompatible>
+    <PublishAot>false</PublishAot>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Headless" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Controls.WebView" Version="12.1.1" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.14" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.14" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\TanTienQR\TanTienQR.csproj" />
+  </ItemGroup>
+
+</Project>

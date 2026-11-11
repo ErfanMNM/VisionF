@@ -63,6 +63,11 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
     /// </summary>
     public ObservableCollection<ProductionOrderRowViewModel> SelectableOrders { get; } = [];
 
+    /// <summary>
+    /// True khi bảng danh sách PO đang trống (dùng cho trạng thái rỗng UI-016).
+    /// </summary>
+    public bool IsEmpty => Orders.Count == 0;
+
     /// <summary>PO được chọn trong dropdown.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanStart))]
@@ -358,6 +363,8 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
             SelectedOrder = SelectableOrders.FirstOrDefault(
                 p => string.Equals(p.OrderNo, previous, StringComparison.OrdinalIgnoreCase))
                 ?? SelectableOrders.FirstOrDefault();
+
+            OnPropertyChanged(nameof(IsEmpty));
         });
     }
 

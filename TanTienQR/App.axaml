@@ -23,6 +23,10 @@
             <SolidColorBrush x:Key="BgRaised">#EDF4F7</SolidColorBrush>
             <SolidColorBrush x:Key="LineColor">#D8E6EC</SolidColorBrush>
             <SolidColorBrush x:Key="TextPrimary">#0F2A38</SolidColorBrush>
+            <!-- TextSecondary: tone trung gian giua TextPrimary va TextMuted.
+                 Dung cho noi dung phu (chu giai thich, gia tri raw) ma van can
+                 doc duoc nhung khong gay canh tranh voi tieu de. -->
+            <SolidColorBrush x:Key="TextSecondary">#3D5A68</SolidColorBrush>
             <SolidColorBrush x:Key="TextMuted">#5C7683</SolidColorBrush>
             <SolidColorBrush x:Key="Accent">#1A56DB</SolidColorBrush>
             <SolidColorBrush x:Key="AccentSoft">#DCE7FD</SolidColorBrush>
@@ -77,6 +81,12 @@
             <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
             <Setter Property="FontSize" Value="12" />
         </Style>
+        <!-- Tieu de trang: chuan 24px cho moi tab -> khi chuyen tab khong nhay co chu -->
+        <Style Selector="TextBlock.pageTitle">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="FontSize" Value="24" />
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
         <Style Selector="TextBlock.sectionTitle">
             <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
             <Setter Property="FontSize" Value="14" />
@@ -116,12 +126,15 @@
             <Setter Property="Padding" Value="16,14" />
         </Style>
 
-        <!-- Nhan uppercase kieu mau: 11px, letter-spacing 0.12em -->
+        <!-- Nhan uppercase kieu mau: 11px, letter-spacing 0.12em.
+             LineHeight ro rang de chu HOA co dau tieng Viet khong bi cat
+             (vd. "CƠ SỞ", "TRUY CẬP", "KIỂU" - Desired 24px / Bounds 14px). -->
         <Style Selector="TextBlock.overline">
             <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
             <Setter Property="FontSize" Value="11" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="LetterSpacing" Value="0.12" />
+            <Setter Property="LineHeight" Value="17" />
         </Style>
 
         <!-- Segment thanh tien trinh: 24 o bo goc 2px -->
@@ -267,6 +280,10 @@
             <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
             <Setter Property="FontSize" Value="10" />
             <Setter Property="FontWeight" Value="Bold" />
+            <!-- LineHeight ro rang: chu HOA co dau tieng Viet (KIEU, TRUY CAP...)
+                 can nhieu dong cao hon chu thuong, neu tinh tu dong hay bi cat
+                 mat dau nang / dau huyen. -->
+            <Setter Property="LineHeight" Value="15" />
         </Style>
 
         <!-- O nhap trong thanh bo loc: vien nhat, bo goc mem, hover len vien accent -->
@@ -321,6 +338,22 @@
         </Style>
         <Style Selector="ComboBox.field:pointerover /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+        </Style>
+        <!-- ===== ComboBox: sua placeholder bi cat dau tieng Viet (UI-010) =====
+             Ly do: placeholder cua ComboBox nam trong ContentPresenter, mac dinh
+             Avalonia cap cho no chi ~19px -> chu 14px co dau bi cat mat 12px.
+             Fix: cho ContentPresenter cao het phan con lai (doi chieu) va canh
+             giua theo chiều dọc, dong thoi giam co chu placeholder xuong 13. -->
+        <Style Selector="ComboBox.field /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Height" Value="{TemplateBinding Height}" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+        </Style>
+        <Style Selector="ComboBox.field /template/ TextBlock#PART_PlaceholderPresenter">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
 
         <Style Selector="DatePicker.field">

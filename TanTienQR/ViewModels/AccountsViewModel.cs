@@ -35,6 +35,11 @@ internal sealed partial class AccountsViewModel : ViewModelBase
     /// <summary>Danh sách tài khoản hiển thị trên bảng.</summary>
     public ObservableCollection<UserRowViewModel> Items { get; } = [];
 
+    /// <summary>
+    /// True khi bảng tài khoản đang trống (dùng cho trạng thái rỗng UI-016).
+    /// </summary>
+    public bool IsEmpty => Items.Count == 0;
+
     /// <summary>Các vai trò có thể chọn khi tạo/sửa tài khoản.</summary>
     public IReadOnlyList<UserRole> AvailableRoles => UserRoleNames.All;
 
@@ -76,6 +81,8 @@ internal sealed partial class AccountsViewModel : ViewModelBase
             {
                 Items.Add(new UserRowViewModel(user));
             }
+
+            OnPropertyChanged(nameof(IsEmpty));
 
             SetStatus($"Đã tải {Items.Count} tài khoản.", isError: false);
         }

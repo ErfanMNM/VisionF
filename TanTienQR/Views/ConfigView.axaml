@@ -14,9 +14,7 @@
         <!-- Tiêu đề + cảnh báo -->
         <StackPanel Grid.Row="0" Spacing="6">
             <TextBlock Text="Cấu hình ứng dụng"
-                       FontSize="24"
-                       FontWeight="Bold"
-                       Foreground="{StaticResource TextPrimary}" />
+                       Classes="pageTitle" />
             <TextBlock Classes="label"
                        FontSize="13"
                        Text="Tham số camera, PLC và web. Thay đổi IP/Port có hiệu lực sau khi khởi động lại ứng dụng." />
@@ -46,8 +44,12 @@
             </Border>
         </StackPanel>
 
-        <!-- Các nhóm cấu hình -->
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+        <!-- Các nhóm cấu hình.
+             UI-018: cân bằng 2 cột (CAMERA + VÙNG NHỚ D bên trái, PLC + WEB/LICENSE bên phải)
+             và luôn để thanh cuộn dọc hiện (Visible) khi nội dung vượt khung. -->
+        <ScrollViewer Grid.Row="1"
+                      VerticalScrollBarVisibility="Visible"
+                      HorizontalScrollBarVisibility="Disabled">
             <Grid ColumnDefinitions="*,*" ColumnSpacing="12" RowSpacing="12">
 
                 <!-- ===== Camera ===== -->
@@ -64,7 +66,6 @@
                                   Data="{StaticResource Icon.Camera}" />
                             <TextBlock Classes="overline"
                                        FontSize="14"
-                                       LetterSpacing="0.1"
                                        Foreground="{StaticResource TextPrimary}"
                                        Text="CAMERA · ĐẦU ĐỌC MÃ" />
                         </StackPanel>
@@ -96,7 +97,7 @@
                 </Border>
 
                 <!-- ===== PLC ===== -->
-                <Border Grid.Row="0" Grid.Column="1" Classes="panel" Padding="16,14">
+                <Border Grid.Row="1" Grid.Column="0" Classes="panel" Padding="16,14">
                     <StackPanel Spacing="10">
                         <StackPanel Orientation="Horizontal" Spacing="10">
                             <Path Width="16" Height="16"
@@ -109,7 +110,6 @@
                                   Data="{StaticResource Icon.CpuChip}" />
                             <TextBlock Classes="overline"
                                        FontSize="14"
-                                       LetterSpacing="0.1"
                                        Foreground="{StaticResource TextPrimary}"
                                        Text="PLC · OMERON FINS/UDP" />
                         </StackPanel>
@@ -162,7 +162,7 @@
                 </Border>
 
                 <!-- ===== Địa chỉ vùng D ===== -->
-                <Border Grid.Row="1" Grid.Column="0" Classes="panel" Padding="16,14">
+                <Border Grid.Row="0" Grid.Column="1" Classes="panel" Padding="16,14">
                     <StackPanel Spacing="10">
                         <StackPanel Orientation="Horizontal" Spacing="10">
                             <Path Width="16" Height="16"
@@ -175,7 +175,6 @@
                                   Data="{StaticResource Icon.Cpu}" />
                             <TextBlock Classes="overline"
                                        FontSize="14"
-                                       LetterSpacing="0.1"
                                        Foreground="{StaticResource TextPrimary}"
                                        Text="VÙNG NHỚ D · TÍN HIỆU" />
                         </StackPanel>
@@ -223,7 +222,6 @@
                                   Data="{StaticResource Icon.Link}" />
                             <TextBlock Classes="overline"
                                        FontSize="14"
-                                       LetterSpacing="0.1"
                                        Foreground="{StaticResource TextPrimary}"
                                        Text="WEB · CHECKEE" />
                         </StackPanel>

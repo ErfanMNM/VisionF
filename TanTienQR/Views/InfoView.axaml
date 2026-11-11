@@ -20,9 +20,7 @@
             <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="12">
                 <StackPanel Spacing="3">
                     <TextBlock Text="Bảng điều khiển quét mã"
-                               FontSize="24"
-                               FontWeight="Bold"
-                               Foreground="{StaticResource TextPrimary}" />
+                               Classes="pageTitle" />
                     <TextBlock Text="Nhận tín hiệu camera và gửi kết quả xuống PLC Omron (D12 = kết quả, D16 = Ready)"
                                Classes="label"
                                FontSize="13" />
@@ -69,12 +67,15 @@
                     <!-- Tỷ lệ đạt -->
                     <StackPanel Grid.Column="3" Margin="18,12" Spacing="8">
                         <TextBlock Classes="overline" Text="TỶ LỆ ĐẠT" />
-                        <StackPanel Orientation="Horizontal" Spacing="4">
+                        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                             <TextBlock Classes="mono" FontSize="34" FontWeight="Bold"
+                                       VerticalAlignment="Center"
                                        Foreground="{StaticResource Warn}" Text="{Binding PassRate}" />
-                            <TextBlock Classes="mono" FontSize="16" FontWeight="SemiBold"
+                            <!-- FontSize 14 + canh giữa: ky tu "%" co dau nang can 25px,
+                                 can 19px se bi cat mat 6px (UI-011). -->
+                            <TextBlock Classes="mono" FontSize="14" FontWeight="SemiBold"
                                        Foreground="{StaticResource TextMuted}"
-                                       VerticalAlignment="Bottom" Margin="0,0,0,6" Text="%" />
+                                       VerticalAlignment="Center" Text="%" />
                         </StackPanel>
                     </StackPanel>
                 </Grid>
@@ -86,14 +87,13 @@
                     BorderBrush="{StaticResource LineColor}"
                     BorderThickness="1"
                     CornerRadius="16">
-                <Grid RowDefinitions="Auto,Auto,*" RowSpacing="0">
+                <Grid RowDefinitions="Auto,*" RowSpacing="0">
 
                     <!-- Header bảng -->
                     <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="20,12">
                         <StackPanel Orientation="Horizontal" Spacing="10">
                             <TextBlock Classes="overline"
                                        FontSize="14"
-                                       LetterSpacing="0.1"
                                        Foreground="{StaticResource TextPrimary}"
                                        Text="LỊCH SỰ MÃ QUÉT" />
                             <Border Background="{StaticResource BgRaised}"
@@ -115,53 +115,67 @@
                         </StackPanel>
                     </Grid>
 
-                    <!-- Header cột -->
-                    <Grid Grid.Row="1"
-                          ColumnDefinitions="90,1.6*,1.2*,100,110,100"
-                          ColumnSpacing="12"
-                          Margin="20,0"
-                          Background="#F8F9FB">
-                        <Border Grid.Row="0" Grid.Column="0"
-                                BorderBrush="{StaticResource LineColor}"
-                                BorderThickness="0,0,0,1"
-                                Margin="0,9,0,9">
-                            <TextBlock Classes="overline" Text="GIỜ" />
-                        </Border>
-                        <Border Grid.Row="0" Grid.Column="1"
-                                BorderBrush="{StaticResource LineColor}"
-                                BorderThickness="0,0,0,1"
-                                Margin="0,9,0,9">
-                            <TextBlock Classes="overline" Text="MÃ / SERIAL" />
-                        </Border>
-                        <Border Grid.Row="0" Grid.Column="2"
-                                BorderBrush="{StaticResource LineColor}"
-                                BorderThickness="0,0,0,1"
-                                Margin="0,9,0,9">
-                            <TextBlock Classes="overline" Text="GTIN" />
-                        </Border>
-                        <Border Grid.Row="0" Grid.Column="3"
-                                BorderBrush="{StaticResource LineColor}"
-                                BorderThickness="0,0,0,1"
-                                Margin="0,9,0,9">
-                            <TextBlock Classes="overline" Text="KẾT QUẢ" />
-                        </Border>
-                        <Border Grid.Row="0" Grid.Column="4"
-                                BorderBrush="{StaticResource LineColor}"
-                                BorderThickness="0,0,0,1"
-                                Margin="0,9,0,9">
-                            <TextBlock Classes="overline" Text="XỬ LÝ" />
-                        </Border>
-                        <Border Grid.Row="0" Grid.Column="5"
-                                BorderBrush="{StaticResource LineColor}"
-                                BorderThickness="0,0,0,1"
-                                Margin="0,9,0,9">
-                            <TextBlock Classes="overline" Text="GỬI PLC" />
-                        </Border>
-                    </Grid>
+                    <!-- ===== Header cột + Dữ liệu: CÙNG CHUNG BỀ RỘNG (UI-002) =====
+                         Trước đây header dùng Margin="20,0" ở cấp Grid còn dữ liệu
+                         dùng Margin ở cấp từng dòng => hai hệ toạ độ khác nhau,
+                         header hụt 20px mỗi bên và cột "GỬI PLC" bị cắt mất chữ "C".
+                         Fix:
+                           1. Header + dữ liệu nằm trong cùng 1 Grid, cùng 1 padding 20px.
+                           2. Cả 2 ScrollViewer đều để VerticalScrollBarVisibility="Visible"
+                              => khe thanh cuộn luôn được dành sẵn giống nhau, nên
+                              tiêu đề và dữ liệu luôn thẳng hàng (kể cả khi bảng
+                              nhiều dòng và thanh cuộn xuất hiện). -->
+                    <Grid Grid.Row="1" Grid.RowSpan="2" RowDefinitions="Auto,*">
+                        <ScrollViewer Grid.Row="0"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      VerticalScrollBarVisibility="Visible">
+                            <Grid ColumnDefinitions="90,1.6*,1.2*,100,110,100"
+                                  ColumnSpacing="12"
+                                  Margin="20,0"
+                                  Background="#F8F9FB">
+                                <Border Grid.Row="0" Grid.Column="0"
+                                        BorderBrush="{StaticResource LineColor}"
+                                        BorderThickness="0,0,0,1"
+                                        Margin="0,9,0,9">
+                                    <TextBlock Classes="overline" Text="GIỜ" />
+                                </Border>
+                                <Border Grid.Row="0" Grid.Column="1"
+                                        BorderBrush="{StaticResource LineColor}"
+                                        BorderThickness="0,0,0,1"
+                                        Margin="0,9,0,9">
+                                    <TextBlock Classes="overline" Text="MÃ / SERIAL" />
+                                </Border>
+                                <Border Grid.Row="0" Grid.Column="2"
+                                        BorderBrush="{StaticResource LineColor}"
+                                        BorderThickness="0,0,0,1"
+                                        Margin="0,9,0,9">
+                                    <TextBlock Classes="overline" Text="GTIN" />
+                                </Border>
+                                <Border Grid.Row="0" Grid.Column="3"
+                                        BorderBrush="{StaticResource LineColor}"
+                                        BorderThickness="0,0,0,1"
+                                        Margin="0,9,0,9">
+                                    <TextBlock Classes="overline" Text="KẾT QUẢ" />
+                                </Border>
+                                <Border Grid.Row="0" Grid.Column="4"
+                                        BorderBrush="{StaticResource LineColor}"
+                                        BorderThickness="0,0,0,1"
+                                        Margin="0,9,0,9">
+                                    <TextBlock Classes="overline" Text="XỬ LÝ" />
+                                </Border>
+                                <Border Grid.Row="0" Grid.Column="5"
+                                        BorderBrush="{StaticResource LineColor}"
+                                        BorderThickness="0,0,0,1"
+                                        Margin="0,9,0,9">
+                                    <TextBlock Classes="overline" Text="GỬI PLC" />
+                                </Border>
+                            </Grid>
+                        </ScrollViewer>
 
-                    <!-- Dữ liệu -->
-                    <Grid Grid.Row="2">
-                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <!-- Dữ liệu -->
+                        <ScrollViewer Grid.Row="1"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      VerticalScrollBarVisibility="Auto">
                             <ItemsControl ItemsSource="{Binding Scans}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:ScanRowViewModel">
@@ -195,7 +209,8 @@
                         </ScrollViewer>
 
                         <!-- Empty state: khung scan + thông báo -->
-                        <StackPanel VerticalAlignment="Center"
+                        <StackPanel Grid.Row="1"
+                                    VerticalAlignment="Center"
                                     HorizontalAlignment="Center"
                                     Spacing="10"
                                     IsVisible="{Binding !HasScans}">
@@ -240,7 +255,6 @@
 
                     <TextBlock Classes="overline"
                                FontSize="14"
-                               LetterSpacing="0.1"
                                Foreground="{StaticResource TextPrimary}"
                                Text="THÔNG TIN SẢN XUẤT" />
 
@@ -250,7 +264,7 @@
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                         <ComboBox Grid.Column="0"
                                   Classes="field"
-                                  Height="44"
+                                  MinHeight="48"
                                   HorizontalAlignment="Stretch"
                                   VerticalAlignment="Center"
                                   ItemsSource="{Binding ProductionInfo.Orders.SelectableOrders}"
@@ -308,6 +322,20 @@
                     <TextBlock Classes="label" FontSize="12"
                                TextWrapping="Wrap"
                                Text="{Binding ProductionInfo.StatusMessage}" />
+
+                    <!-- Trạng thái rỗng (UI-016): khi chưa có PO nào trong danh sách,
+                         thay vì để ComboBox trống trơn, hiện thông báo rõ ràng. -->
+                    <StackPanel Spacing="4"
+                                IsVisible="{Binding ProductionInfo.HasNoOrders}">
+                        <TextBlock Text="Chưa có dữ liệu"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextMuted}" />
+                        <TextBlock Classes="label"
+                                   FontSize="12"
+                                   TextWrapping="Wrap"
+                                   Text="Chưa có lệnh sản xuất nào. Bấm “Tải PO” để lấy danh sách từ server." />
+                    </StackPanel>
                 </StackPanel>
             </Border>
 
@@ -358,24 +386,25 @@
                         </Border>
                     </Grid>
 
-                    <!-- Đã quét / tổng + số lượng đơn -->
+                    <!-- Đã quét / tổng + tổng mã của PO -->
+                    <!-- Trước đây "ĐÃ QUÉT / TỔNG" hiện "0" size 36 + " / 0" size 20,
+                         đồng thời "SỐ LƯỢNG ĐƠN" lại hiện cùng giá trị OrderQtyText
+                         => cùng một con số hiện 2 lần với 2 nhãn khác nhau (UI-003/UI-017).
+                         Fix: dùng ProgressText ("đã quét / tổng") cho 1 chỗ duy nhất,
+                         khối bên phải đổi nhãn đúng nghĩa là "TỔNG MÃ". -->
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                        <StackPanel Spacing="4">
+                        <StackPanel Spacing="4" VerticalAlignment="Center">
                             <TextBlock Classes="overline" Text="ĐÃ QUÉT / TỔNG" />
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <TextBlock Classes="mono" FontSize="36" FontWeight="Bold"
-                                           Foreground="{StaticResource TextPrimary}"
-                                           Text="{Binding ProductionInfo.ScannedText}" />
-                                <TextBlock Classes="mono" FontSize="20" FontWeight="Medium"
-                                           Foreground="{StaticResource TextMuted}"
-                                           VerticalAlignment="Bottom" Margin="0,0,0,6"
-                                           Text="{Binding ProductionInfo.OrderQtyText, StringFormat=' / {0}'}" />
-                            </StackPanel>
+                            <TextBlock Classes="mono" FontSize="36" FontWeight="Bold"
+                                       Foreground="{StaticResource TextPrimary}"
+                                       VerticalAlignment="Center"
+                                       Text="{Binding ProductionInfo.ProgressText}" />
                         </StackPanel>
-                        <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Bottom">
-                            <TextBlock Classes="overline" Text="SỐ LƯỢNG ĐƠN" />
+                        <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                            <TextBlock Classes="overline" Text="TỔNG MÃ PO" />
                             <TextBlock Classes="mono" FontSize="22" FontWeight="Bold"
                                        Foreground="{StaticResource TextPrimary}"
+                                       VerticalAlignment="Center"
                                        Text="{Binding ProductionInfo.OrderQtyText}" />
                         </StackPanel>
                     </Grid>
@@ -448,7 +477,6 @@
                 <Grid RowDefinitions="Auto,*">
                     <TextBlock Classes="overline"
                                FontSize="14"
-                               LetterSpacing="0.1"
                                Foreground="{StaticResource TextPrimary}"
                                Text="SỰ KIỆN GẦN ĐÂY" />
 

@@ -31,9 +31,7 @@
 
             <StackPanel Grid.Column="1" Spacing="4">
                 <TextBlock Text="Dev · Trạng thái runtime"
-                           FontSize="21"
-                           FontWeight="Bold"
-                           Foreground="{StaticResource TextPrimary}" />
+                           Classes="pageTitle" />
                 <TextBlock Classes="label"
                            FontSize="12"
                            Text="Biến global, bộ đếm, bộ nhớ, service DI và log kỹ thuật — tự làm mới mỗi 1–3 giây. Chỉ dành cho Lập trình viên." />
@@ -55,7 +53,7 @@
 
                 <Button Grid.Column="0"
                         Classes="primary"
-                        Height="36" MinWidth="96" Padding="14,0"
+                        Height="38" MinWidth="96" Padding="14,0"
                         HorizontalContentAlignment="Center"
                         VerticalContentAlignment="Center"
                         Command="{Binding DevView.RefreshAllCommand}">
@@ -73,7 +71,7 @@
 
                 <Button Grid.Column="1"
                         Classes="soft"
-                        Height="36" MinWidth="130" Padding="14,0"
+                        Height="38" MinWidth="130" Padding="14,0"
                         HorizontalContentAlignment="Center"
                         VerticalContentAlignment="Center"
                         ToolTip.Tip="Chạy GC.Collect toàn bộ heap + nén bộ nhớ (có thể gây pause ngắn)"
@@ -93,7 +91,7 @@
                 <ComboBox Grid.Column="2"
                           Classes="field"
                           MinWidth="0"
-                          Height="36"
+                          Height="38"
                           VerticalContentAlignment="Center"
                           ItemsSource="{Binding DevView.LogLevelOptions}"
                           SelectedItem="{Binding DevView.SelectedLogLevel}"
@@ -102,7 +100,7 @@
                 <TextBox Grid.Column="3"
                          Classes="field"
                          MinWidth="0"
-                         Height="36"
+                         Height="38"
                          VerticalContentAlignment="Center"
                          PlaceholderText="category (vd: Plc)"
                          Text="{Binding DevView.LogCategoryFilter}" />
@@ -110,7 +108,7 @@
                 <TextBox Grid.Column="4"
                          Classes="field"
                          MinWidth="0"
-                         Height="36"
+                         Height="38"
                          VerticalContentAlignment="Center"
                          PlaceholderText="nội dung log"
                          Text="{Binding DevView.LogMessageFilter}" />
@@ -139,7 +137,6 @@
                                   Data="{StaticResource Icon.Grid}" />
                             <TextBlock Classes="overline"
                                        FontSize="14"
-                                       LetterSpacing="0.1"
                                        Foreground="{StaticResource TextPrimary}"
                                        Text="TRẠNG THÁI GLOBAL" />
                         </StackPanel>
@@ -188,7 +185,6 @@
                                   Data="{StaticResource Icon.Alert}" />
                             <TextBlock Classes="overline"
                                        FontSize="14"
-                                       LetterSpacing="0.1"
                                        Foreground="{StaticResource TextPrimary}"
                                        Text="LỖI HIỆN TẠI" />
                         </StackPanel>
@@ -251,7 +247,6 @@
                                   Data="{StaticResource Icon.Bars}" />
                             <TextBlock Classes="overline"
                                        FontSize="14"
-                                       LetterSpacing="0.1"
                                        Foreground="{StaticResource TextPrimary}"
                                        Text="BỘ ĐẾM RUNTIME" />
                         </StackPanel>
@@ -301,7 +296,6 @@
                                       Data="{StaticResource Icon.Chart}" />
                                 <TextBlock Classes="overline"
                                            FontSize="14"
-                                           LetterSpacing="0.1"
                                            Foreground="{StaticResource TextPrimary}"
                                            Text="BỘ NHỚ (RAM)" />
                             </StackPanel>
@@ -363,7 +357,6 @@
                                   Data="{StaticResource Icon.Settings}" />
                             <TextBlock Classes="overline"
                                        FontSize="14"
-                                       LetterSpacing="0.1"
                                        Foreground="{StaticResource TextPrimary}"
                                        Text="MÔI TRƯỜNG" />
                         </StackPanel>
@@ -407,7 +400,6 @@
                                   Data="{StaticResource Icon.File}" />
                             <TextBlock Classes="overline"
                                        FontSize="14"
-                                       LetterSpacing="0.1"
                                        Foreground="{StaticResource TextPrimary}"
                                        Text="CẤU HÌNH ĐỌC ĐƯỢC" />
                         </StackPanel>
@@ -454,7 +446,6 @@
                                       Data="{StaticResource Icon.Link}" />
                                 <TextBlock Classes="overline"
                                            FontSize="14"
-                                           LetterSpacing="0.1"
                                            Foreground="{StaticResource TextPrimary}"
                                            Text="DỊCH VỤ ĐĂNG KÝ (DI)" />
                             </StackPanel>
@@ -475,7 +466,7 @@
                                      Text="{Binding DevView.ServiceFilter}" />
                             <Button Grid.Column="1"
                                     Classes="soft"
-                                    Height="34" MinWidth="70" Padding="12,0"
+                                    Height="38" MinWidth="70" Padding="12,0"
                                     HorizontalContentAlignment="Center"
                                     VerticalContentAlignment="Center"
                                     Command="{Binding DevView.ClearServiceFilterCommand}">
@@ -543,7 +534,6 @@
                                       Data="{StaticResource Icon.Clipboard}" />
                                 <TextBlock Classes="overline"
                                            FontSize="14"
-                                           LetterSpacing="0.1"
                                            Foreground="{StaticResource TextPrimary}"
                                            Text="LOG KỸ THUẬT (AppLogs)" />
                             </StackPanel>

@@ -15,9 +15,7 @@
         <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="12">
             <StackPanel Spacing="3">
                 <TextBlock Text="Tra cứu mã đã quét"
-                           FontSize="21"
-                           FontWeight="Bold"
-                           Foreground="{StaticResource TextPrimary}" />
+                           Classes="pageTitle" />
                 <TextBlock Classes="label"
                            FontSize="12"
                            Text="Tra cứu mã đã chạy qua hệ thống (camera hoặc handheld cầm tay). Nhập tay hoặc quét mã để xem thông tin." />
@@ -34,12 +32,15 @@
 
         <!-- Thanh tra cứu -->
         <Border Grid.Row="1" Classes="filterBar" Padding="14,12">
-            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+            <!-- Chiều cao thống nhất 38px cho ô nhập + 2 nút (UI-006/UI-015):
+                 trước đây ô nhập 44px còn nút 36px (bị MinHeight=38 đè) =>
+                 viền dưới lệch 8px. -->
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8" VerticalAlignment="Center">
 
                 <TextBox Grid.Column="0"
                          Classes="field"
                          MinWidth="0"
-                         Height="44"
+                         Height="38"
                          HorizontalAlignment="Stretch"
                          VerticalContentAlignment="Center"
                          FontSize="14"
@@ -56,7 +57,7 @@
 
                 <Button Grid.Column="1"
                         Classes="primary"
-                        Height="36" MinWidth="88" Padding="14,0"
+                        Height="38" MinWidth="88" Padding="14,0"
                         HorizontalContentAlignment="Center"
                         VerticalContentAlignment="Center"
                         IsEnabled="{Binding !CodeLookup.IsBusy}"
@@ -75,7 +76,7 @@
 
                 <Button Grid.Column="2"
                         Classes="soft"
-                        Height="36" MinWidth="80" Padding="14,0"
+                        Height="38" MinWidth="80" Padding="14,0"
                         HorizontalContentAlignment="Center"
                         VerticalContentAlignment="Center"
                         Command="{Binding CodeLookup.ClearCommand}">
@@ -235,7 +236,9 @@
                                    Text="{Binding CodeLookup.ScanCountText}" />
                     </Grid>
 
-                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <ScrollViewer Grid.Row="1"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto">
                         <ItemsControl ItemsSource="{Binding CodeLookup.Rows}"
                                       IsVisible="{Binding CodeLookup.HasResult}">
                             <ItemsControl.ItemTemplate>

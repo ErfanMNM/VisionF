@@ -15,9 +15,7 @@
         <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="12">
             <StackPanel Spacing="3">
                 <TextBlock Text="Truy xuất Sản xuất (Local)"
-                           FontSize="24"
-                           FontWeight="Bold"
-                           Foreground="{StaticResource TextPrimary}" />
+                           Classes="pageTitle" />
                 <TextBlock Classes="label"
                            FontSize="13"
                            Text="Quản lý lệnh sản xuất (PO) tải từ server — bắt đầu, hoàn tất và gửi mã kích hoạt." />
@@ -25,7 +23,7 @@
 
             <Button Grid.Column="1"
                     Classes="primary"
-                    Height="42" MinWidth="150" Padding="18,0"
+                    Height="44" MinWidth="150" Padding="18,0"
                     HorizontalAlignment="Right"
                     VerticalAlignment="Center"
                     HorizontalContentAlignment="Center"
@@ -53,7 +51,6 @@
                     <StackPanel Orientation="Horizontal" Spacing="14">
                         <TextBlock Classes="overline"
                                    FontSize="14"
-                                   LetterSpacing="0.1"
                                    Foreground="{StaticResource TextPrimary}"
                                    Text="PO ĐANG CHẠY" />
                         <TextBlock Classes="mono" FontSize="15" FontWeight="Bold"
@@ -70,7 +67,7 @@
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                     <Button Classes="primary"
-                            Height="40" MinWidth="140" Padding="16,0"
+                            Height="44" MinWidth="140" Padding="16,0"
                             HorizontalContentAlignment="Center"
                             VerticalContentAlignment="Center"
                             IsEnabled="{Binding ProductionOrders.CanStart}"
@@ -86,7 +83,7 @@
 
                     <!-- PO đủ 100% thì tự hoàn tất — chỉ hiện nút Huỷ khi chưa đủ -->
                     <Button Classes="soft"
-                            Height="40" MinWidth="130" Padding="16,0"
+                            Height="44" MinWidth="130" Padding="16,0"
                             HorizontalContentAlignment="Center"
                             VerticalContentAlignment="Center"
                             IsVisible="{Binding ProductionOrders.CanCancel}"
@@ -105,7 +102,7 @@
                     </Button>
 
                     <Button Classes="soft"
-                            Height="40" MinWidth="130" Padding="14,0"
+                            Height="44" MinWidth="130" Padding="14,0"
                             HorizontalContentAlignment="Center"
                             VerticalContentAlignment="Center"
                             IsEnabled="{Binding ProductionOrders.CanActivate}"
@@ -141,7 +138,6 @@
                               Data="{StaticResource Icon.Table}" />
                         <TextBlock Classes="overline"
                                    FontSize="14"
-                                   LetterSpacing="0.1"
                                    Foreground="{StaticResource TextPrimary}"
                                    Text="DANH SÁCH LỆNH SẢN XUẤT" />
                     </StackPanel>
@@ -158,8 +154,10 @@
                                VerticalAlignment="Center"
                                Text="CHỌN LỆNH SẢN XUẤT" />
                     <ComboBox Grid.Column="1"
-                              MinHeight="44"
+                              Classes="field"
+                              MinHeight="48"
                               HorizontalAlignment="Stretch"
+                              VerticalAlignment="Center"
                               ItemsSource="{Binding ProductionOrders.SelectableOrders}"
                               SelectedItem="{Binding ProductionOrders.SelectedOrder}"
                               PlaceholderText="Chọn PO để bắt đầu sản xuất...">
@@ -173,43 +171,53 @@
 
                 <!-- Dữ liệu -->
                 <Grid Grid.Row="2" RowDefinitions="Auto,*" RowSpacing="0">
-                    <!-- Header cột: nền #F8F9FB + chữ overline (mẫu Dashboard 4) -->
-                    <Grid Grid.Row="0" ColumnDefinitions="200,110,140,130,180" ColumnSpacing="8"
-                          Margin="20,0"
-                          Background="#F8F9FB">
-                        <Border Grid.Row="0" Grid.Column="0"
-                                BorderBrush="{StaticResource LineColor}"
-                                BorderThickness="0,0,0,1"
-                                Margin="0,9,0,9">
-                            <TextBlock Classes="overline" Text="MÃ PO" />
-                        </Border>
-                        <Border Grid.Row="0" Grid.Column="1"
-                                BorderBrush="{StaticResource LineColor}"
-                                BorderThickness="0,0,0,1"
-                                Margin="0,9,0,9">
-                            <TextBlock Classes="overline" Text="SỐ LƯỢNG" />
-                        </Border>
-                        <Border Grid.Row="0" Grid.Column="2"
-                                BorderBrush="{StaticResource LineColor}"
-                                BorderThickness="0,0,0,1"
-                                Margin="0,9,0,9">
-                            <TextBlock Classes="overline" Text="ĐÃ QUÉT" />
-                        </Border>
-                        <Border Grid.Row="0" Grid.Column="3"
-                                BorderBrush="{StaticResource LineColor}"
-                                BorderThickness="0,0,0,1"
-                                Margin="0,9,0,9">
-                            <TextBlock Classes="overline" Text="TRẠNG THÁI" />
-                        </Border>
-                        <Border Grid.Row="0" Grid.Column="4"
-                                BorderBrush="{StaticResource LineColor}"
-                                BorderThickness="0,0,0,1"
-                                Margin="0,9,0,9">
-                            <TextBlock Classes="overline" Text="THỜI ĐIỂM TẠO" />
-                        </Border>
-                    </Grid>
+                    <!-- Header cột + dữ liệu: CÙNG CHUNG BỀ RỘNG (UI-002)
+                         Header dùng Margin="20,0" ở cấp Grid, dữ liệu dùng Margin
+                         ở cấp từng dòng => 2 hệ toạ độ lệch nhau.
+                         Fix: bọc chung 1 ScrollViewer ngang hàng, dùng chung 1 padding. -->
+                    <ScrollViewer Grid.Row="0"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Disabled">
+                        <!-- Header cột: nền #F8F9FB + chữ overline (mẫu Dashboard 4) -->
+                        <Grid ColumnDefinitions="200,110,140,130,180" ColumnSpacing="8"
+                              Margin="20,0"
+                              Background="#F8F9FB">
+                            <Border Grid.Row="0" Grid.Column="0"
+                                    BorderBrush="{StaticResource LineColor}"
+                                    BorderThickness="0,0,0,1"
+                                    Margin="0,9,0,9">
+                                <TextBlock Classes="overline" Text="MÃ PO" />
+                            </Border>
+                            <Border Grid.Row="0" Grid.Column="1"
+                                    BorderBrush="{StaticResource LineColor}"
+                                    BorderThickness="0,0,0,1"
+                                    Margin="0,9,0,9">
+                                <TextBlock Classes="overline" Text="SỐ LƯỢNG" />
+                            </Border>
+                            <Border Grid.Row="0" Grid.Column="2"
+                                    BorderBrush="{StaticResource LineColor}"
+                                    BorderThickness="0,0,0,1"
+                                    Margin="0,9,0,9">
+                                <TextBlock Classes="overline" Text="ĐÃ QUÉT" />
+                            </Border>
+                            <Border Grid.Row="0" Grid.Column="3"
+                                    BorderBrush="{StaticResource LineColor}"
+                                    BorderThickness="0,0,0,1"
+                                    Margin="0,9,0,9">
+                                <TextBlock Classes="overline" Text="TRẠNG THÁI" />
+                            </Border>
+                            <Border Grid.Row="0" Grid.Column="4"
+                                    BorderBrush="{StaticResource LineColor}"
+                                    BorderThickness="0,0,0,1"
+                                    Margin="0,9,0,9">
+                                <TextBlock Classes="overline" Text="THỜI ĐIỂM TẠO" />
+                            </Border>
+                        </Grid>
+                    </ScrollViewer>
 
-                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <ScrollViewer Grid.Row="1"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto">
                         <ItemsControl ItemsSource="{Binding ProductionOrders.Orders}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:ProductionOrderRowViewModel">
@@ -244,6 +252,37 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </ScrollViewer>
+
+                    <!-- Trạng thái rỗng (UI-016): bảng trống cần thông báo,
+                         không để vùng trắng trơn 1322x513px. -->
+                    <StackPanel Grid.Row="1"
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Center"
+                                Spacing="10"
+                                IsVisible="{Binding ProductionOrders.IsEmpty}">
+                        <Border Width="52" Height="52"
+                                CornerRadius="16"
+                                Background="{StaticResource BgRaised}">
+                            <Path Width="24" Height="24"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  Stretch="Uniform"
+                                  Stroke="{StaticResource TextMuted}"
+                                  StrokeThickness="1.6"
+                                  StrokeLineCap="Round"
+                                  StrokeJoin="Round"
+                                  Data="{StaticResource Icon.Table}" />
+                        </Border>
+                        <TextBlock Text="Chưa có dữ liệu"
+                                   FontSize="15"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextMuted}"
+                                   HorizontalAlignment="Center" />
+                        <TextBlock Classes="label"
+                                   FontSize="13"
+                                   HorizontalAlignment="Center"
+                                   Text="Bấm “Tải PO từ server” để lấy danh sách lệnh sản xuất." />
+                    </StackPanel>
                 </Grid>
             </Grid>
         </Border>

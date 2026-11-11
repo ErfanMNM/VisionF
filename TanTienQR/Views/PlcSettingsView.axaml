@@ -82,12 +82,54 @@
         </Style>
 
         <!-- ===== Header bảng ===== -->
+        <!-- LineHeight: chữ HOA có dấu tiếng Việt (TÊN, GIÁ TRỊ, NHẬP) cần
+             nhiều chiều cao hơn chữ thường. Không đặt rõ LineHeight thì Avalonia
+             tự tính theo font metric và hay cắt mất dấu nặng/dấu huyền
+             (Desired 24px nhưng Bounds chỉ 14px) -> UI-008. -->
         <Style Selector="TextBlock.th">
             <Setter Property="FontSize" Value="11" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="LetterSpacing" Value="0.12" />
             <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
             <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="LineHeight" Value="17" />
+        </Style>
+
+        <!-- ===== Nhãn viết HOA có dấu tiếng Việt (UI-008) =====
+             "KIỂU", "TRUY CẬP", "MÔ TẢ", "Ô NHỚ"... cần LineHeight rõ ràng
+             để không bị cắt dấu khi nằm trong ô cao cố định. -->
+        <Style Selector="TextBlock.fieldLabel">
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="LineHeight" Value="15" />
+        </Style>
+
+        <!-- ===== Nút nhỏ có CHỮ (UI-007 / UI-014) =====
+             Trước đây các nút này đặt Height="28/30/32" trực tiếp, thắng
+             MinHeight=38 của style chung (Button.soft / Button.primary /
+             TextBox.field / ComboBox.field) => nội dung bị cắt.
+             Fix: dùng style riêng "smallbtn" (34px, đủ cho chữ 11.5px có dấu)
+             thay vì ép chiều cao trực tiếp. -->
+        <Style Selector="Button.smallbtn">
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="MinWidth" Value="76" />
+            <Setter Property="Padding" Value="12,0" />
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="CornerRadius" Value="9" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <!-- Ô nhập nhỏ: 34px, chữ 12px có dấu hiển thị đủ -->
+        <Style Selector="TextBox.smallfield">
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <!-- ComboBox nhỏ: 34px, canh giữa + placeholder không bị cắt -->
+        <Style Selector="ComboBox.smallfield">
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
 
         <!-- ===== Nút xoá: đỏ khi rê chuột ===== -->
@@ -176,9 +218,7 @@
             <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <TextBlock Text="Chỉnh PLC"
-                               FontSize="20"
-                               FontWeight="Bold"
-                               Foreground="{StaticResource TextPrimary}" />
+                               Classes="pageTitle" />
                     <Border Classes="badge">
                         <TextBlock Text="{Binding PlcSettings.ParameterCount}" />
                     </Border>
@@ -354,15 +394,14 @@
                                        VerticalAlignment="Center"
                                        Text="TÊN MỚI" />
                             <TextBox Grid.Column="1"
-                                     Classes="field"
-                                     Height="32"
+                                     Classes="field smallfield"
                                      FontSize="12"
                                      VerticalContentAlignment="Center"
                                      PlaceholderText="Ví dụ: Line 1 - Sản phẩm A"
                                      Text="{Binding PlcSettings.NewRecipeName}" />
                             <Button Grid.Column="2"
-                                    Classes="soft"
-                                    Height="32" MinWidth="76" Padding="10,0"
+                                    Classes="soft smallbtn"
+                                    MinWidth="76" Padding="10,0"
                                     FontSize="11.5"
                                     HorizontalContentAlignment="Center"
                                     VerticalContentAlignment="Center"
@@ -412,8 +451,8 @@
                                        Text="Chạm một dòng để chọn" />
                             <!-- Thêm tham số mới -->
                             <Button Grid.Column="2"
-                                    Classes="primary"
-                                    Height="28" MinWidth="98" Padding="10,0"
+                                    Classes="primary smallbtn"
+                                    MinWidth="98" Padding="10,0"
                                     FontSize="11.5"
                                     CornerRadius="9"
                                     HorizontalContentAlignment="Center"
@@ -430,10 +469,14 @@
                         </Grid>
 
                         <!-- Header cột -->
+                        <!-- ScrollViewer danh sách bên dưới luôn hiện thanh cuộn dọc
+                             (Visible) => thanh cuộn chiếm 16px ở mép phải. Header (nằm ngoài
+                             ScrollViewer) dùng Padding phải = 14 + 16 = 30px để vùng nội dung
+                             khớp với dữ liệu => các cột thẳng hàng (UI-002). -->
                         <Border Grid.Row="1"
                                 BorderBrush="{StaticResource LineColor}"
                                 BorderThickness="0,1,0,1"
-                                Padding="14,7"
+                                Padding="14,7,30,7"
                                 Background="#F8F9FB">
                             <Grid ColumnDefinitions="Auto,*,84,104" ColumnSpacing="8">
                                 <TextBlock Grid.Column="1" Classes="th" Text="TÊN" />
@@ -444,7 +487,8 @@
 
                         <!-- Danh sách: gồm dòng đang soạn + dòng đã lưu -->
                         <Panel Grid.Row="2">
-                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                                          VerticalScrollBarVisibility="Visible">
                                 <StackPanel>
 
                                 <!-- ======== DÒNG ĐANG SOẠN (mới) ======== -->
@@ -454,7 +498,7 @@
                                             <Border Classes="draftRow"
                                                     BorderBrush="{StaticResource LineAccent}"
                                                     BorderThickness="0,0,0,1"
-                                                    Padding="14,8">
+                                                    Padding="14,8,30,8">
                                                 <StackPanel Spacing="7">
 
                                                     <!-- Hàng nhập chính: tên + địa chỉ xếp dọc để tên hiện đủ -->
@@ -538,8 +582,7 @@
                                                                    VerticalAlignment="Center"
                                                                    Text="KIỂU" />
                                                         <ComboBox Grid.Column="1"
-                                                                  Classes="field"
-                                                                  Height="30"
+                                                                  Classes="field smallfield"
                                                                   FontSize="11"
                                                                   MinWidth="104"
                                                                   Padding="8,0"
@@ -558,8 +601,7 @@
                                                                    VerticalAlignment="Center"
                                                                    Text="TRUY CẬP" />
                                                         <ComboBox Grid.Column="3"
-                                                                  Classes="field"
-                                                                  Height="30"
+                                                                  Classes="field smallfield"
                                                                   FontSize="11"
                                                                   MinWidth="118"
                                                                   Padding="8,0"
@@ -601,7 +643,7 @@
                                         <DataTemplate x:DataType="vm:PlcParamRowViewModel">
                                             <Border BorderBrush="{StaticResource LineColor}"
                                                     BorderThickness="0,0,0,1"
-                                                    Padding="14,6"
+                                                    Padding="14,6,30,6"
                                                     Classes.rowSelected="{Binding IsSelected}"
                                                     PointerPressed="OnRowPointerPressed">
                                                 <StackPanel Spacing="5">
@@ -779,11 +821,14 @@
                                 </StackPanel>
                             </ScrollViewer>
 
-                            <!-- Chưa có tham số -->
+                            <!-- Trạng thái rỗng (UI-016): bảng tham số trống cần thông báo.
+                                 LƯU Ý: binding trước đây là "!IsTableEmpty" (ngược),
+                                 khiến thông báo "Chưa có ô nhớ nào" hiện lên khi bảng
+                                 ĐÃ có dữ liệu. Sửa thành "IsTableEmpty". -->
                             <StackPanel VerticalAlignment="Center"
                                         HorizontalAlignment="Center"
                                         Spacing="7"
-                                        IsVisible="{Binding !PlcSettings.IsTableEmpty}">
+                                        IsVisible="{Binding PlcSettings.IsTableEmpty}">
                                 <Border Width="42" Height="42"
                                         CornerRadius="14"
                                         Background="{StaticResource BgRaised}">
@@ -964,8 +1009,8 @@
                                             Orientation="Horizontal"
                                             Spacing="8">
                                     <!-- Tải lên: nạp giá trị recipe vào ô nhập -->
-                                    <Button Classes="soft"
-                                            Height="32" MinWidth="86" Padding="12,0"
+                                    <Button Classes="soft smallbtn"
+                                            MinWidth="86" Padding="12,0"
                                             FontSize="11.5"
                                             HorizontalContentAlignment="Center"
                                             VerticalContentAlignment="Center"
@@ -984,8 +1029,8 @@
                                     </Button>
 
                                     <!-- Cập nhật: đọc lại giá trị thực tế từ PLC -->
-                                    <Button Classes="soft"
-                                            Height="32" MinWidth="86" Padding="12,0"
+                                    <Button Classes="soft smallbtn"
+                                            MinWidth="86" Padding="12,0"
                                             FontSize="11.5"
                                             HorizontalContentAlignment="Center"
                                             VerticalContentAlignment="Center"
@@ -1004,8 +1049,8 @@
                                     </Button>
 
                                     <!-- Áp dụng: ghi xuống PLC + lưu vào recipe -->
-                                    <Button Classes="primary"
-                                            Height="32" MinWidth="86" Padding="12,0"
+                                    <Button Classes="primary smallbtn"
+                                            MinWidth="86" Padding="12,0"
                                             FontSize="11.5"
                                             HorizontalContentAlignment="Center"
                                             VerticalContentAlignment="Center"
@@ -1055,8 +1100,8 @@
                         </StackPanel>
 
                         <Button Grid.Column="1"
-                                Classes="soft"
-                                Height="30" MinWidth="72" Padding="10,0"
+                                Classes="soft smallbtn"
+                                MinWidth="72" Padding="10,0"
                                 FontSize="11"
                                 HorizontalContentAlignment="Center"
                                 VerticalContentAlignment="Center"
@@ -1074,8 +1119,8 @@
                         </Button>
 
                         <Button Grid.Column="2"
-                                Classes="soft"
-                                Height="30" MinWidth="108" Padding="10,0"
+                                Classes="soft smallbtn"
+                                MinWidth="108" Padding="10,0"
                                 FontSize="11"
                                 HorizontalContentAlignment="Center"
                                 VerticalContentAlignment="Center"
@@ -1157,7 +1202,7 @@
                             </StackPanel>
                             <Button Grid.Column="1"
                                     Classes="primary"
-                                    Height="36" MinWidth="140" Padding="14,0"
+                                    Height="44" MinWidth="140" Padding="14,0"
                                     FontSize="12"
                                     HorizontalContentAlignment="Center"
                                     VerticalContentAlignment="Center"
