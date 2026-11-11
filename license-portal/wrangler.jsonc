@@ -1,0 +1,28 @@
+{
+  "name": "tantien-license-portal",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-11",
+  "compatibility_flags": ["nodejs_compat_v2"],
+  "observability": { "enabled": true, "head_sampling_rate": 0.1 },
+
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "tantien-license",
+      "database_id": "cc408caa-b350-4fe0-a5dd-c2c2f13f9b08",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  "vars": {
+    "APP_NAME": "Tan Tien License Portal",
+    "DEFAULT_PRODUCT": "DemoQR"
+  }
+}

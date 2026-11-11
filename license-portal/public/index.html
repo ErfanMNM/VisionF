@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tan Tien — Cap License</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230b8f4a'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'>T</text></svg>" />
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <!-- ================= LOGIN ================= -->
+  <div id="login-screen" class="login-screen hidden">
+    <form id="login-form" class="login-card" autocomplete="on">
+      <div class="logo">
+        <svg viewBox="0 0 100 100" width="52" height="52" aria-hidden="true">
+          <rect width="100" height="100" rx="20" fill="#0b8f4a"></rect>
+          <text x="50" y="68" font-size="52" text-anchor="middle" fill="white"
+                font-family="sans-serif" font-weight="bold">T</text>
+        </svg>
+      </div>
+      <h1>Tan Tien License Portal</h1>
+      <p class="subtitle">He thong cap license phan mem</p>
+
+      <label for="login-username">Ten dang nhap</label>
+      <input id="login-username" name="username" type="text" autocomplete="username" required />
+
+      <label for="login-password">Mat khau</label>
+      <input id="login-password" name="password" type="password" autocomplete="current-password" required />
+
+      <button type="submit" class="btn btn-primary btn-block">Dang nhap</button>
+      <div id="login-error" class="alert alert-error hidden"></div>
+    </form>
+  </div>
+
+  <!-- ================= MAIN ================= -->
+  <div id="main-screen" class="hidden">
+    <header class="topbar">
+      <div class="topbar-left">
+        <svg viewBox="0 0 100 100" width="32" height="32" aria-hidden="true">
+          <rect width="100" height="100" rx="20" fill="#0b8f4a"></rect>
+          <text x="50" y="68" font-size="52" text-anchor="middle" fill="white"
+                font-family="sans-serif" font-weight="bold">T</text>
+        </svg>
+        <span class="brand">Tan Tien — Cap License</span>
+      </div>
+      <div class="topbar-right">
+        <span id="current-user" class="user-badge"></span>
+        <button id="logout-btn" class="btn btn-ghost">Dang xuat</button>
+      </div>
+    </header>
+
+    <nav class="tabs">
+      <button class="tab active" data-tab="issue">Cap license</button>
+      <button class="tab" data-tab="list">Danh sach</button>
+      <button class="tab" data-tab="keys">Khoa ky</button>
+      <button class="tab" data-tab="audit">Nhat ky</button>
+    </nav>
+
+    <main class="content">
+      <!-- ---------- TAB: CAP LICENSE ---------- -->
+      <section id="tab-issue" class="tab-panel active">
+        <div class="grid-2">
+          <div class="card">
+            <h2>Thong tin cap license</h2>
+
+            <label for="customer">Khach hang <span class="req">*</span></label>
+            <input id="customer" type="text" placeholder="Ten cong ty / nguoi dung" />
+
+            <label for="hwid">HWID may <span class="req">*</span></label>
+            <div class="input-group">
+              <input id="hwid" type="text" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"
+                     class="mono" spellcheck="false" />
+              <button id="paste-hwid" type="button" class="btn btn-ghost btn-sm">Dan</button>
+            </div>
+            <p class="hint">Trong app: <strong>Quan tri &rarr; License</strong> — copy ma may 32 ky tu hex.</p>
+
+            <div class="row-2">
+              <div>
+                <label for="product">San pham</label>
+                <select id="product"></select>
+              </div>
+              <div>
+                <label for="days-valid">So ngay hieu luc <span class="req">*</span></label>
+                <input id="days-valid" type="number" min="1" max="3650" value="30" />
+              </div>
+            </div>
+
+            <label for="note">Ghi chu</label>
+            <input id="note" type="text" placeholder="VD: goi thuong 12/2026, PO 12345" />
+
+            <button id="issue-btn" class="btn btn-primary btn-block">Cap license</button>
+            <div id="issue-error" class="alert alert-error hidden"></div>
+          </div>
+
+          <div class="card">
+            <h2>Ket qua</h2>
+            <div id="issue-empty" class="empty-state">
+              <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor"
+                   stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 12l2 2 4-4"></path>
+                <path d="M12 3l7 4v5c0 4.4-3 8.3-7 9-4-.7-7-4.6-7-9V7l7-4z"></path>
+              </svg>
+              <p>Chua co license nao duoc cap.</p>
+            </div>
+
+            <div id="issue-result" class="hidden">
+              <div class="result-banner">
+                <strong id="result-key"></strong>
+                <span id="result-expiry" class="muted"></span>
+              </div>
+
+              <label>Noi dung file license.lic</label>
+              <textarea id="result-text" class="mono" rows="7" readonly spellcheck="false"></textarea>
+
+              <div class="btn-row">
+                <button id="copy-license" class="btn btn-primary">Copy noi dung</button>
+                <button id="download-license" class="btn btn-secondary">Tai file .lic</button>
+              </div>
+
+              <details class="details">
+                <summary>Chi tiet</summary>
+                <dl id="result-detail" class="detail-list"></dl>
+              </details>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ---------- TAB: DANH SACH ---------- -->
+      <section id="tab-list" class="tab-panel">
+        <div class="card">
+          <div class="toolbar">
+            <input id="search" type="search" placeholder="Tim theo khach hang, HWID, license key..." />
+            <select id="filter-product"><option value="">Tat ca san pham</option></select>
+            <select id="filter-status">
+              <option value="all">Tat ca trang thai</option>
+              <option value="active">Con hieu luc</option>
+              <option value="expired">Het han</option>
+              <option value="revoked">Da thu hoi</option>
+            </select>
+            <button id="reload-btn" class="btn btn-secondary">Tai lai</button>
+          </div>
+
+          <div class="table-wrap">
+            <table id="licenses-table">
+              <thead>
+                <tr>
+                  <th>License key</th>
+                  <th>Khach hang</th>
+                  <th>HWID</th>
+                  <th>San pham</th>
+                  <th>Hieu luc</th>
+                  <th>Trang thai</th>
+                  <th class="col-actions">Thao tac</th>
+                </tr>
+              </thead>
+              <tbody id="licenses-body">
+                <tr><td colspan="7" class="empty-cell">Dang tai...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p id="licenses-count" class="hint"></p>
+        </div>
+      </section>
+
+      <!-- ---------- TAB: KHOA KY ---------- -->
+      <section id="tab-keys" class="tab-panel">
+        <div class="card">
+          <h2>Khoa ky hien hanh</h2>
+          <p class="hint">
+            <strong>Quan trong:</strong> khoa cong khai (public key) phai duoc dan vao app de app xac thuc license.
+            Khoa rieng (private key) chi nam trong Cloudflare Worker Secret — khong bao gio commit vao git.
+          </p>
+          <div id="key-info" class="mono-box">Dang tai...</div>
+
+          <h3>Cach dua public key vao app</h3>
+          <pre class="code-block">// ClassLibraryMT/Licensing/LicenseKeys.cs
+public const string CurrentKeyId = "&lt;KEY_ID&gt;";
+public const string CurrentPublicKey =
+    "&lt;PUBLIC_KEY_BASE64&gt;";
+
+public static IReadOnlyDictionary&lt;string, string&gt; All { get; } =
+    new Dictionary&lt;string, string&gt;(StringComparer.OrdinalIgnoreCase)
+    {
+        [CurrentKeyId] = CurrentPublicKey,
+    };</pre>
+          <p class="hint">Sau khi sua file, build lai app roi phat lai cho khach hang.</p>
+        </div>
+      </section>
+
+      <!-- ---------- TAB: NHAT KY ---------- -->
+      <section id="tab-audit" class="tab-panel">
+        <div class="card">
+          <h2>Nhat ky thao tac</h2>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Thoi gian</th><th>Người thực hiện</th><th>Hanh dong</th><th>Chi tiet</th></tr>
+              </thead>
+              <tbody id="audit-body">
+                <tr><td colspan="4" class="empty-cell">Dang tai...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ================= MODAL ================= -->
+  <div id="modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-card">
+      <h3 id="modal-title"></h3>
+      <p id="modal-text" class="muted"></p>
+      <label id="modal-reason-label" class="hidden" for="modal-reason">Ly do</label>
+      <input id="modal-reason" class="hidden" type="text" placeholder="VD: khach doi may" />
+      <label id="modal-days-label" class="hidden" for="modal-days">So ngay gia han</label>
+      <input id="modal-days" class="hidden" type="number" min="1" max="3650" value="30" />
+      <div class="btn-row btn-row-end">
+        <button id="modal-cancel" class="btn btn-ghost">Huy</button>
+        <button id="modal-confirm" class="btn btn-primary">Xac nhan</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
