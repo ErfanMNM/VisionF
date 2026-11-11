@@ -674,14 +674,12 @@
                                                                         Classes.on="{Binding BoolValue}"
                                                                         Content="ON"
                                                                         ToolTip.Tip="Chọn giá trị TRUE cho ô nhớ này"
-                                                                        Command="{Binding SetBoolCommand}"
-                                                                        CommandParameter="True" />
+                                                                        Command="{Binding SetBoolTrueCommand}" />
                                                                 <Button Classes="boolPick"
                                                                         Classes.off="{Binding IsBoolOff}"
                                                                         Content="OFF"
                                                                         ToolTip.Tip="Chọn giá trị FALSE cho ô nhớ này"
-                                                                        Command="{Binding SetBoolCommand}"
-                                                                        CommandParameter="False" />
+                                                                        Command="{Binding SetBoolFalseCommand}" />
                                                             </StackPanel>
 
                                                             <!-- Short / Int32: ô nhập số + nút mở bàn phím số nhỏ -->

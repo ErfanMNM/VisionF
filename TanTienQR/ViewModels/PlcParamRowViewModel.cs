@@ -140,11 +140,25 @@ internal sealed partial class PlcParamRowViewModel : ObservableObject
     public partial bool BoolValue { get; set; }
 
     /// <summary>
-    /// Đặt giá trị Bool cụ thể (dùng bởi nút ON / OFF trên bảng).
+    /// Bấm nút ON -> đặt giá trị Bool là TRUE.
+    ///
+    /// Dùng lệnh KHÔNG có tham số (thay vì <c>IRelayCommand&lt;bool&gt;</c>) vì
+    /// Avalonia không tự chuyển chuỗi "True" trong XAML thành <see cref="bool"/>,
+    /// khiến <c>RelayCommand&lt;bool&gt;.CanExecute</c> ném ArgumentException lúc
+    /// dựng cây điều khiển -> ứng dụng crash.
+    /// </summary>
+    [RelayCommand]
+    public void SetBoolTrue() => ApplyBool(true);
+
+    /// <summary>Bấm nút OFF -> đặt giá trị Bool là FALSE.</summary>
+    [RelayCommand]
+    public void SetBoolFalse() => ApplyBool(false);
+
+    /// <summary>
+    /// Áp dụng giá trị Bool mới và xoá thông báo trạng thái cũ trên dòng.
     /// </summary>
     /// <param name="value">True = ON, False = OFF.</param>
-    [RelayCommand]
-    public void SetBool(bool value)
+    private void ApplyBool(bool value)
     {
         BoolValue = value;
 
