@@ -20,6 +20,20 @@ internal sealed partial class PlcValueKeypadViewModel : ObservableObject
     private PlcParamRowViewModel? _row;
 
     /// <summary>
+    /// Sự kiện báo "bàn phím đã đóng xong" — bắn ra sau khi giá trị được
+    /// chốt thành công (nút OK) hoặc bị huỷ.
+    ///
+    /// Bàn phím số nằm TRONG panel "Ô NHỚ PLC" nên việc ẩn/hiện panel được
+    /// quyết định bởi <c>PlcSettingsViewModel.IsKeypadOpen</c> (dựa trên
+    /// <c>KeypadRow</c>), KHÔNG phải bởi <see cref="Row"/> của bàn phím.
+    ///
+    /// Vì vậy khi bàn phím tự đóng (nút OK), nó phải báo ngược lại cho
+    /// ViewModel trang để ViewModel trang xoá <c>KeypadRow</c> — nếu không,
+    /// panel bàn phím vẫn hiện (đây chính là lỗi "nhấn OK không đóng popup").
+    /// </summary>
+    public event EventHandler? Closed;
+
+    /// <summary>
     /// Dòng đang gõ giá trị (null = bàn phím không hoạt động).
     /// </summary>
     public PlcParamRowViewModel? Row
@@ -211,6 +225,10 @@ internal sealed partial class PlcValueKeypadViewModel : ObservableObject
 
     /// <summary>
     /// Chốt giá trị: nếu hợp lệ thì đóng bàn phím, ngược lại báo lỗi trên dòng.
+    ///
+    /// Khi chốt thành công, bàn phím báo <see cref="Closed"/> để ViewModel trang
+    /// xoá <c>KeypadRow</c> — qua đó <c>IsKeypadOpen</c> = false và panel bàn
+    /// phím thật sự biến mất khỏi màn hình.
     /// </summary>
     /// <returns>True nếu giá trị hợp lệ và bàn phím đã đóng.</returns>
     public bool Commit()
@@ -233,6 +251,7 @@ internal sealed partial class PlcValueKeypadViewModel : ObservableObject
         row.IsError = false;
 
         Row = null;
+        Closed?.Invoke(this, EventArgs.Empty);
         return true;
     }
 

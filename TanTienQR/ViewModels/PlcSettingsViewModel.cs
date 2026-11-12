@@ -196,6 +196,24 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
             OnPropertyChanged(nameof(HasDraftRows));
             OnPropertyChanged(nameof(IsTableEmpty));
         };
+
+        // Bàn phím số tự báo khi đóng xong (nút OK chốt giá trị).
+        // ViewModel trang phải xoá KeypadRow để panel bàn phím biến mất
+        // — nếu không, nhấn OK chỉ làm bàn phím "thu nhỏ" mà không đóng.
+        Keypad.Closed += OnKeypadClosed;
+    }
+
+    /// <summary>
+    /// Bàn phím số đã đóng xong (người dùng bấm OK và giá trị hợp lệ).
+    ///
+    /// Xoá <see cref="KeypadRow"/> để <see cref="IsKeypadOpen"/> = false và
+    /// panel bàn phím thật sự biến mất khỏi bảng "Ô NHỚ PLC".
+    /// </summary>
+    /// <param name="sender">Bàn phím số.</param>
+    /// <param name="e">Tham số sự kiện.</param>
+    private void OnKeypadClosed(object? sender, EventArgs e)
+    {
+        KeypadRow = null;
     }
 
     /// <summary>
@@ -1118,28 +1136,14 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
     ///
     /// Nếu giá trị không hợp lệ với kiểu dữ liệu thì báo lỗi ngay trên dòng
     /// và GIỮ bàn phím mở để người dùng sửa tiếp.
+    ///
+    /// Lệnh này chuyển tiếp cho <see cref="PlcValueKeypadViewModel.Commit"/> để
+    /// chỉ có MỘT nơi xử lý logic chốt giá trị (tránh hai bản sao lệch nhau).
     /// </summary>
     [RelayCommand]
     private void KeypadCommit()
     {
-        var row = KeypadRow;
-        if (row is null)
-        {
-            return;
-        }
-
-        if (!row.ValidateInput(out var error))
-        {
-            row.StatusText = error;
-            row.IsError = true;
-            return;
-        }
-
-        row.InputValue = row.NormalizedInputValue;
-        row.StatusText = string.Empty;
-        row.IsError = false;
-
-        KeypadRow = null;
+        Keypad.Commit();
     }
 
     // ------------------------------------------------------------------

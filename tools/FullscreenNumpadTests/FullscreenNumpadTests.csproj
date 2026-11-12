@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    FullscreenNumpadTests — kiểm thử OFF-SCREEN cho 2 thay đổi:
+
+      [1] Cửa sổ chính tự TOÀN MÀN HÌNH khi mở (WindowState = FullScreen),
+          và có đường thoát (F11 toggle / Esc).
+      [2] Bàn phím số nhỏ trong tab "Chỉnh PLC": nhấn OK phải ĐÓNG panel bàn
+          phím (IsKeypadOpen = false) và áp dụng giá trị vào dòng.
+
+    Dùng Avalonia.Headless + Skia: KHÔNG mở cửa sổ thật trên desktop,
+    KHÔNG chụp màn hình, KHÔNG ảnh hưởng phiên làm việc của người dùng.
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>FullscreenNumpadTests</RootNamespace>
+    <AssemblyName>FullscreenNumpadTests</AssemblyName>
+    <IsAotCompatible>false</IsAotCompatible>
+    <PublishAot>false</PublishAot>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <NoWarn>$(NoWarn);CA1416;AVLN5001;IL3000</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Headless" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Controls.WebView" Version="12.1.1" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.14" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.14" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\TanTienQR\TanTienQR.csproj" />
+  </ItemGroup>
+
+</Project>

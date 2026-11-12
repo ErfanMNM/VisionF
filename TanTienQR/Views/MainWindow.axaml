@@ -355,6 +355,26 @@
                                     </StackPanel>
                                 </StackPanel>
                             </Button>
+                            <!-- ===== Toàn màn hình (F11) =====
+                                 App mở ra đã ở chế độ toàn màn hình thật.
+                                 Nút này + phím F11 / Esc là đường thoát cho
+                                 người dùng (không bị kẹt ở chế độ kiosk). -->
+                            <Button Classes="menubtn" Click="OnFullScreenClick">
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <Border Width="30" Height="30" CornerRadius="9"
+                                            Background="{StaticResource BgRaised}"
+                                            VerticalAlignment="Center">
+                                        <TextBlock Text="⛶" FontSize="13" FontWeight="Bold"
+                                                   Foreground="{StaticResource TextPrimary}"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center" />
+                                    </Border>
+                                    <StackPanel Spacing="0" VerticalAlignment="Center">
+                                        <TextBlock Text="Toàn màn hình" FontSize="13" FontWeight="SemiBold" />
+                                        <TextBlock Text="Phím F11 / Esc để thoát" FontSize="10" Foreground="{StaticResource TextMuted}" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Button>
                             <Border Height="1" Margin="12,6"
                                     Background="{StaticResource LineColor}" />
                             <Button Classes="menubtn danger" Click="OnShutdownClick">
