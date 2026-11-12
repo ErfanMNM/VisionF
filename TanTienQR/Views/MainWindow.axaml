@@ -64,8 +64,10 @@
                             Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
 
                     <Border Classes="pill" Classes.ok="{Binding IsReady}" Classes.warn="{Binding !IsReady}"
-                            MinWidth="96">
-                        <TextBlock Text="{Binding AppStateText}" HorizontalAlignment="Center" />
+                            MinWidth="96" Height="34" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding AppStateText}"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
                     </Border>
 
                     <Border Width="1" Height="34"
@@ -80,6 +82,7 @@
                                    FontWeight="Bold"
                                    HorizontalAlignment="Right" />
                         <TextBlock Classes="label" FontSize="11" Text="{Binding DateText}" HorizontalAlignment="Right" />
+                        <TextBlock Classes="label" FontSize="10" Text="{Binding AppVersionText}" HorizontalAlignment="Right" />
                     </StackPanel>
 
                     <!-- Người dùng đang đăng nhập + vai trò -->

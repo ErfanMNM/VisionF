@@ -112,6 +112,15 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
 
     // ---------- Trạng thái ứng dụng ----------
 
+    /// <summary>Phiên bản assembly đang chạy.</summary>
+    public string AppVersionText { get; } = BuildAppVersion();
+
+    private static string BuildAppVersion()
+    {
+        var version = typeof(MainViewModel).Assembly.GetName().Version;
+        return version is null ? "Phiên bản không xác định" : $"v{version}";
+    }
+
     /// <summary>Trạng thái vận hành (Initializing / Ready / Stopped / Error).</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(AppStateBadgeClass))]
