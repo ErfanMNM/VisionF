@@ -11,4 +11,6 @@
   <Project Path="tools/PoTests/PoTests.csproj" />
   <Project Path="tools/ConfigTests/ConfigTests.csproj" />
   <Project Path="tools/ConfigUiTests/ConfigUiTests.csproj" />
+  <Project Path="tools/FullscreenNumpadTests/FullscreenNumpadTests.csproj" />
+  <Project Path="tools/AccountsIconTests/AccountsIconTests.csproj" />
 </Solution>
