@@ -37,6 +37,38 @@ public sealed class WebConfig
     [JsonPropertyName("Enabled")] public bool Enabled { get; set; } = true;
 }
 
+/// <summary>
+/// Cấu hình máy quét cầm tay (mục "Scanner").
+///
+/// Khớp với <c>HandheldOptions</c> — chế độ TCP server/client, host/port,
+/// cổng COM và baud rate. Cấu hình này được bind một lần khi app khởi động
+/// nên thay đổi cần restart ứng dụng.
+/// </summary>
+public sealed class ScannerConfig
+{
+    [JsonPropertyName("Enabled")] public bool Enabled { get; set; } = true;
+    [JsonPropertyName("Mode")] public string Mode { get; set; } = "TcpServer";
+    [JsonPropertyName("TcpHost")] public string TcpHost { get; set; } = "127.0.0.1";
+    [JsonPropertyName("TcpPort")] public int TcpPort { get; set; } = 6999;
+    [JsonPropertyName("ComPort")] public string ComPort { get; set; } = "COM3";
+    [JsonPropertyName("BaudRate")] public int BaudRate { get; set; } = 9600;
+}
+
+/// <summary>
+/// Cấu hình server quản lý Production Order (mục "Po").
+///
+/// Khớp với <c>PoOptions</c>: địa chỉ server, thư mục DB, chu kỳ gửi mã
+/// kích hoạt và số mã mẫu sinh cho mỗi PO.
+/// </summary>
+public sealed class PoConfig
+{
+    [JsonPropertyName("BaseUrl")] public string BaseUrl { get; set; } = "http://127.0.0.1:5080";
+    [JsonPropertyName("DbRoot")] public string DbRoot { get; set; } = "logs/po";
+    [JsonPropertyName("ActivationIntervalMs")] public int ActivationIntervalMs { get; set; } = 2500;
+    [JsonPropertyName("AutoActivate")] public bool AutoActivate { get; set; } = true;
+    [JsonPropertyName("CodeSampleSize")] public int CodeSampleSize { get; set; } = 100;
+}
+
 /// <summary>Cấu hình ghi log SQLite (mục "Logging:Sqlite").</summary>
 public sealed class SqliteLoggingConfig
 {
@@ -122,6 +154,8 @@ public sealed class AppConfigSnapshot
     [JsonPropertyName("Camera")] public CameraConfig Camera { get; set; } = new();
     [JsonPropertyName("Plc")] public PlcConfig Plc { get; set; } = new();
     [JsonPropertyName("Web")] public WebConfig Web { get; set; } = new();
+    [JsonPropertyName("Scanner")] public ScannerConfig Scanner { get; set; } = new();
+    [JsonPropertyName("Po")] public PoConfig Po { get; set; } = new();
     [JsonPropertyName("Logging")] public LoggingConfig Logging { get; set; } = new();
     [JsonPropertyName("Auth")] public AuthConfig Auth { get; set; } = new();
     [JsonPropertyName("PlcSettings")] public PlcSettingsConfig PlcSettings { get; set; } = new();
@@ -141,6 +175,8 @@ public sealed class AppConfigSnapshot
 [JsonSerializable(typeof(AuthConfig))]
 [JsonSerializable(typeof(PlcSettingsConfig))]
 [JsonSerializable(typeof(ScanConfig))]
+[JsonSerializable(typeof(ScannerConfig))]
+[JsonSerializable(typeof(PoConfig))]
 public sealed partial class AppConfigJsonContext : JsonSerializerContext
 {
 }

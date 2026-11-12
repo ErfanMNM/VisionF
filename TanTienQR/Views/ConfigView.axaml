@@ -8,17 +8,110 @@
              x:DataType="vm:MainViewModel">
 
     <!-- Bố cục theo mẫu Dashboard 4: tiêu đề lớn, các card cấu hình bo góc 16px,
-         card nhỏ (device) bo góc 14px, thanh thao tác dưới bo góc 16px. -->
+         card nhỏ (device) bo góc 14px, thanh thao tác dưới bo góc 16px.
+
+         Cấu trúc trang:
+           Row 0 — tiêu đề + banner bắt buộc restart + cảnh báo Development override
+           Row 1 — lưới 2 cột các nhóm cấu hình (cuộn dọc)
+           Row 2 — thanh thao tác (Hoàn tác / Lưu cấu hình) + thông báo kết quả -->
     <Grid RowDefinitions="Auto,*,Auto" Margin="18,6,18,18" RowSpacing="12">
 
-        <!-- Tiêu đề + cảnh báo -->
-        <StackPanel Grid.Row="0" Spacing="6">
-            <TextBlock Text="Cấu hình ứng dụng"
-                       Classes="pageTitle" />
-            <TextBlock Classes="label"
-                       FontSize="13"
-                       Text="Tham số camera, PLC và web. Thay đổi IP/Port có hiệu lực sau khi khởi động lại ứng dụng." />
+        <!-- ===== Tiêu đề + banner ===== -->
+        <StackPanel Grid.Row="0" Spacing="8">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <StackPanel Grid.Column="0" Spacing="4">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="Cấu hình ứng dụng"
+                                   Classes="pageTitle" />
+                        <Border Background="{StaticResource WarnSoft}"
+                                BorderBrush="{StaticResource LineWarn}"
+                                BorderThickness="1"
+                                CornerRadius="9"
+                                Padding="8,2"
+                                VerticalAlignment="Center"
+                                IsVisible="{Binding ConfigEditor.IsDirty}">
+                            <TextBlock Text="Chưa lưu"
+                                       FontSize="11"
+                                       FontWeight="Bold"
+                                       Foreground="{StaticResource Warn}" />
+                        </Border>
+                    </StackPanel>
+                    <TextBlock Classes="label"
+                               FontSize="13"
+                               TextWrapping="Wrap"
+                               Text="Tham số kết nối camera, PLC, máy quét, server PO và web. Thay đổi thông số kết nối sẽ có hiệu lực sau khi khởi động lại ứng dụng." />
+                </StackPanel>
+            </Grid>
 
+            <!-- ===== BANNER BẮT BUỘC RESTART =====
+                 Hiện khi đã lưu cấu hình có thông số quan trọng bị thay đổi.
+                 Không có nút "áp dụng nóng": thông số kết nối chỉ được nạp lại
+                 khi app khởi động lại. -->
+            <Border Background="{StaticResource WarnSoft}"
+                    BorderBrush="{StaticResource Warn}"
+                    BorderThickness="1"
+                    CornerRadius="14"
+                    Padding="12,10"
+                    IsVisible="{Binding ConfigEditor.RestartRequired}">
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10" RowSpacing="8">
+                    <Path Grid.Row="0" Grid.Column="0"
+                          Width="18" Height="18"
+                          Stretch="Uniform"
+                          Stroke="{StaticResource Warn}"
+                          StrokeThickness="2"
+                          StrokeLineCap="Round"
+                          StrokeJoin="Round"
+                          VerticalAlignment="Top"
+                          Margin="0,1,0,0"
+                          Data="{StaticResource Icon.Alert}" />
+
+                    <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
+                        <TextBlock Foreground="{StaticResource Warn}"
+                                   FontSize="13"
+                                   FontWeight="Bold"
+                                   Text="Cần khởi động lại ứng dụng" />
+                        <TextBlock Foreground="{StaticResource TextPrimary}"
+                                   FontSize="11.5"
+                                   TextWrapping="Wrap"
+                                   Text="{Binding ConfigEditor.RestartBannerText}" />
+                        <TextBlock Foreground="{StaticResource TextMuted}"
+                                   FontSize="11"
+                                   TextWrapping="Wrap"
+                                   IsVisible="{Binding !ConfigEditor.CanHotApply}"
+                                   Text="Ứng dụng không áp dụng nóng các thông số này — bắt buộc khởi động lại để kết nối lại thiết bị." />
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="0" Grid.Column="2"
+                                Orientation="Horizontal"
+                                Spacing="8"
+                                VerticalAlignment="Center">
+                        <Button Classes="chip"
+                                IsEnabled="{Binding ConfigEditor.CanRestartNow}"
+                                Command="{Binding ConfigEditor.RestartLaterCommand}"
+                                ToolTip.Tip="Giữ thay đổi đã lưu, áp dụng sau khi khởi động lại ứng dụng">
+                            <TextBlock Text="Để sau" />
+                        </Button>
+                        <Button Classes="chip"
+                                FontWeight="Bold"
+                                IsEnabled="{Binding ConfigEditor.CanRestartNow}"
+                                Command="{Binding ConfigEditor.RestartNowCommand}"
+                                ToolTip.Tip="Khởi động lại ứng dụng ngay để áp dụng cấu hình mới">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <Path Width="14" Height="14"
+                                      Stretch="Uniform"
+                                      Stroke="{StaticResource TextPrimary}"
+                                      StrokeThickness="2"
+                                      StrokeLineCap="Round"
+                                      StrokeJoin="Round"
+                                      Data="{StaticResource Icon.Refresh}" />
+                                <TextBlock Text="Khởi động lại ngay" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- ===== Cảnh báo appsettings.Development.json ghi đè ===== -->
             <Border Background="{StaticResource WarnSoft}"
                     BorderBrush="{StaticResource Warn}"
                     BorderThickness="1"
@@ -44,15 +137,13 @@
             </Border>
         </StackPanel>
 
-        <!-- Các nhóm cấu hình.
-             UI-018: cân bằng 2 cột (CAMERA + VÙNG NHỚ D bên trái, PLC + WEB/LICENSE bên phải)
-             và luôn để thanh cuộn dọc hiện (Visible) khi nội dung vượt khung. -->
+        <!-- Các nhóm cấu hình: 2 cột, luôn hiện thanh cuộn dọc khi nội dung vượt khung. -->
         <ScrollViewer Grid.Row="1"
                       VerticalScrollBarVisibility="Visible"
                       HorizontalScrollBarVisibility="Disabled">
             <Grid ColumnDefinitions="*,*" ColumnSpacing="12" RowSpacing="12">
 
-                <!-- ===== Camera ===== -->
+                <!-- ===== CAMERA · ĐẦU ĐỌC MÃ ===== -->
                 <Border Grid.Row="0" Grid.Column="0" Classes="panel" Padding="16,14">
                     <StackPanel Spacing="10">
                         <StackPanel Orientation="Horizontal" Spacing="10">
@@ -72,11 +163,13 @@
 
                         <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
                             <TextBlock Classes="label" VerticalAlignment="Center" Text="IP đầu đọc" />
-                            <TextBox Grid.Column="1" Text="{Binding ConfigEditor.CameraIp}" />
+                            <TextBox Grid.Column="1"
+                                     PlaceholderText="VD: 192.168.1.50"
+                                     Text="{Binding ConfigEditor.CameraIp}" />
                         </Grid>
 
                         <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
-                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Port" />
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Port TCP" />
                             <NumericUpDown Grid.Column="1"
                                            Minimum="1"
                                            Maximum="65535"
@@ -91,12 +184,18 @@
                                            Value="{Binding ConfigEditor.CameraDuplicateWindowSeconds}" />
                         </Grid>
 
-                        <TextBlock Classes="label" FontSize="11" TextWrapping="Wrap"
-                                   Text="Mã quét trùng trong khoảng thời gian này sẽ được coi là trùng và gửi Fail (D12 = 0)." />
+                        <Border Classes="device" Padding="10">
+                            <StackPanel Spacing="3">
+                                <TextBlock Classes="overline" FontSize="11" Text="GHI CHÚ" />
+                                <TextBlock FontSize="11" TextWrapping="Wrap"
+                                           Foreground="{StaticResource TextMuted}"
+                                           Text="Đầu đọc mã dùng giao thức TCP. IP/Port được nạp một lần khi app khởi động — đổi các giá trị này cần khởi động lại ứng dụng. Mã quét trùng trong cửa sổ thời gian này sẽ được coi là trùng và gửi Fail (D12 = 0)." />
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </Border>
 
-                <!-- ===== PLC ===== -->
+                <!-- ===== PLC · OMERON FINS/UDP ===== -->
                 <Border Grid.Row="1" Grid.Column="0" Classes="panel" Padding="16,14">
                     <StackPanel Spacing="10">
                         <StackPanel Orientation="Horizontal" Spacing="10">
@@ -116,7 +215,9 @@
 
                         <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
                             <TextBlock Classes="label" VerticalAlignment="Center" Text="IP PLC" />
-                            <TextBox Grid.Column="1" Text="{Binding ConfigEditor.PlcIp}" />
+                            <TextBox Grid.Column="1"
+                                     PlaceholderText="VD: 192.168.1.10"
+                                     Text="{Binding ConfigEditor.PlcIp}" />
                         </Grid>
 
                         <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
@@ -161,7 +262,7 @@
                     </StackPanel>
                 </Border>
 
-                <!-- ===== Địa chỉ vùng D ===== -->
+                <!-- ===== VÙNG NHỚ D · TÍN HIỆU ===== -->
                 <Border Grid.Row="0" Grid.Column="1" Classes="panel" Padding="16,14">
                     <StackPanel Spacing="10">
                         <StackPanel Orientation="Horizontal" Spacing="10">
@@ -208,8 +309,132 @@
                     </StackPanel>
                 </Border>
 
-                <!-- ===== Web + License ===== -->
+                <!-- ===== MÁY QUÉT CẦM TAY (SCANNER) ===== -->
                 <Border Grid.Row="1" Grid.Column="1" Classes="panel" Padding="16,14">
+                    <StackPanel Spacing="10">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Path Width="16" Height="16"
+                                  Stretch="Uniform"
+                                  Stroke="{StaticResource TextPrimary}"
+                                  StrokeThickness="1.9"
+                                  StrokeLineCap="Round"
+                                  StrokeJoin="Round"
+                                  VerticalAlignment="Center"
+                                  Data="{StaticResource Icon.Scan}" />
+                            <TextBlock Classes="overline"
+                                       FontSize="14"
+                                       Foreground="{StaticResource TextPrimary}"
+                                       Text="MÁY QUÉT CẦM TAY · SCANNER" />
+                        </StackPanel>
+
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Bật máy quét" />
+                            <CheckBox Grid.Column="1"
+                                      IsChecked="{Binding ConfigEditor.ScannerEnabled}"
+                                      Content="Lắng nghe / kết nối thiết bị quét" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Chế độ" />
+                            <ComboBox Grid.Column="1" SelectedItem="{Binding ConfigEditor.ScannerMode}">
+                                <ComboBoxItem Content="TcpServer" />
+                                <ComboBoxItem Content="TcpClient" />
+                            </ComboBox>
+                        </Grid>
+
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Host TCP" />
+                            <TextBox Grid.Column="1"
+                                     PlaceholderText="VD: 127.0.0.1"
+                                     Text="{Binding ConfigEditor.ScannerTcpHost}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Port TCP" />
+                            <NumericUpDown Grid.Column="1"
+                                           Minimum="1"
+                                           Maximum="65535"
+                                           Value="{Binding ConfigEditor.ScannerTcpPort}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Cổng COM" />
+                            <TextBox Grid.Column="1"
+                                     PlaceholderText="VD: COM3"
+                                     Text="{Binding ConfigEditor.ScannerComPort}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Baud rate" />
+                            <NumericUpDown Grid.Column="1"
+                                           Minimum="1200"
+                                           Maximum="115200"
+                                           Increment="1200"
+                                           Value="{Binding ConfigEditor.ScannerBaudRate}" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- ===== SERVER PRODUCTION ORDER (PO) ===== -->
+                <Border Grid.Row="2" Grid.Column="0" Classes="panel" Padding="16,14">
+                    <StackPanel Spacing="10">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Path Width="16" Height="16"
+                                  Stretch="Uniform"
+                                  Stroke="{StaticResource TextPrimary}"
+                                  StrokeThickness="1.9"
+                                  StrokeLineCap="Round"
+                                  StrokeJoin="Round"
+                                  VerticalAlignment="Center"
+                                  Data="{StaticResource Icon.Clipboard}" />
+                            <TextBlock Classes="overline"
+                                       FontSize="14"
+                                       Foreground="{StaticResource TextPrimary}"
+                                       Text="SERVER PRODUCTION ORDER · PO" />
+                        </StackPanel>
+
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Địa chỉ server" />
+                            <TextBox Grid.Column="1"
+                                     PlaceholderText="VD: http://127.0.0.1:5080"
+                                     Text="{Binding ConfigEditor.PoBaseUrl}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Thư mục lưu PO" />
+                            <TextBox Grid.Column="1"
+                                     PlaceholderText="VD: logs/po"
+                                     Text="{Binding ConfigEditor.PoDbRoot}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Chu kỳ kích hoạt (ms)" />
+                            <NumericUpDown Grid.Column="1"
+                                           Minimum="200"
+                                           Maximum="600000"
+                                           Increment="100"
+                                           Value="{Binding ConfigEditor.PoActivationIntervalMs}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Tự động kích hoạt" />
+                            <CheckBox Grid.Column="1"
+                                      IsChecked="{Binding ConfigEditor.PoAutoActivate}"
+                                      Content="Gửi mã kích hoạt định kỳ" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
+                            <TextBlock Classes="label" VerticalAlignment="Center" Text="Số mã mẫu / PO" />
+                            <NumericUpDown Grid.Column="1"
+                                           Minimum="0"
+                                           Maximum="10000"
+                                           Value="{Binding ConfigEditor.PoCodeSampleSize}" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- ===== WEB + LICENSE ===== -->
+                <Border Grid.Row="2" Grid.Column="1" Classes="panel" Padding="16,14">
                     <StackPanel Spacing="10">
                         <StackPanel Orientation="Horizontal" Spacing="10">
                             <Path Width="16" Height="16"
@@ -228,7 +453,9 @@
 
                         <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
                             <TextBlock Classes="label" VerticalAlignment="Center" Text="URL trang" />
-                            <TextBox Grid.Column="1" Text="{Binding ConfigEditor.WebUrl}" />
+                            <TextBox Grid.Column="1"
+                                     PlaceholderText="https://estrace.checkee.vn"
+                                     Text="{Binding ConfigEditor.WebUrl}" />
                         </Grid>
 
                         <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
@@ -271,14 +498,14 @@
             </Grid>
         </ScrollViewer>
 
-        <!-- Thanh thao tác -->
+        <!-- ===== Thanh thao tác ===== -->
         <Border Grid.Row="2" Classes="panel" Padding="16,12">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
                 <StackPanel Spacing="2" VerticalAlignment="Center">
                     <TextBlock FontSize="11"
                                TextWrapping="Wrap"
                                Foreground="{StaticResource TextMuted}"
-                               Text="Cấu hình được lưu vào appsettings.json trong thư mục ứng dụng." />
+                               Text="Cấu hình được lưu vào appsettings.json trong thư mục ứng dụng. Thông số kết nối chỉ áp dụng sau khi khởi động lại ứng dụng." />
                     <StackPanel Orientation="Horizontal"
                                 Spacing="8"
                                 IsVisible="{Binding ConfigEditor.HasMessage}">
@@ -289,12 +516,29 @@
                               StrokeLineCap="Round"
                               StrokeJoin="Round"
                               VerticalAlignment="Center"
-                              Data="{StaticResource Icon.Check}" />
+                              Data="{StaticResource Icon.Check}"
+                              IsVisible="{Binding !ConfigEditor.HasErrorMessage}" />
                         <TextBlock FontSize="11"
                                    FontWeight="SemiBold"
                                    TextWrapping="Wrap"
                                    Foreground="{StaticResource Ok}"
-                                   Text="{Binding ConfigEditor.ConfigMessageText}" />
+                                   Text="{Binding ConfigEditor.ConfigMessageText}"
+                                   IsVisible="{Binding !ConfigEditor.HasErrorMessage}" />
+                        <Path Width="14" Height="14"
+                              Stretch="Uniform"
+                              Stroke="{StaticResource Danger}"
+                              StrokeThickness="2.2"
+                              StrokeLineCap="Round"
+                              StrokeJoin="Round"
+                              VerticalAlignment="Center"
+                              Data="{StaticResource Icon.Alert}"
+                              IsVisible="{Binding ConfigEditor.HasErrorMessage}" />
+                        <TextBlock FontSize="11"
+                                   FontWeight="SemiBold"
+                                   TextWrapping="Wrap"
+                                   Foreground="{StaticResource Danger}"
+                                   Text="{Binding ConfigEditor.ConfigMessageText}"
+                                   IsVisible="{Binding ConfigEditor.HasErrorMessage}" />
                     </StackPanel>
                 </StackPanel>
 
@@ -314,7 +558,9 @@
                     </Button>
                     <Button Classes="chip"
                             FontWeight="Bold"
-                            Command="{Binding ConfigEditor.SaveCommand}">
+                            IsEnabled="{Binding ConfigEditor.CanSave}"
+                            Command="{Binding ConfigEditor.SaveCommand}"
+                            ToolTip.Tip="Lưu cấu hình xuống appsettings.json. Thông số kết nối cần khởi động lại ứng dụng mới có hiệu lực.">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <Path Width="15" Height="15"
                                   Stretch="Uniform"

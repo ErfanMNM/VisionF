@@ -9,4 +9,6 @@
   <Project Path="tools/LicenseTool/LicenseTool.csproj" />
   <Project Path="tools/PoServer/PoServer.csproj" />
   <Project Path="tools/PoTests/PoTests.csproj" />
+  <Project Path="tools/ConfigTests/ConfigTests.csproj" />
+  <Project Path="tools/ConfigUiTests/ConfigUiTests.csproj" />
 </Solution>

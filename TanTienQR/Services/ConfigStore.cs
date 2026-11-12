@@ -12,27 +12,48 @@ namespace TanTienQR.Services;
 ///
 /// Lưu ý khi ghi: luôn ghi file tạm rồi move đè, để không để lại file hỏng
 /// nếu ghi lỗi giữa chừng (cùng cách làm với file license).
+///
+/// Thư mục gốc có thể ghi đè qua DI (mặc định là thư mục ứng dụng). Nhờ vậy
+/// công cụ kiểm thử headless có thể trỏ sang thư mục sandbox mà không chạm
+/// vào cấu hình thật.
 /// </summary>
 internal sealed class ConfigStore
 {
     private readonly ILogger<ConfigStore> _logger;
 
+    /// <summary>Thư mục gốc chứa file cấu hình.</summary>
+    private readonly string _baseDirectory;
+
     public ConfigStore(ILogger<ConfigStore> logger)
+        : this(logger, AppContext.BaseDirectory)
     {
-        _logger = logger;
     }
 
-    /// <summary>Đường dẫn file cấu hình chính của ứng dụng.</summary>
+    /// <summary>
+    /// Tạo store với thư mục gốc tùy chỉnh (dùng cho sandbox / kiểm thử).
+    /// </summary>
+    /// <param name="logger">Logger.</param>
+    /// <param name="baseDirectory">Thư mục chứa appsettings.json.</param>
+    public ConfigStore(ILogger<ConfigStore> logger, string baseDirectory)
+    {
+        _logger = logger;
+        _baseDirectory = string.IsNullOrWhiteSpace(baseDirectory)
+            ? AppContext.BaseDirectory
+            : baseDirectory;
+    }
+
+    /// <summary>Đường dẫn file cấu hình chính của ứng dụng (thư mục thực thi).</summary>
     public static string ConfigPath => Path.Combine(AppContext.BaseDirectory, "appsettings.json");
 
+    /// <summary>Đường dẫn file cấu hình mà store này đọc/ghi.</summary>
+    public string ConfigFilePath => Path.Combine(_baseDirectory, "appsettings.json");
+
     /// <summary>
-    /// File cấu hình Development tồn tại trong thư mục ứng dụng hay không.
-    ///
-    /// Nếu có, nó sẽ GHI ĐÈ các giá trị trong appsettings.json khi app đọc cấu
-    /// hình -> việc sửa appsettings.json sẽ không có tác dụng. UI cần cảnh báo.
+    /// True nếu có file <c>appsettings.Development.json</c> trong thư mục gốc
+    /// (file này sẽ ghi đè cấu hình chính khi app khởi động).
     /// </summary>
-    public static bool HasDevelopmentOverride =>
-        File.Exists(Path.Combine(AppContext.BaseDirectory, "appsettings.Development.json"));
+    public bool HasDevelopmentOverride =>
+        File.Exists(Path.Combine(_baseDirectory, "appsettings.Development.json"));
 
     /// <summary>
     /// Đọc cấu hình hiện tại từ file. Nếu file không tồn tại hoặc lỗi định dạng
@@ -40,7 +61,7 @@ internal sealed class ConfigStore
     /// </summary>
     public AppConfigSnapshot Load()
     {
-        var path = ConfigPath;
+        var path = ConfigFilePath;
 
         if (!File.Exists(path))
         {
@@ -63,6 +84,8 @@ internal sealed class ConfigStore
             snapshot.Camera ??= new CameraConfig();
             snapshot.Plc ??= new PlcConfig();
             snapshot.Web ??= new WebConfig();
+            snapshot.Scanner ??= new ScannerConfig();
+            snapshot.Po ??= new PoConfig();
             snapshot.Logging ??= new LoggingConfig();
             snapshot.Logging.Sqlite ??= new SqliteLoggingConfig();
             snapshot.Logging.History ??= new LoggingHistoryConfig();
@@ -96,7 +119,7 @@ internal sealed class ConfigStore
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
-        var path = ConfigPath;
+        var path = ConfigFilePath;
 
         try
         {

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>ConfigTests</RootNamespace>
+    <AssemblyName>ConfigTests</AssemblyName>
+    <!-- Không dùng AOT: harness test chạy bình thường bằng JIT. -->
+    <IsAotCompatible>false</IsAotCompatible>
+    <!-- Avalonia dùng để reference các kiểu UI không cần thiết ở đây. -->
+    <NoWarn>$(NoWarn);AVLN5001;IL3000</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\TanTienQR\TanTienQR.csproj" />
+  </ItemGroup>
+
+</Project>

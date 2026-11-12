@@ -284,6 +284,11 @@ internal static class Program
         builder.Configuration
             .SetBasePath(Sandbox.SandboxRoot)
             .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                // ConfigStore đọc/ghi file cùng thư mục với cấu hình đang nạp.
+                ["Config:BasePath"] = Sandbox.SandboxRoot,
+            })
             .AddEnvironmentVariables("TANTIEN_");
 
         builder.Logging.AddConsole();
@@ -291,6 +296,9 @@ internal static class Program
 
         builder.Services.AddTanTienServices(builder.Configuration);
         _host = builder.Build();
+
+        Console.WriteLine(
+            "[Harness] Config:BasePath = " + (builder.Configuration["Config:BasePath"] ?? "<null>"));
 
         var services = _host.Services;
 

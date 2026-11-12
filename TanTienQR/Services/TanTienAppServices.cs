@@ -8,6 +8,7 @@ using ClassLibraryMT.Po;
 using ClassLibraryMT.Scans;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TanTienQR.ViewModels;
 
@@ -156,7 +157,18 @@ public static class TanTienAppServices
         services.AddSingleton<LicenseManager>();
 
         // ---- Đọc/ghi file cấu hình (tab Cấu hình) ----
-        services.AddSingleton<ConfigStore>();
+        // Base path của file cấu hình lấy từ chính nguồn cấu hình đang chạy
+        // (IConfiguration) để đọc/ghi LUÔN cùng file mà app nạp lúc khởi động.
+        // Mặc định (app thật) là thư mục ứng dụng; công cụ kiểm thử headless
+        // có thể trỏ sang thư mục sandbox qua "Config:BasePath".
+        services.AddSingleton(sp =>
+        {
+            var logger = sp.GetRequiredService<ILogger<ConfigStore>>();
+            var basePath = configuration["Config:BasePath"];
+            return new ConfigStore(
+                logger,
+                string.IsNullOrWhiteSpace(basePath) ? AppContext.BaseDirectory : basePath);
+        });
         services.AddSingleton<ConfigEditorViewModel>();
 
         // ---- Worker chạy nền ----
