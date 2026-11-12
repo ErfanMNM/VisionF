@@ -97,6 +97,34 @@ internal partial class ConfigEditorViewModel : ViewModelBase
     [ObservableProperty] public partial string WebUrl { get; set; } = "https://estrace.checkee.vn";
     [ObservableProperty] public partial bool WebEnabled { get; set; } = true;
 
+    // ---------- Logging ----------
+
+    [ObservableProperty] public partial string LogDbPath { get; set; } = "logs/app.db";
+    [ObservableProperty] public partial string LogMinLevel { get; set; } = "Information";
+    [ObservableProperty] public partial int LogRetentionDays { get; set; } = 30;
+    [ObservableProperty] public partial bool LogEnableUserActions { get; set; } = true;
+    [ObservableProperty] public partial int LogBatchSize { get; set; } = 100;
+    [ObservableProperty] public partial int LogFlushIntervalMs { get; set; } = 1000;
+    [ObservableProperty] public partial int LogPruneIntervalMs { get; set; } = 3600000;
+    [ObservableProperty] public partial bool HistoryEnabled { get; set; } = true;
+    [ObservableProperty] public partial int HistoryPageSize { get; set; } = 200;
+
+    // ---------- Auth / Database ----------
+
+    [ObservableProperty] public partial string AuthDbPath { get; set; } = "logs/users.db";
+    [ObservableProperty] public partial int AuthMaxFailedAttempts { get; set; } = 5;
+    [ObservableProperty] public partial int AuthLockoutMinutes { get; set; } = 5;
+    [ObservableProperty] public partial int AuthPbkdf2Iterations { get; set; } = 210000;
+    [ObservableProperty] public partial string AuthSeedAdminUser { get; set; } = "admin";
+    [ObservableProperty] public partial string AuthSeedAdminPassword { get; set; } = "admin";
+    [ObservableProperty] public partial string PlcSettingsDbPath { get; set; } = "logs/plc.db";
+    [ObservableProperty] public partial string ScansDbPath { get; set; } = "logs/scans.db";
+    [ObservableProperty] public partial int ScansBatchSize { get; set; } = 100;
+    [ObservableProperty] public partial int ScansFlushIntervalMs { get; set; } = 1000;
+    [ObservableProperty] public partial int ScansQueueCapacity { get; set; } = 20000;
+    [ObservableProperty] public partial int ScansRetentionDays { get; set; }
+    [ObservableProperty] public partial int ScansPruneIntervalMs { get; set; } = 3600000;
+
     // ---------- Trạng thái ----------
 
     /// <summary>Thông báo kết quả lưu / lỗi.</summary>
@@ -214,6 +242,30 @@ internal partial class ConfigEditorViewModel : ViewModelBase
 
             WebUrl = ReadString("Web:Url", snapshot.Web.Url);
             WebEnabled = ReadBool("Web:Enabled", snapshot.Web.Enabled);
+
+            LogDbPath = ReadString("Logging:Sqlite:Path", snapshot.Logging.Sqlite.Path);
+            LogMinLevel = ReadString("Logging:Sqlite:MinLevel", snapshot.Logging.Sqlite.MinLevel);
+            LogRetentionDays = ReadInt("Logging:Sqlite:RetentionDays", snapshot.Logging.Sqlite.RetentionDays);
+            LogEnableUserActions = ReadBool("Logging:Sqlite:EnableUserActions", snapshot.Logging.Sqlite.EnableUserActions);
+            LogBatchSize = ReadInt("Logging:Sqlite:BatchSize", snapshot.Logging.Sqlite.BatchSize);
+            LogFlushIntervalMs = ReadInt("Logging:Sqlite:FlushIntervalMs", snapshot.Logging.Sqlite.FlushIntervalMs);
+            LogPruneIntervalMs = ReadInt("Logging:Sqlite:PruneIntervalMs", snapshot.Logging.Sqlite.PruneIntervalMs);
+            HistoryEnabled = ReadBool("Logging:History:Enabled", snapshot.Logging.History.Enabled);
+            HistoryPageSize = ReadInt("Logging:History:PageSize", snapshot.Logging.History.PageSize);
+
+            AuthDbPath = ReadString("Auth:DbPath", snapshot.Auth.DbPath);
+            AuthMaxFailedAttempts = ReadInt("Auth:MaxFailedAttempts", snapshot.Auth.MaxFailedAttempts);
+            AuthLockoutMinutes = ReadInt("Auth:LockoutMinutes", snapshot.Auth.LockoutMinutes);
+            AuthPbkdf2Iterations = ReadInt("Auth:Pbkdf2Iterations", snapshot.Auth.Pbkdf2Iterations);
+            AuthSeedAdminUser = ReadString("Auth:SeedAdminUser", snapshot.Auth.SeedAdminUser);
+            AuthSeedAdminPassword = ReadString("Auth:SeedAdminPassword", snapshot.Auth.SeedAdminPassword);
+            PlcSettingsDbPath = ReadString("PlcSettings:DbPath", snapshot.PlcSettings.DbPath);
+            ScansDbPath = ReadString("Scans:DbPath", snapshot.Scans.DbPath);
+            ScansBatchSize = ReadInt("Scans:BatchSize", snapshot.Scans.BatchSize);
+            ScansFlushIntervalMs = ReadInt("Scans:FlushIntervalMs", snapshot.Scans.FlushIntervalMs);
+            ScansQueueCapacity = ReadInt("Scans:QueueCapacity", snapshot.Scans.QueueCapacity);
+            ScansRetentionDays = ReadInt("Scans:RetentionDays", snapshot.Scans.RetentionDays);
+            ScansPruneIntervalMs = ReadInt("Scans:PruneIntervalMs", snapshot.Scans.PruneIntervalMs);
         }
         finally
         {
@@ -326,6 +378,29 @@ internal partial class ConfigEditorViewModel : ViewModelBase
     partial void OnWebUrlChanged(string value) => OnEditableFieldChanged();
 
     partial void OnWebEnabledChanged(bool value) => OnEditableFieldChanged();
+
+    partial void OnLogDbPathChanged(string value) => OnEditableFieldChanged();
+    partial void OnLogMinLevelChanged(string value) => OnEditableFieldChanged();
+    partial void OnLogRetentionDaysChanged(int value) => OnEditableFieldChanged();
+    partial void OnLogEnableUserActionsChanged(bool value) => OnEditableFieldChanged();
+    partial void OnLogBatchSizeChanged(int value) => OnEditableFieldChanged();
+    partial void OnLogFlushIntervalMsChanged(int value) => OnEditableFieldChanged();
+    partial void OnLogPruneIntervalMsChanged(int value) => OnEditableFieldChanged();
+    partial void OnHistoryEnabledChanged(bool value) => OnEditableFieldChanged();
+    partial void OnHistoryPageSizeChanged(int value) => OnEditableFieldChanged();
+    partial void OnAuthDbPathChanged(string value) => OnEditableFieldChanged();
+    partial void OnAuthMaxFailedAttemptsChanged(int value) => OnEditableFieldChanged();
+    partial void OnAuthLockoutMinutesChanged(int value) => OnEditableFieldChanged();
+    partial void OnAuthPbkdf2IterationsChanged(int value) => OnEditableFieldChanged();
+    partial void OnAuthSeedAdminUserChanged(string value) => OnEditableFieldChanged();
+    partial void OnAuthSeedAdminPasswordChanged(string value) => OnEditableFieldChanged();
+    partial void OnPlcSettingsDbPathChanged(string value) => OnEditableFieldChanged();
+    partial void OnScansDbPathChanged(string value) => OnEditableFieldChanged();
+    partial void OnScansBatchSizeChanged(int value) => OnEditableFieldChanged();
+    partial void OnScansFlushIntervalMsChanged(int value) => OnEditableFieldChanged();
+    partial void OnScansQueueCapacityChanged(int value) => OnEditableFieldChanged();
+    partial void OnScansRetentionDaysChanged(int value) => OnEditableFieldChanged();
+    partial void OnScansPruneIntervalMsChanged(int value) => OnEditableFieldChanged();
 
     /// <summary>Cờ nội bộ: đang nạp dữ liệu vào form.</summary>
     private bool _isLoading;
@@ -668,6 +743,29 @@ internal partial class ConfigEditorViewModel : ViewModelBase
         {
             Url = WebUrl.Trim(),
             Enabled = WebEnabled,
+        },
+        Logging = new LoggingConfig
+        {
+            Sqlite = new SqliteLoggingConfig
+            {
+                Path = LogDbPath.Trim(), MinLevel = LogMinLevel.Trim(), RetentionDays = LogRetentionDays,
+                EnableUserActions = LogEnableUserActions, BatchSize = LogBatchSize,
+                FlushIntervalMs = LogFlushIntervalMs, PruneIntervalMs = LogPruneIntervalMs,
+            },
+            History = new LoggingHistoryConfig { Enabled = HistoryEnabled, PageSize = HistoryPageSize },
+        },
+        Auth = new AuthConfig
+        {
+            DbPath = AuthDbPath.Trim(), MaxFailedAttempts = AuthMaxFailedAttempts,
+            LockoutMinutes = AuthLockoutMinutes, Pbkdf2Iterations = AuthPbkdf2Iterations,
+            SeedAdminUser = AuthSeedAdminUser.Trim(), SeedAdminPassword = AuthSeedAdminPassword,
+        },
+        PlcSettings = new PlcSettingsConfig { DbPath = PlcSettingsDbPath.Trim() },
+        Scans = new ScanConfig
+        {
+            DbPath = ScansDbPath.Trim(), BatchSize = ScansBatchSize, FlushIntervalMs = ScansFlushIntervalMs,
+            QueueCapacity = ScansQueueCapacity, RetentionDays = ScansRetentionDays,
+            PruneIntervalMs = ScansPruneIntervalMs,
         },
     };
 

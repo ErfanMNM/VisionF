@@ -169,6 +169,53 @@ public static class ConfigValidation
             return false;
         }
 
+        // ---- Logging / history ----
+        if (string.IsNullOrWhiteSpace(snapshot.Logging.Sqlite.Path)
+            || string.IsNullOrWhiteSpace(snapshot.Logging.Sqlite.MinLevel))
+        {
+            error = "Đường dẫn và mức log không được để trống.";
+            return false;
+        }
+        if (snapshot.Logging.Sqlite.RetentionDays < 0 || snapshot.Logging.Sqlite.BatchSize <= 0
+            || snapshot.Logging.Sqlite.FlushIntervalMs <= 0 || snapshot.Logging.Sqlite.PruneIntervalMs <= 0)
+        {
+            error = "Thông số lưu log phải có giá trị hợp lệ và dương (số ngày lưu có thể bằng 0).";
+            return false;
+        }
+        if (snapshot.Logging.History.PageSize <= 0)
+        {
+            error = "Kích thước trang lịch sử phải lớn hơn 0.";
+            return false;
+        }
+
+        // ---- Auth / data stores ----
+        if (string.IsNullOrWhiteSpace(snapshot.Auth.DbPath)
+            || string.IsNullOrWhiteSpace(snapshot.Auth.SeedAdminUser)
+            || string.IsNullOrWhiteSpace(snapshot.Auth.SeedAdminPassword))
+        {
+            error = "Đường dẫn cơ sở dữ liệu tài khoản và thông tin admin không được để trống.";
+            return false;
+        }
+        if (snapshot.Auth.MaxFailedAttempts <= 0 || snapshot.Auth.LockoutMinutes <= 0
+            || snapshot.Auth.Pbkdf2Iterations < 10_000)
+        {
+            error = "Giới hạn đăng nhập phải dương và số vòng PBKDF2 tối thiểu là 10000.";
+            return false;
+        }
+        if (string.IsNullOrWhiteSpace(snapshot.PlcSettings.DbPath)
+            || string.IsNullOrWhiteSpace(snapshot.Scans.DbPath))
+        {
+            error = "Đường dẫn cơ sở dữ liệu PLC và bản ghi quét không được để trống.";
+            return false;
+        }
+        if (snapshot.Scans.BatchSize <= 0 || snapshot.Scans.FlushIntervalMs <= 0
+            || snapshot.Scans.QueueCapacity <= 0 || snapshot.Scans.RetentionDays < 0
+            || snapshot.Scans.PruneIntervalMs <= 0)
+        {
+            error = "Thông số lưu bản ghi quét không hợp lệ.";
+            return false;
+        }
+
         return true;
     }
 
@@ -373,8 +420,37 @@ public static class ConfigDiff
             changes.Add("Cấu hình web Checkee");
         }
 
+        if (!AreInternalSettingsEquivalent(before, after))
+        {
+            changes.Add("Cấu hình log, xác thực hoặc lưu dữ liệu");
+        }
+
         return changes;
     }
+
+    private static bool AreInternalSettingsEquivalent(AppConfigSnapshot a, AppConfigSnapshot b) =>
+        a.Logging.Sqlite.Path == b.Logging.Sqlite.Path
+        && a.Logging.Sqlite.MinLevel == b.Logging.Sqlite.MinLevel
+        && a.Logging.Sqlite.RetentionDays == b.Logging.Sqlite.RetentionDays
+        && a.Logging.Sqlite.EnableUserActions == b.Logging.Sqlite.EnableUserActions
+        && a.Logging.Sqlite.BatchSize == b.Logging.Sqlite.BatchSize
+        && a.Logging.Sqlite.FlushIntervalMs == b.Logging.Sqlite.FlushIntervalMs
+        && a.Logging.Sqlite.PruneIntervalMs == b.Logging.Sqlite.PruneIntervalMs
+        && a.Logging.History.Enabled == b.Logging.History.Enabled
+        && a.Logging.History.PageSize == b.Logging.History.PageSize
+        && a.Auth.DbPath == b.Auth.DbPath
+        && a.Auth.MaxFailedAttempts == b.Auth.MaxFailedAttempts
+        && a.Auth.LockoutMinutes == b.Auth.LockoutMinutes
+        && a.Auth.Pbkdf2Iterations == b.Auth.Pbkdf2Iterations
+        && a.Auth.SeedAdminUser == b.Auth.SeedAdminUser
+        && a.Auth.SeedAdminPassword == b.Auth.SeedAdminPassword
+        && a.PlcSettings.DbPath == b.PlcSettings.DbPath
+        && a.Scans.DbPath == b.Scans.DbPath
+        && a.Scans.BatchSize == b.Scans.BatchSize
+        && a.Scans.FlushIntervalMs == b.Scans.FlushIntervalMs
+        && a.Scans.QueueCapacity == b.Scans.QueueCapacity
+        && a.Scans.RetentionDays == b.Scans.RetentionDays
+        && a.Scans.PruneIntervalMs == b.Scans.PruneIntervalMs;
 
     /// <summary>
     /// So sánh toàn bộ trường hiển thị trên form (dùng cho cờ "chưa lưu").
@@ -414,6 +490,7 @@ public static class ConfigDiff
             && a.Po.AutoActivate == b.Po.AutoActivate
             && a.Po.CodeSampleSize == b.Po.CodeSampleSize
             && string.Equals(a.Web.Url?.Trim(), b.Web.Url?.Trim(), StringComparison.OrdinalIgnoreCase)
-            && a.Web.Enabled == b.Web.Enabled;
+            && a.Web.Enabled == b.Web.Enabled
+            && AreInternalSettingsEquivalent(a, b);
     }
 }

@@ -62,6 +62,10 @@ AppConfigSnapshot NewSnapshot() => new()
         CodeSampleSize = 100,
     },
     Web = new WebConfig { Url = "https://estrace.checkee.vn", Enabled = true },
+    Logging = new LoggingConfig { Sqlite = new SqliteLoggingConfig(), History = new LoggingHistoryConfig() },
+    Auth = new AuthConfig(),
+    PlcSettings = new PlcSettingsConfig(),
+    Scans = new ScanConfig(),
 };
 
 // ---------------------------------------------------------------
@@ -195,6 +199,16 @@ s.Web.Enabled = false;
 s.Web.Url = "khong phai url";
 Check("Web tat -> bo qua validate URL", ConfigValidation.Validate(s, out var e26), e26 ?? "");
 
+s = NewSnapshot();
+s.Auth.Pbkdf2Iterations = 9999;
+Check("PBKDF2 duoi gioi han -> bao loi", !ConfigValidation.Validate(s, out var e27), e27 ?? "");
+s = NewSnapshot();
+s.Logging.Sqlite.BatchSize = 0;
+Check("Log batch size 0 -> bao loi", !ConfigValidation.Validate(s, out var e28), e28 ?? "");
+s = NewSnapshot();
+s.Scans.QueueCapacity = 0;
+Check("Scan queue capacity 0 -> bao loi", !ConfigValidation.Validate(s, out var e29), e29 ?? "");
+
 // ---------------------------------------------------------------
 // [4] ConfigDiff: phat hien thay doi yeu cau restart
 // ---------------------------------------------------------------
@@ -279,6 +293,16 @@ after.Web.Url = "https://khac.checkee.vn";
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
 Check("Doi web URL -> co thay doi", diff.Contains("Cấu hình web Checkee"), string.Join(",", diff));
 
+after = NewSnapshot();
+after.Logging.Sqlite.RetentionDays++;
+diff = ConfigDiff.DescribeCriticalChanges(before, after);
+Check("Doi retention log -> co thay doi restart", diff.Contains("Cấu hình log, xác thực hoặc lưu dữ liệu"), string.Join(",", diff));
+
+after = NewSnapshot();
+after.Auth.SeedAdminPassword = "changed-secret";
+diff = ConfigDiff.DescribeCriticalChanges(before, after);
+Check("Doi seed password -> co thay doi restart", diff.Contains("Cấu hình log, xác thực hoặc lưu dữ liệu"), string.Join(",", diff));
+
 // Duplicate window nằm trong CameraOptions -> đọc lúc start nên cũng cần restart.
 after = NewSnapshot();
 after.Camera.DuplicateWindowSeconds = 60;
@@ -312,6 +336,10 @@ Check("Khac chu hoa mode -> khong tuong duong (mode khac nhau)", !ConfigDiff.Are
 after = NewSnapshot();
 after.Scanner.Mode = "TcpClient";
 Check("Doi mode -> khong tuong duong", !ConfigDiff.AreEquivalent(before, after));
+
+after = NewSnapshot();
+after.Scans.RetentionDays++;
+Check("Doi scans retention -> dirty", !ConfigDiff.AreEquivalent(before, after));
 
 // ---------------------------------------------------------------
 // [6] Round-trip JSON: persist qua AppConfigJsonContext

@@ -105,8 +105,6 @@ builder.Configuration
     .AddInMemoryCollection(new Dictionary<string, string?>
     {
         ["Config:BasePath"] = root,
-        ["Logging:Sqlite:Path"] = Path.Combine(logs, "app.db"),
-        ["Auth:DbPath"] = Path.Combine(logs, "users.db"),
     });
 
 builder.Logging.AddConsole();
@@ -151,8 +149,6 @@ IHost RestartHost(string basePath)
         .AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["Config:BasePath"] = basePath,
-            ["Logging:Sqlite:Path"] = Path.Combine(basePath, "logs", "app.db"),
-            ["Auth:DbPath"] = Path.Combine(basePath, "logs", "users.db"),
         });
 
     b.Logging.AddConsole();
@@ -179,6 +175,9 @@ Check("Scanner COM nap dung", (string?)Get("ScannerComPort") == "COM3");
 Check("Scanner baud nap dung", (int?)Get("ScannerBaudRate") == 9600);
 Check("PO BaseUrl nap dung", (string?)Get("PoBaseUrl") == "http://127.0.0.1:5080");
 Check("Web URL nap dung", (string?)Get("WebUrl") == "https://estrace.checkee.vn");
+Check("Logging retention nap dung", (int?)Get("LogRetentionDays") == 30);
+Check("Auth seed password nap dung", (string?)Get("AuthSeedAdminPassword") == "admin");
+Check("Scan queue capacity nap dung", (int?)Get("ScansQueueCapacity") == 20000);
 Check("Khong co banner restart luc dau", (bool?)Get("RestartRequired") == false);
 Check("Khong co thay doi chua luu luc dau", (bool?)Get("HasUnsavedChanges") == false);
 Check("Nut Luu bi khoa khi khong co thay doi", (bool?)Get("CanSave") == false);
@@ -231,6 +230,9 @@ Check("File appsettings giu section Auth", savedText.Contains("\"Auth\""));
 Check("File appsettings giu section Logging", savedText.Contains("\"Logging\""));
 Check("File appsettings giu section Scanner", savedText.Contains("\"Scanner\""));
 Check("File appsettings giu section Po", savedText.Contains("\"Po\""));
+Check("File appsettings luu Logging retention", savedText.Contains("\"RetentionDays\": 30"));
+Check("File appsettings luu seed password da nhap", savedText.Contains("\"SeedAdminPassword\": \"admin\""));
+Check("File appsettings luu Scans queue capacity", savedText.Contains("\"QueueCapacity\": 20000"));
 
 // Da luu xong: sua them roi Hoan tac -> banner restart phai VAN con,
 // vi cau hinh da luu van chua duoc ap dung cho app dang chay.
@@ -348,6 +350,9 @@ try
 
     var viewCount = CountVisuals(view);
     Check("ConfigView tao duoc va render", viewCount > 50, "visuals=" + viewCount);
+    var secretBox = view.GetVisualDescendants().OfType<TextBox>()
+        .FirstOrDefault(x => x.GetValue(TextBox.PasswordCharProperty) != '\0');
+    Check("Truong seed password duoc che", secretBox is not null);
 
     window.Close();
     Dispatcher.UIThread.RunJobs();

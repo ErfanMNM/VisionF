@@ -433,6 +433,47 @@
                     </StackPanel>
                 </Border>
 
+                <!-- ===== LOGGING + HISTORY ===== -->
+                <Border Grid.Row="3" Grid.Column="0" Classes="panel" Padding="16,14">
+                    <StackPanel Spacing="10">
+                        <TextBlock Classes="overline" FontSize="14" Foreground="{StaticResource TextPrimary}" Text="LỊCH SỬ · GHI LOG" />
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12"><TextBlock Classes="label" VerticalAlignment="Center" Text="Bật lịch sử" /><CheckBox Grid.Column="1" IsChecked="{Binding ConfigEditor.HistoryEnabled}" Content="Cho phép tra cứu lịch sử" /></Grid>
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12"><TextBlock Classes="label" VerticalAlignment="Center" Text="Số dòng / trang" /><NumericUpDown Grid.Column="1" Minimum="1" Maximum="10000" Value="{Binding ConfigEditor.HistoryPageSize}" /></Grid>
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12"><TextBlock Classes="label" VerticalAlignment="Center" Text="File log SQLite" /><TextBox Grid.Column="1" Text="{Binding ConfigEditor.LogDbPath}" /></Grid>
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12"><TextBlock Classes="label" VerticalAlignment="Center" Text="Mức log" /><ComboBox Grid.Column="1" SelectedItem="{Binding ConfigEditor.LogMinLevel}"><ComboBoxItem Content="Trace" /><ComboBoxItem Content="Debug" /><ComboBoxItem Content="Information" /><ComboBoxItem Content="Warning" /><ComboBoxItem Content="Error" /><ComboBoxItem Content="Critical" /><ComboBoxItem Content="None" /></ComboBox></Grid>
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12"><TextBlock Classes="label" VerticalAlignment="Center" Text="Số ngày lưu log" /><NumericUpDown Grid.Column="1" Minimum="0" Maximum="3650" Value="{Binding ConfigEditor.LogRetentionDays}" /></Grid>
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12"><TextBlock Classes="label" VerticalAlignment="Center" Text="Ghi thao tác người dùng" /><CheckBox Grid.Column="1" IsChecked="{Binding ConfigEditor.LogEnableUserActions}" Content="Bật audit thao tác" /></Grid>
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12"><TextBlock Classes="label" VerticalAlignment="Center" Text="Batch / flush ms" /><StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"><NumericUpDown Width="100" Minimum="1" Maximum="100000" Value="{Binding ConfigEditor.LogBatchSize}" /><NumericUpDown Width="120" Minimum="1" Maximum="600000" Value="{Binding ConfigEditor.LogFlushIntervalMs}" /></StackPanel></Grid>
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12"><TextBlock Classes="label" VerticalAlignment="Center" Text="Chu kỳ dọn log ms" /><NumericUpDown Grid.Column="1" Minimum="1" Maximum="31536000000" Value="{Binding ConfigEditor.LogPruneIntervalMs}" /></Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- ===== AUTH + DATABASE ===== -->
+                <Border Grid.Row="3" Grid.Column="1" Classes="panel" Padding="16,14">
+                    <StackPanel Spacing="10">
+                        <TextBlock Classes="overline" FontSize="14" Foreground="{StaticResource TextPrimary}" Text="TÀI KHOẢN · BẢO MẬT" />
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12"><TextBlock Classes="label" VerticalAlignment="Center" Text="Database tài khoản" /><TextBox Grid.Column="1" Text="{Binding ConfigEditor.AuthDbPath}" /></Grid>
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12"><TextBlock Classes="label" VerticalAlignment="Center" Text="Số lần đăng nhập sai" /><NumericUpDown Grid.Column="1" Minimum="1" Maximum="100" Value="{Binding ConfigEditor.AuthMaxFailedAttempts}" /></Grid>
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12"><TextBlock Classes="label" VerticalAlignment="Center" Text="Khóa tài khoản (phút)" /><NumericUpDown Grid.Column="1" Minimum="1" Maximum="10080" Value="{Binding ConfigEditor.AuthLockoutMinutes}" /></Grid>
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12"><TextBlock Classes="label" VerticalAlignment="Center" Text="PBKDF2 iterations" /><NumericUpDown Grid.Column="1" Minimum="10000" Maximum="10000000" Increment="10000" Value="{Binding ConfigEditor.AuthPbkdf2Iterations}" /></Grid>
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12"><TextBlock Classes="label" VerticalAlignment="Center" Text="Admin mặc định" /><TextBox Grid.Column="1" Text="{Binding ConfigEditor.AuthSeedAdminUser}" /></Grid>
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12"><TextBlock Classes="label" VerticalAlignment="Center" Text="Mật khẩu seed" /><TextBox Grid.Column="1" PasswordChar="●" Text="{Binding ConfigEditor.AuthSeedAdminPassword}" /></Grid>
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12"><TextBlock Classes="label" VerticalAlignment="Center" Text="Database tham số PLC" /><TextBox Grid.Column="1" Text="{Binding ConfigEditor.PlcSettingsDbPath}" /></Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- ===== SCAN STORE ===== -->
+                <Border Grid.Row="4" Grid.Column="0" Classes="panel" Padding="16,14">
+                    <StackPanel Spacing="10">
+                        <TextBlock Classes="overline" FontSize="14" Foreground="{StaticResource TextPrimary}" Text="LƯU BẢN GHI QUÉT" />
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12"><TextBlock Classes="label" VerticalAlignment="Center" Text="Database bản ghi" /><TextBox Grid.Column="1" Text="{Binding ConfigEditor.ScansDbPath}" /></Grid>
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12"><TextBlock Classes="label" VerticalAlignment="Center" Text="Batch / flush ms" /><StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"><NumericUpDown Width="100" Minimum="1" Maximum="100000" Value="{Binding ConfigEditor.ScansBatchSize}" /><NumericUpDown Width="120" Minimum="1" Maximum="600000" Value="{Binding ConfigEditor.ScansFlushIntervalMs}" /></StackPanel></Grid>
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12"><TextBlock Classes="label" VerticalAlignment="Center" Text="Dung lượng hàng đợi" /><NumericUpDown Grid.Column="1" Minimum="1" Maximum="10000000" Value="{Binding ConfigEditor.ScansQueueCapacity}" /></Grid>
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12"><TextBlock Classes="label" VerticalAlignment="Center" Text="Số ngày lưu" /><NumericUpDown Grid.Column="1" Minimum="0" Maximum="3650" Value="{Binding ConfigEditor.ScansRetentionDays}" /></Grid>
+                        <Grid ColumnDefinitions="130,*" ColumnSpacing="12"><TextBlock Classes="label" VerticalAlignment="Center" Text="Chu kỳ dọn dữ liệu ms" /><NumericUpDown Grid.Column="1" Minimum="1" Maximum="31536000000" Value="{Binding ConfigEditor.ScansPruneIntervalMs}" /></Grid>
+                    </StackPanel>
+                </Border>
+
                 <!-- ===== WEB + LICENSE ===== -->
                 <Border Grid.Row="2" Grid.Column="1" Classes="panel" Padding="16,14">
                     <StackPanel Spacing="10">
