@@ -15,15 +15,31 @@
         <!-- Nút thao tác trong từng dòng bảng (UI-006):
              trước đây Height="30" ép cứng, thắng MinHeight=38 của style chung
              (Button.soft) => nội dung bị cắt. Dùng style riêng "rowbtn" 32px
-             (đủ cho chữ 11px có dấu) thay vì ép chiều cao trực tiếp. -->
+             (đủ cho chữ 11px có dấu) thay vì ép chiều cao trực tiếp.
+
+             UI-020: cột THAO TÁC bị chật, chữ nút "Xoá" bị cắt.
+             Nguyên nhân: Button.iconbtn đặt Height="44" cứng (cao hơn hàng 32px
+             => tràn dọc), và các nút bị gán MinWidth cứng nhỏ hơn bề rộng nội dung
+             thật (icon 16 + spacing 7 + chữ + padding 20) => chữ bị cắt ngang.
+             Fix: ghi đè Height (không chỉ MinHeight) về 32, và bỏ MinWidth/Padding
+             cứng ở XAML để nút tự co giãn theo nội dung (không cắt chữ). -->
         <Style Selector="Button.rowbtn">
+            <Setter Property="Height" Value="32" />
             <Setter Property="MinHeight" Value="32" />
-            <Setter Property="MinWidth" Value="52" />
+            <Setter Property="MinWidth" Value="0" />
             <Setter Property="Padding" Value="10,0" />
             <Setter Property="FontSize" Value="11" />
             <Setter Property="CornerRadius" Value="9" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <!-- Icon trong nút hàng: nhỏ lại cho vừa chiều cao 32px -->
+        <Style Selector="Button.rowbtn Path">
+            <Setter Property="Width" Value="14" />
+            <Setter Property="Height" Value="14" />
+        </Style>
+        <Style Selector="Button.rowbtn StackPanel">
+            <Setter Property="Spacing" Value="6" />
         </Style>
     </UserControl.Styles>
 
@@ -181,9 +197,6 @@
                                                     Spacing="6"
                                                     VerticalAlignment="Center">
                                             <Button Classes="soft,iconbtn,rowbtn"
-                                                    MinWidth="52" Padding="10,0"
-                                                    HorizontalContentAlignment="Center"
-                                                    VerticalContentAlignment="Center"
                                                     Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).AccountsView.EditUserCommand}"
                                                     CommandParameter="{Binding}">
                                                 <StackPanel>
@@ -194,9 +207,6 @@
                                                 </StackPanel>
                                             </Button>
                                             <Button Classes="soft,iconbtn,rowbtn"
-                                                    MinWidth="76" Padding="10,0"
-                                                    HorizontalContentAlignment="Center"
-                                                    VerticalContentAlignment="Center"
                                                     Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).AccountsView.ResetPasswordCommand}"
                                                     CommandParameter="{Binding}">
                                                 <StackPanel>
@@ -207,9 +217,6 @@
                                                 </StackPanel>
                                             </Button>
                                             <Button Classes="soft,iconbtn,rowbtn"
-                                                    MinWidth="58" Padding="10,0"
-                                                    HorizontalContentAlignment="Center"
-                                                    VerticalContentAlignment="Center"
                                                     Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).AccountsView.ToggleActiveCommand}"
                                                     CommandParameter="{Binding}">
                                                 <StackPanel>
@@ -220,9 +227,6 @@
                                                 </StackPanel>
                                             </Button>
                                             <Button Classes="soft,iconbtn,rowbtn"
-                                                    MinWidth="52" Padding="10,0"
-                                                    HorizontalContentAlignment="Center"
-                                                    VerticalContentAlignment="Center"
                                                     Command="{Binding $parent[UserControl].((vm:MainViewModel)DataContext).AccountsView.DeleteCommand}"
                                                     CommandParameter="{Binding}">
                                                 <StackPanel>
