@@ -38,7 +38,7 @@ public static class PlcServiceCollectionExtensions
             })
             .Validate(
                 o => !string.IsNullOrWhiteSpace(o.DbPath),
-                "PlcSettings:DbPath khong duoc de trong.")
+                "PlcSettings:DbPath không được để trống.")
             .ValidateOnStart();
 
         // ---- Cấu hình kết nối PLC cho client thủ công ----
@@ -56,10 +56,10 @@ public static class PlcServiceCollectionExtensions
                 o.TimeoutMs = PlcConfigReader.GetInt(cfg, "Plc:TimeoutMs", o.TimeoutMs);
                 o.Retries = PlcConfigReader.GetInt(cfg, "Plc:Retries", o.Retries);
             })
-            .Validate(o => !string.IsNullOrWhiteSpace(o.Ip), "Plc:Ip khong duoc de trong.")
-            .Validate(o => o.Port is > 0 and <= 65535, "Plc:Port phai tu 1 den 65535.")
-            .Validate(o => o.TimeoutMs > 0, "Plc:TimeoutMs phai lon hon 0.")
-            .Validate(o => o.Retries >= 0, "Plc:Retries khong duoc am.")
+            .Validate(o => !string.IsNullOrWhiteSpace(o.Ip), "Plc:Ip không được để trống.")
+            .Validate(o => o.Port is > 0 and <= 65535, "Plc:Port phải từ 1 đến 65535.")
+            .Validate(o => o.TimeoutMs > 0, "Plc:TimeoutMs phải lớn hơn 0.")
+            .Validate(o => o.Retries >= 0, "Plc:Retries không được âm.")
             .ValidateOnStart();
 
         // ---- Store + client factory + service ----

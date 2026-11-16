@@ -414,7 +414,7 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
         _actionLog.Log(
             "Plc.Read",
             "PlcParam",
-            $"Doc tat ca {results.Count} o nho",
+            $"Đọc tất cả {results.Count} ô nhớ",
             okCount == results.Count ? UserActionResults.Success : UserActionResults.Failed);
     }
 
@@ -490,7 +490,7 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
             _actionLog.Log(
                 "Plc.Param.Create",
                 "PlcParam",
-                $"Them tham so {parameter.Name} ({parameter.Address})",
+                $"Thêm tham số {parameter.Name} ({parameter.Address})",
                 UserActionResults.Success);
 
             DraftRows.Remove(draft);
@@ -692,7 +692,7 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
             _actionLog.Log(
                 "Plc.Param.Delete",
                 "PlcParam",
-                $"Xoa tham so {row.Name} ({row.Address})",
+                $"Xoá tham số {row.Name} ({row.Address})",
                 UserActionResults.Success);
 
             await LoadAsync().ConfigureAwait(true);
@@ -726,7 +726,7 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
             _actionLog.Log(
                 "Plc.Read",
                 "PlcParam",
-                $"Doc {row.Name} ({row.Address}) = {row.CurrentValue}",
+                $"Đọc {row.Name} ({row.Address}) = {row.CurrentValue}",
                 UserActionResults.Success);
         }
         else
@@ -737,7 +737,7 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
             _actionLog.Log(
                 "Plc.Read",
                 "PlcParam",
-                $"Doc {row.Name} ({row.Address}) that bai: {result.Message}",
+                $"Đọc {row.Name} ({row.Address}) thất bại: {result.Message}",
                 UserActionResults.Failed);
         }
     }
@@ -754,8 +754,8 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
             return;
         }
 
-        // Kiem tra kieu du lieu TRUOC khi ghi: gia tri sai kieu thi bao loi
-        // ngay tren dong va KHONG gui xuong PLC.
+        // Kiểm tra kiểu dữ liệu TRƯỚC khi ghi: giá trị sai kiểu thì báo lỗi
+        // ngay trên dòng và KHÔNG gửi xuống PLC.
         if (!row.ValidateInput(out var validationError))
         {
             row.StatusText = validationError;
@@ -787,7 +787,7 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
             _actionLog.Log(
                 "Plc.Write",
                 "PlcParam",
-                $"Ghi {row.Name} ({row.Address}) that bai: {result.Message}",
+                $"Ghi {row.Name} ({row.Address}) thất bại: {result.Message}",
                 UserActionResults.Failed);
         }
     }
@@ -875,9 +875,9 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
 
         try
         {
-            // 1) Gom gia tri nguoi dang nhap.
-            //    Dong nao co gia tri sai kieu -> bao loi ngay tren dong va
-            //    KHONG ghi xuong PLC (cung khong luu vao recipe).
+            // 1) Gom giá trị người đang nhập.
+            //    Dòng nào có giá trị sai kiểu -> báo lỗi ngay trên dòng và
+            //    KHÔNG ghi xuống PLC (cũng không lưu vào recipe).
             var values = new Dictionary<long, string>();
             var invalidRows = new List<string>();
 
@@ -916,7 +916,7 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
                 return;
             }
 
-            // 2) Ghi xuong PLC.
+            // 2) Ghi xuống PLC.
             var okCount = 0;
             foreach (var row in ParameterRows)
             {
@@ -943,7 +943,7 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
                 }
             }
 
-            // 3) Luu bo gia tri vao recipe.
+            // 3) Lưu bộ giá trị vào recipe.
             var saveResult = await _plc
                 .SaveRecipeValuesAsync(SelectedRecipe.Id, values)
                 .ConfigureAwait(true);
@@ -968,8 +968,8 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
             _actionLog.Log(
                 "Plc.ApplyRecipe",
                 "PlcRecipe",
-                $"Ap dung gia tri vao PLC va luu recipe {SelectedRecipe.Name}: "
-                + $"{okCount}/{values.Count} thanh cong",
+                $"Áp dụng giá trị vào PLC và lưu recipe {SelectedRecipe.Name}: "
+                + $"{okCount}/{values.Count} thành công",
                 okCount == values.Count ? UserActionResults.Success : UserActionResults.Failed);
         }
         catch (Exception ex)
@@ -1173,7 +1173,7 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
             _actionLog.Log(
                 "Plc.Recipe.Create",
                 "PlcRecipe",
-                $"Tao recipe {NewRecipeName}",
+                $"Tạo recipe {NewRecipeName}",
                 UserActionResults.Success);
 
             await LoadAsync().ConfigureAwait(true);
@@ -1212,7 +1212,7 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
             _actionLog.Log(
                 "Plc.Recipe.Delete",
                 "PlcRecipe",
-                $"Xoa recipe {recipe.Name}",
+                $"Xoá recipe {recipe.Name}",
                 UserActionResults.Success);
 
             SelectedRecipe = null;
@@ -1252,7 +1252,7 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
             _actionLog.Log(
                 "Plc.Recipe.Save",
                 "PlcRecipe",
-                $"Luu {values.Count} gia tri vao recipe {SelectedRecipe.Name}",
+                $"Lưu {values.Count} giá trị vào recipe {SelectedRecipe.Name}",
                 UserActionResults.Success);
         }
     }
@@ -1305,7 +1305,7 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
             _actionLog.Log(
                 "Plc.ApplyRecipe",
                 "PlcRecipe",
-                $"Ap dung recipe {SelectedRecipe.Name}: {okCount}/{results.Count} thanh cong",
+                $"Áp dụng recipe {SelectedRecipe.Name}: {okCount}/{results.Count} thành công",
                 okCount == results.Count ? UserActionResults.Success : UserActionResults.Failed);
         }
         catch (Exception ex)

@@ -355,7 +355,17 @@ internal partial class ConfigEditorViewModel : ViewModelBase
             field.SetError(null);
         }
 
-        var snapshot = BuildSnapshot();
+        AppConfigSnapshot snapshot;
+        try
+        {
+            snapshot = BuildSnapshot();
+        }
+        catch (InvalidOperationException ex)
+        {
+            ConfigMessageText = ex.Message;
+            ConfigMessageKind = MessageKind.Error;
+            return false;
+        }
 
         if (!ConfigValidation.Validate(snapshot, out var error))
         {
@@ -373,13 +383,34 @@ internal partial class ConfigEditorViewModel : ViewModelBase
     [RelayCommand]
     private void Save()
     {
-        if (!Validate())
+        try
         {
-            return;
+            if (!Validate())
+            {
+                return;
+            }
+
+            var snapshot = BuildSnapshot();
+            SaveSnapshot(snapshot);
         }
+        catch (Exception ex)
+        {
+            ConfigMessageText = "Không lưu được cấu hình: " + ex.Message;
+            ConfigMessageKind = MessageKind.Error;
+            _actionLog.Log(
+                "Config.Save",
+                "Config",
+                $"Loi khong mong doi khi luu: {ex.Message}",
+                UserActionResults.Failed);
+        }
+    }
 
-        var snapshot = BuildSnapshot();
-
+    /// <summary>
+    /// Ghi snapshot đã validate xuống disk và cập nhật trạng thái restart/dirty.
+    /// </summary>
+    /// <param name="snapshot">Snapshot đã kiểm tra hợp lệ.</param>
+    private void SaveSnapshot(AppConfigSnapshot snapshot)
+    {
         // Dùng SaveMerged để GIỮ NGUYÊN các key lạ có sẵn trong file.
         if (!_store.SaveMerged(snapshot))
         {
@@ -671,7 +702,12 @@ internal partial class ConfigEditorViewModel : ViewModelBase
 
     /// <summary>
     /// Chuẩn hoá giá trị trước khi gán vào model: cắt khoảng trắng cho string,
-    /// chuẩn hoá chế độ scanner, giữ số nguyên dạng long nếu schema yêu cầu.
+    /// chuẩn hoá chế độ scanner, chuyển số về đúng kiểu của property.
+    ///
+    /// NumericUpDown của Avalonia trả về <c>decimal?</c> trong khi model dùng
+    /// <c>int</c>/<c>long</c> — gán trực tiếp qua reflection sẽ ném
+    /// <c>ArgumentException</c> và làm crash nút Lưu. Vì vậy mọi giá trị số
+    /// đều được chuyển về đúng <c>PropertyType</c> ở đây.
     /// </summary>
     /// <param name="schema">Schema của trường.</param>
     /// <param name="value">Giá trị thô từ form.</param>
@@ -696,6 +732,45 @@ internal partial class ConfigEditorViewModel : ViewModelBase
             }
 
             return trimmed;
+        }
+
+        if (schema.IsNumeric)
+        {
+            var targetType = Nullable.GetUnderlyingType(schema.Property.PropertyType)
+                ?? schema.Property.PropertyType;
+
+            // Đã đúng kiểu -> giữ nguyên (tránh Convert làm mất precision).
+            if (value.GetType() == targetType)
+            {
+                return value;
+            }
+
+            try
+            {
+                // decimal (NumericUpDown) -> int/long/double/... đều chuyển được.
+                if (targetType.IsEnum)
+                {
+                    return Enum.ToObject(targetType, value);
+                }
+
+                return Convert.ChangeType(value, targetType, System.Globalization.CultureInfo.InvariantCulture);
+            }
+            catch (Exception ex) when (ex is FormatException or InvalidCastException or OverflowException or ArgumentException)
+            {
+                // Chuyển đổi thất bại -> để Validate bắt lỗi thay vì crash.
+                // Trả về giá trị gốc để BuildSnapshot không ném ở SetValue:
+                // thử parse qua double rồi ép về target, nếu vẫn lỗi thì trả gốc.
+                try
+                {
+                    var asDouble = Convert.ToDouble(value, System.Globalization.CultureInfo.InvariantCulture);
+                    var clamped = Math.Max(schema.Min, Math.Min(schema.Max, asDouble));
+                    return Convert.ChangeType(clamped, targetType, System.Globalization.CultureInfo.InvariantCulture);
+                }
+                catch
+                {
+                    return value;
+                }
+            }
         }
 
         return value;

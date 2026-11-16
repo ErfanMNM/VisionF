@@ -47,7 +47,7 @@ internal sealed class PlcWriter
         if (!result.IsSuccess)
         {
             _logger.LogError(
-                "Ghi ket qua quet ma that bai ({Address} = {Value}): {Code} - {Message}",
+                "Ghi kết quả quét mã thất bại ({Address} = {Value}): {Code} - {Message}",
                 _opt.ResultAddress, value, result.ErrorCode, result.Message);
             return false;
         }
@@ -67,7 +67,7 @@ internal sealed class PlcWriter
         if (!result.IsSuccess)
         {
             _logger.LogError(
-                "Ghi trang thai Ready that bai ({Address} = {Value}): {Code} - {Message}",
+                "Ghi trạng thái Ready thất bại ({Address} = {Value}): {Code} - {Message}",
                 _opt.ReadyAddress, value, result.ErrorCode, result.Message);
         }
     }

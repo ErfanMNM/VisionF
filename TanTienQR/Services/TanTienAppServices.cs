@@ -65,9 +65,9 @@ public static class TanTienAppServices
                 o.DuplicateWindowSeconds = ConfigReader.GetInt(
                     cfg, $"{CameraSectionName}:DuplicateWindowSeconds", o.DuplicateWindowSeconds);
             })
-            .Validate(o => !string.IsNullOrWhiteSpace(o.Ip), "Camera:Ip khong duoc de trong.")
-            .Validate(o => o.Port is > 0 and <= 65535, "Camera:Port phai tu 1 den 65535.")
-            .Validate(o => o.DuplicateWindowSeconds > 0, "Camera:DuplicateWindowSeconds phai lon hon 0.")
+            .Validate(o => !string.IsNullOrWhiteSpace(o.Ip), "Camera:Ip không được để trống.")
+            .Validate(o => o.Port is > 0 and <= 65535, "Camera:Port phải từ 1 đến 65535.")
+            .Validate(o => o.DuplicateWindowSeconds > 0, "Camera:DuplicateWindowSeconds phải lớn hơn 0.")
             .ValidateOnStart();
 
         // Reader: singleton, dùng chung một kết nối socket.
@@ -91,13 +91,13 @@ public static class TanTienAppServices
                 o.ReadyAddress = ConfigReader.GetString(cfg, $"{PlcSectionName}:ReadyAddress", o.ReadyAddress);
                 o.RefreshIntervalMs = ConfigReader.GetInt(cfg, $"{PlcSectionName}:RefreshIntervalMs", o.RefreshIntervalMs);
             })
-            .Validate(o => !string.IsNullOrWhiteSpace(o.Ip), "Plc:Ip khong duoc de trong.")
-            .Validate(o => o.Port is > 0 and <= 65535, "Plc:Port phai tu 1 den 65535.")
-            .Validate(o => o.TimeoutMs > 0, "Plc:TimeoutMs phai lon hon 0.")
-            .Validate(o => o.Retries >= 0, "Plc:Retries khong duoc am.")
-            .Validate(o => o.RefreshIntervalMs > 0, "Plc:RefreshIntervalMs phai lon hon 0.")
-            .Validate(o => !string.IsNullOrWhiteSpace(o.ResultAddress), "Plc:ResultAddress khong duoc de trong.")
-            .Validate(o => !string.IsNullOrWhiteSpace(o.ReadyAddress), "Plc:ReadyAddress khong duoc de trong.")
+            .Validate(o => !string.IsNullOrWhiteSpace(o.Ip), "Plc:Ip không được để trống.")
+            .Validate(o => o.Port is > 0 and <= 65535, "Plc:Port phải từ 1 đến 65535.")
+            .Validate(o => o.TimeoutMs > 0, "Plc:TimeoutMs phải lớn hơn 0.")
+            .Validate(o => o.Retries >= 0, "Plc:Retries không được âm.")
+            .Validate(o => o.RefreshIntervalMs > 0, "Plc:RefreshIntervalMs phải lớn hơn 0.")
+            .Validate(o => !string.IsNullOrWhiteSpace(o.ResultAddress), "Plc:ResultAddress không được để trống.")
+            .Validate(o => !string.IsNullOrWhiteSpace(o.ReadyAddress), "Plc:ReadyAddress không được để trống.")
             .ValidateOnStart();
 
         // OmronPlc: singleton, dùng chung một kết nối UDP cho cả ghi kết quả
@@ -136,9 +136,9 @@ public static class TanTienAppServices
                     ? HandheldMode.TcpClient
                     : HandheldMode.TcpServer;
             })
-            .Validate(o => !string.IsNullOrWhiteSpace(o.TcpHost), "Scanner:TcpHost khong duoc de trong.")
-            .Validate(o => o.TcpPort is > 0 and <= 65535, "Scanner:TcpPort phai tu 1 den 65535.")
-            .Validate(o => o.BaudRate > 0, "Scanner:BaudRate phai lon hon 0.")
+            .Validate(o => !string.IsNullOrWhiteSpace(o.TcpHost), "Scanner:TcpHost không được để trống.")
+            .Validate(o => o.TcpPort is > 0 and <= 65535, "Scanner:TcpPort phải từ 1 đến 65535.")
+            .Validate(o => o.BaudRate > 0, "Scanner:BaudRate phải lớn hơn 0.")
             .ValidateOnStart();
 
         services.AddSingleton<HandheldScannerService>();
@@ -150,7 +150,7 @@ public static class TanTienAppServices
                 o.Url = ConfigReader.GetString(cfg, $"{WebSectionName}:Url", o.Url);
                 o.Enabled = ConfigReader.GetBool(cfg, $"{WebSectionName}:Enabled", o.Enabled);
             })
-            .Validate(o => !string.IsNullOrWhiteSpace(o.Url), "Web:Url khong duoc de trong.")
+            .Validate(o => !string.IsNullOrWhiteSpace(o.Url), "Web:Url không được để trống.")
             .ValidateOnStart();
 
         // ---- Quản lý license ----

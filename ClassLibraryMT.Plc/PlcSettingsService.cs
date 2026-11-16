@@ -284,7 +284,7 @@ internal sealed class PlcSettingsService : IPlcSettingsService
             return PlcReadResult.Fail(
                 parameter.Id,
                 "ARG",
-                $"Tham so '{parameter.Name}' chi ghi, khong doc duoc.");
+                $"Tham số '{parameter.Name}' chỉ ghi, không đọc được.");
         }
 
         var validation = ValidateParameter(parameter);
@@ -304,13 +304,13 @@ internal sealed class PlcSettingsService : IPlcSettingsService
                 PlcValueType.Int32 => ToIntResult(client.ReadInt32(parameter.Address)),
                 PlcValueType.Float => ToFloatResult(client.ReadFloat(parameter.Address)),
                 PlcValueType.Bool => ToBoolResult(client.ReadBool(parameter.Address)),
-                _ => PlcResult<string>.Fail("ARG", "Kieu du lieu khong ho tro.", default),
+                _ => PlcResult<string>.Fail("ARG", "Kiểu dữ liệu không hỗ trợ.", default),
             };
 
             if (!result.IsSuccess)
             {
                 _logger.LogWarning(
-                    "Doc o nho PLC that bai ({Name} = {Address}): {Code} - {Message}",
+                    "Đọc ô nhớ PLC thất bại ({Name} = {Address}): {Code} - {Message}",
                     parameter.Name, parameter.Address, result.ErrorCode, result.Message);
                 return PlcReadResult.Fail(
                     parameter.Id,
@@ -374,7 +374,7 @@ internal sealed class PlcSettingsService : IPlcSettingsService
         var recipe = await _store.GetRecipeByIdAsync(recipeId, ct).ConfigureAwait(false);
         if (recipe is null)
         {
-            return [PlcWriteResult.Fail("ARG", "Khong tim thay recipe.")];
+            return [PlcWriteResult.Fail("ARG", "Không tìm thấy recipe.")];
         }
 
         var parameters = await _store.GetParametersAsync(ct).ConfigureAwait(false);
@@ -385,7 +385,7 @@ internal sealed class PlcSettingsService : IPlcSettingsService
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            // Dung MOT client cho ca recipe: tranh tao/ket noi lai cho tung o nho.
+            // Dung MOT client cho ca recipe: tranh tao/ket noi lai cho tung ô nhớ.
             using var client = _clientFactory.Create();
 
             foreach (var parameter in parameters)
@@ -401,7 +401,7 @@ internal sealed class PlcSettingsService : IPlcSettingsService
                 if (!values.TryGetValue(parameter.Id, out var value))
                 {
                     results.Add(PlcWriteResult.Fail(
-                        "ARG", $"Tham so '{parameter.Name}' khong co gia tri trong recipe."));
+                        "ARG", $"Tham số '{parameter.Name}' không có giá trị trong recipe."));
                     continue;
                 }
 
@@ -417,11 +417,11 @@ internal sealed class PlcSettingsService : IPlcSettingsService
     }
 
     /// <summary>
-    /// Ghi mot gia tri xuong PLC bang client da co (khong acquire lai gate).
+    /// Ghi một giá trị xuống PLC bằng client đã có (không acquire lại gate).
     /// </summary>
-    /// <param name="client">Client de ghi.</param>
-    /// <param name="parameter">Tham so can ghi.</param>
-    /// <param name="value">Gia tri (chuoi).</param>
+    /// <param name="client">Client để ghi.</param>
+    /// <param name="parameter">Tham số cần ghi.</param>
+    /// <param name="value">Giá trị (chuỗi).</param>
     /// <returns>Ket qua ghi.</returns>
     private PlcWriteResult WriteToClient(
         IPlcMemoryClient client,
@@ -430,7 +430,7 @@ internal sealed class PlcSettingsService : IPlcSettingsService
     {
         if (!parameter.CanWrite)
         {
-            return PlcWriteResult.Fail("ARG", $"Tham so '{parameter.Name}' chi doc, khong ghi duoc.");
+            return PlcWriteResult.Fail("ARG", $"Tham số '{parameter.Name}' chỉ đọc, không ghi được.");
         }
 
         var validation = ValidateParameter(parameter);
@@ -450,13 +450,13 @@ internal sealed class PlcSettingsService : IPlcSettingsService
             PlcValueType.Int32 => client.WriteInt32(parameter.Address, (int)parsed),
             PlcValueType.Float => client.WriteFloat(parameter.Address, (float)parsed),
             PlcValueType.Bool => client.WriteBool(parameter.Address, parsed != 0),
-            _ => PlcResult.Fail("ARG", "Kieu du lieu khong ho tro.", default),
+            _ => PlcResult.Fail("ARG", "Kiểu dữ liệu không hỗ trợ.", default),
         };
 
         if (!result.IsSuccess)
         {
             _logger.LogWarning(
-                "Ghi o nho PLC that bai ({Name} = {Address}): {Code} - {Message}",
+                "Ghi ô nhớ PLC thất bại ({Name} = {Address}): {Code} - {Message}",
                 parameter.Name, parameter.Address, result.ErrorCode, result.Message);
             return PlcWriteResult.Fail(result.ErrorCode, result.Message, result.ProcessTime);
         }
@@ -475,44 +475,44 @@ internal sealed class PlcSettingsService : IPlcSettingsService
     {
         if (string.IsNullOrWhiteSpace(parameter.Name))
         {
-            return Result.Fail("Ten tham so khong duoc de trong.");
+            return Result.Fail("Tên tham số không được để trống.");
         }
 
         if (parameter.Name.Trim().Length > 100)
         {
-            return Result.Fail("Ten tham so toi da 100 ky tu.");
+            return Result.Fail("Tên tham số tối đa 100 ký tự.");
         }
 
         if (!IsValidAddress(parameter.Address))
         {
             return Result.Fail(
-                $"Dia chi '{parameter.Address}' khong hop le. "
-                + "Dinh dang: D12, DM12 hoac D12.05 (bit 0-15).");
+                $"Địa chỉ '{parameter.Address}' không hợp lệ. "
+                + "Định dạng: D12, DM12 hoặc D12.05 (bit 0-15).");
         }
 
         if (parameter.ValueType == PlcValueType.Bool &&
             !parameter.Address.Contains('.', StringComparison.Ordinal))
         {
             return Result.Fail(
-                $"Tham so Bool '{parameter.Name}' phai dung dia chi dang 'D12.05'.");
+                $"Tham số Bool '{parameter.Name}' phải dùng địa chỉ dạng 'D12.05'.");
         }
 
         if (parameter.ValueType != PlcValueType.Bool &&
             parameter.Address.Contains('.', StringComparison.Ordinal))
         {
             return Result.Fail(
-                $"Tham so '{parameter.Name}' dang dung dia chi bit "
-                + "nhung kieu du lieu khong phai Bool.");
+                $"Tham số '{parameter.Name}' đang dùng địa chỉ bit "
+                + "nhưng kiểu dữ liệu không phải Bool.");
         }
 
         if (!Enum.IsDefined(parameter.AccessMode))
         {
-            return Result.Fail("Che do truy cap khong hop le.");
+            return Result.Fail("Chế độ truy cập không hợp lệ.");
         }
 
         if (!Enum.IsDefined(parameter.ValueType))
         {
-            return Result.Fail("Kieu du lieu khong hop le.");
+            return Result.Fail("Kiểu dữ liệu không hợp lệ.");
         }
 
         return Result.Success();
@@ -623,7 +623,7 @@ internal sealed class PlcSettingsService : IPlcSettingsService
                 return true;
 
             default:
-                error = "Kieu du lieu khong ho tro.";
+                error = "Kiểu dữ liệu không hỗ trợ.";
                 return false;
         }
     }

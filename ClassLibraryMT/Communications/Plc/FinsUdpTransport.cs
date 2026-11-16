@@ -56,7 +56,7 @@ internal sealed class FinsUdpTransport : IDisposable
         var frame = FinsCodec.BuildReadCommand(sid, remoteNode, localNode, wordAddress, wordCount);
 
         var lastCode = "TIMEOUT";
-        var lastMessage = "Khong nhan duoc phan hoi tu PLC.";
+        var lastMessage = "Không nhận được phản hồi từ PLC.";
         var totalAttempts = _retries + 1;
 
         for (var attempt = 0; attempt < totalAttempts; attempt++)
@@ -65,15 +65,15 @@ internal sealed class FinsUdpTransport : IDisposable
             if (response is null)
             {
                 lastMessage = attempt < totalAttempts - 1
-                    ? $"Khong nhan duoc phan hoi (lan {attempt + 1}/{totalAttempts}), thu lai..."
-                    : "Khong nhan duoc phan hoi tu PLC.";
+                    ? $"Không nhận được phản hồi (lần {attempt + 1}/{totalAttempts}), thử lại..."
+                    : "Không nhận được phản hồi từ PLC.";
                 continue;
             }
 
             if (!FinsCodec.IsValidResponseHeader(response, out var responseSid))
             {
                 lastCode = "BADRESP";
-                lastMessage = "Phan hoi khong phai frame FINS hop le.";
+                lastMessage = "Phản hồi không phải frame FINS hợp lệ.";
                 continue;
             }
 
@@ -81,14 +81,14 @@ internal sealed class FinsUdpTransport : IDisposable
             {
                 // Phan hoi cua lenh truoc -> bo qua, cho tiep.
                 lastCode = "SID";
-                lastMessage = $"SID khong khop (mong doi {sid}, nhan {responseSid}).";
+                lastMessage = $"SID không khớp (mong đợi {sid}, nhận {responseSid}).";
                 continue;
             }
 
             if (!FinsCodec.TryReadEndCode(response, out var endCode))
             {
                 lastCode = "BADRESP";
-                lastMessage = "Phan hoi khong doc duoc end code.";
+                lastMessage = "Phản hồi không đọc được end code.";
                 continue;
             }
 
@@ -96,7 +96,7 @@ internal sealed class FinsUdpTransport : IDisposable
             if (!FinsCodec.HasEchoedCommand(response, Fins.MrcMemoryArea, Fins.SrcRead))
             {
                 lastCode = "BADRESP";
-                lastMessage = "Phan hoi khong echo dung MRC/SRC.";
+                lastMessage = "Phản hồi không echo đúng MRC/SRC.";
                 continue;
             }
 
@@ -153,7 +153,7 @@ internal sealed class FinsUdpTransport : IDisposable
         var frame = FinsCodec.BuildWriteCommand(sid, remoteNode, localNode, wordAddress, words);
 
         var lastCode = "TIMEOUT";
-        var lastMessage = "Khong nhan duoc phan hoi tu PLC.";
+        var lastMessage = "Không nhận được phản hồi từ PLC.";
         var totalAttempts = _retries + 1;
 
         for (var attempt = 0; attempt < totalAttempts; attempt++)
@@ -162,29 +162,29 @@ internal sealed class FinsUdpTransport : IDisposable
             if (response is null)
             {
                 lastMessage = attempt < totalAttempts - 1
-                    ? $"Khong nhan duoc phan hoi (lan {attempt + 1}/{totalAttempts}), thu lai..."
-                    : "Khong nhan duoc phan hoi tu PLC.";
+                    ? $"Không nhận được phản hồi (lần {attempt + 1}/{totalAttempts}), thử lại..."
+                    : "Không nhận được phản hồi từ PLC.";
                 continue;
             }
 
             if (!FinsCodec.IsValidResponseHeader(response, out var responseSid))
             {
                 lastCode = "BADRESP";
-                lastMessage = "Phan hoi khong phai frame FINS hop le.";
+                lastMessage = "Phản hồi không phải frame FINS hợp lệ.";
                 continue;
             }
 
             if (responseSid != sid)
             {
                 lastCode = "SID";
-                lastMessage = $"SID khong khop (mong doi {sid}, nhan {responseSid}).";
+                lastMessage = $"SID không khớp (mong đợi {sid}, nhận {responseSid}).";
                 continue;
             }
 
             if (!FinsCodec.TryReadEndCode(response, out var endCode))
             {
                 lastCode = "BADRESP";
-                lastMessage = "Phan hoi khong doc duoc end code.";
+                lastMessage = "Phản hồi không đọc được end code.";
                 continue;
             }
 
@@ -192,7 +192,7 @@ internal sealed class FinsUdpTransport : IDisposable
             if (!FinsCodec.HasEchoedCommand(response, Fins.MrcMemoryArea, Fins.SrcWrite))
             {
                 lastCode = "BADRESP";
-                lastMessage = "Phan hoi khong echo dung MRC/SRC.";
+                lastMessage = "Phản hồi không echo đúng MRC/SRC.";
                 continue;
             }
 

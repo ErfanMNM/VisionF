@@ -113,9 +113,14 @@ public sealed class ConfigFieldSchema
 
     /// <summary>
     /// Gán giá trị vào property của object cha.
+    ///
+    /// Tự ép kiểu số (decimal từ NumericUpDown -&gt; int/long/...) để tránh
+    /// <c>ArgumentException</c> khi binding trả về kiểu khác model.
+    /// Ép kiểu thất bại thì ném <c>InvalidOperationException</c> với thông tin
+    /// rõ ràng thay vì để crash khó đoán.
     /// </summary>
     /// <param name="parent">Object chứa property.</param>
-    /// <param name="value">Giá trị mới (đã đúng kiểu).</param>
+    /// <param name="value">Giá trị mới (đã đúng kiểu hoặc cần ép kiểu).</param>
     public void SetValue(object? parent, object? value)
     {
         if (parent is null)
@@ -123,7 +128,50 @@ public sealed class ConfigFieldSchema
             return;
         }
 
+        if (value is not null && !Property.PropertyType.IsInstanceOfType(value))
+        {
+            value = CoerceValue(value);
+        }
+
         Property.SetValue(parent, value);
+    }
+
+    /// <summary>
+    /// Ép giá trị thô về đúng kiểu của property (số, bool, enum, string).
+    /// </summary>
+    /// <param name="value">Giá trị thô.</param>
+    /// <returns>Giá trị đã ép kiểu.</returns>
+    private object? CoerceValue(object value)
+    {
+        var targetType = Nullable.GetUnderlyingType(Property.PropertyType) ?? Property.PropertyType;
+
+        try
+        {
+            if (targetType == typeof(string))
+            {
+                return value.ToString();
+            }
+
+            if (targetType == typeof(bool) && value is string boolText)
+            {
+                return bool.TryParse(boolText.Trim(), out var parsed) && parsed;
+            }
+
+            if (targetType.IsEnum)
+            {
+                return value is string enumText
+                    ? Enum.Parse(targetType, enumText.Trim(), ignoreCase: true)
+                    : Enum.ToObject(targetType, value);
+            }
+
+            return Convert.ChangeType(value, targetType, System.Globalization.CultureInfo.InvariantCulture);
+        }
+        catch (Exception ex) when (ex is FormatException or InvalidCastException or OverflowException or ArgumentException)
+        {
+            throw new InvalidOperationException(
+                $"Không gán được giá trị '{value}' cho trường '{JsonPath}' (cần kiểu {targetType.Name}).",
+                ex);
+        }
     }
 
     /// <summary>

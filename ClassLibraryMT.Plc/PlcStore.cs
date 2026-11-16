@@ -193,7 +193,7 @@ internal sealed class PlcStore
     // ------------------------------------------------------------------
 
     /// <summary>
-    /// Doc tat ca tham so, sap xep theo <c>SortOrder</c> roi <c>Name</c>.
+    /// Đọc tất cả tham so, sap xep theo <c>SortOrder</c> roi <c>Name</c>.
     /// </summary>
     /// <param name="ct">Token huy.</param>
     /// <returns>Danh sach tham so.</returns>
@@ -244,7 +244,7 @@ internal sealed class PlcStore
     /// <summary>
     /// Them hoac cap nhat mot tham so (Id = 0 -> them).
     /// </summary>
-    /// <param name="parameter">Tham so can luu.</param>
+    /// <param name="parameter">Tham số cần lưu.</param>
     /// <param name="ct">Token huy.</param>
     /// <returns>Ket qua.</returns>
     public async Task<Result> SaveParameterAsync(PlcParameter parameter, CancellationToken ct = default)
@@ -301,7 +301,7 @@ internal sealed class PlcStore
 
             if (parameter.Id > 0 && affected == 0)
             {
-                return Result.Fail("Khong tim thay tham so can cap nhat.");
+                return Result.Fail("Không tìm thấy tham số cần cập nhật.");
             }
 
             return Result.Success();
@@ -309,7 +309,7 @@ internal sealed class PlcStore
         catch (SqliteException ex) when (ex.SqliteErrorCode == 19)
         {
             // SQLITE_CONSTRAINT: trung ten / trung khoa.
-            return Result.Fail($"Tham so '{parameter.Name}' da ton tai.");
+            return Result.Fail($"Tham số '{parameter.Name}' da ton tai.");
         }
     }
 
@@ -330,7 +330,7 @@ internal sealed class PlcStore
         var affected = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         return affected > 0
             ? Result.Success()
-            : Result.Fail("Khong tim thay tham so can xoa.");
+            : Result.Fail("Không tìm thấy tham số cần xoá.");
     }
 
     // ------------------------------------------------------------------
@@ -338,7 +338,7 @@ internal sealed class PlcStore
     // ------------------------------------------------------------------
 
     /// <summary>
-    /// Doc tat ca recipe.
+    /// Đọc tất cả recipe.
     /// </summary>
     /// <param name="ct">Token huy.</param>
     /// <returns>Danh sach recipe.</returns>
@@ -387,7 +387,7 @@ internal sealed class PlcStore
     }
 
     /// <summary>
-    /// Tao recipe moi. Neu chua co recipe nao, recipe dau tien se la mac dinh.
+    /// Tạo recipe moi. Neu chua co recipe nao, recipe dau tien se la mac dinh.
     /// </summary>
     /// <param name="name">Ten recipe.</param>
     /// <param name="ct">Token huy.</param>
@@ -396,7 +396,7 @@ internal sealed class PlcStore
     {
         if (string.IsNullOrWhiteSpace(name))
         {
-            return Result.Fail("Ten recipe khong duoc de trong.");
+            return Result.Fail("Tên recipe không được để trống.");
         }
 
         await using var connection = await OpenAsync(ct).ConfigureAwait(false);
@@ -451,12 +451,12 @@ internal sealed class PlcStore
             var value = await check.ExecuteScalarAsync(ct).ConfigureAwait(false);
             if (value is null)
             {
-                return Result.Fail("Khong tim thay recipe can xoa.");
+                return Result.Fail("Không tìm thấy recipe cần xoá.");
             }
 
             if (Convert.ToInt64(value) != 0)
             {
-                return Result.Fail("Khong the xoa recipe mac dinh.");
+                return Result.Fail("Không thể xoá recipe mặc định.");
             }
         }
 
@@ -469,7 +469,7 @@ internal sealed class PlcStore
     }
 
     /// <summary>
-    /// Luu gia tri cac tham so cho mot recipe (ghi de, xoa het gia tri cu).
+    /// Lưu gia tri cac tham so cho mot recipe (ghi de, xoa het gia tri cu).
     /// </summary>
     /// <param name="recipeId">Id recipe.</param>
     /// <param name="values">Danh sach gia tri theo ParameterId.</param>
@@ -493,7 +493,7 @@ internal sealed class PlcStore
             var count = Convert.ToInt64(await check.ExecuteScalarAsync(ct).ConfigureAwait(false));
             if (count == 0)
             {
-                return Result.Fail("Khong tim thay recipe.");
+                return Result.Fail("Không tìm thấy recipe.");
             }
         }
 

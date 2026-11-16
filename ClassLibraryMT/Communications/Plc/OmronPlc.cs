@@ -132,7 +132,7 @@ public sealed partial class OmronPlc : IDisposable
     public PlcResult<bool> ReadBool(string address)
     {
         if (!FinsAddress.TryParse(address, out var parsed) || !parsed.IsBit)
-            return PlcResult<bool>.Fail("ARG", $"Dia chi bit khong hop le: '{address}'.", default);
+            return PlcResult<bool>.Fail("ARG", $"Địa chỉ bit không hợp lệ: '{address}'.", default);
 
         var read = ReadWordsAt(parsed.WordAddress, 1);
         if (!read.IsSuccess)
@@ -152,7 +152,7 @@ public sealed partial class OmronPlc : IDisposable
     public PlcResult<string> ReadString(string address, int length)
     {
         if (length <= 0)
-            return PlcResult<string>.Fail("ARG", $"Do dai chuoi phai > 0 (nhan {length}).", default);
+            return PlcResult<string>.Fail("ARG", $"Độ dài chuỗi phải > 0 (nhận {length}).", default);
 
         var wordCount = (length + 1) / 2;
         var read = ReadWords(address, wordCount);
@@ -273,10 +273,10 @@ public sealed partial class OmronPlc : IDisposable
     public PlcResult<bool[]> ReadBoolArray(string address, int length)
     {
         if (!FinsAddress.TryParse(address, out var parsed) || !parsed.IsBit)
-            return PlcResult<bool[]>.Fail("ARG", $"Dia chi bit khong hop le: '{address}'.", default);
+            return PlcResult<bool[]>.Fail("ARG", $"Địa chỉ bit không hợp lệ: '{address}'.", default);
 
         if (length <= 0)
-            return PlcResult<bool[]>.Fail("ARG", $"Do dai mang phai > 0 (nhan {length}).", default);
+            return PlcResult<bool[]>.Fail("ARG", $"Độ dài mảng phải > 0 (nhận {length}).", default);
 
         var startBit = parsed.BitAddress!.Value;
         var wordCount = (startBit + length + 15) / 16;
@@ -303,17 +303,17 @@ public sealed partial class OmronPlc : IDisposable
     public PlcResult<ushort[]> ReadWords(string address, int wordCount)
     {
         if (!FinsAddress.TryParse(address, out var parsed))
-            return PlcResult<ushort[]>.Fail("ARG", $"Dia chi khong hop le: '{address}'.", default);
+            return PlcResult<ushort[]>.Fail("ARG", $"Địa chỉ không hợp lệ: '{address}'.", default);
 
         if (parsed.IsBit)
-            return PlcResult<ushort[]>.Fail("ARG", $"Dia chi '{address}' la dia chi bit, hay dung ReadBool.", default);
+            return PlcResult<ushort[]>.Fail("ARG", $"Địa chỉ '{address}' là địa chỉ bit, hãy dùng ReadBool.", default);
 
         if (wordCount <= 0)
             return PlcResult<ushort[]>.Fail("ARG", $"So word phai > 0 (nhan {wordCount}).", default);
 
         if (!parsed.FitsWordCount(wordCount))
             return PlcResult<ushort[]>.Fail("ARG",
-                $"Doc {wordCount} word tu '{address}' se tran qua gioi han vung D (32767).", default);
+                $"Doc {wordCount} word tu '{address}' sẽ tràn qua giới hạn vùng D (32767).", default);
 
         return ReadWordsAt(parsed.WordAddress, wordCount);
     }

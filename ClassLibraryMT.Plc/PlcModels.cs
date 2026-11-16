@@ -3,7 +3,7 @@ namespace ClassLibraryMT.Plc;
 /// <summary>
 /// Che do truy cap cua mot tham so PLC (o nho vung D).
 ///
-/// Luu trong database duoi dang <c>int</c> de sua enum sau nay khong pha du lieu.
+/// Lưu trong database duoi dang <c>int</c> de sua enum sau nay khong pha du lieu.
 /// </summary>
 public enum PlcAccessMode
 {
@@ -18,7 +18,7 @@ public enum PlcAccessMode
 }
 
 /// <summary>
-/// Kieu du lieu cua gia tri trong o nho PLC.
+/// Kieu du lieu cua gia tri trong ô nhớ PLC.
 ///
 /// Chi giu cac kieu an toan voi API <c>OmronPlc</c> hien co.
 /// </summary>
@@ -48,7 +48,7 @@ public sealed class PlcParameter
     /// <summary>Ten tham so, duy nhat — vi du "Delay Reject".</summary>
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>Dia chi o nho trong vung D — vi du "D12" hoac "D12.05".</summary>
+    /// <summary>Dia chi ô nhớ trong vung D — vi du "D12" hoac "D12.05".</summary>
     public string Address { get; set; } = string.Empty;
 
     /// <summary>Kieu du lieu cua gia tri.</summary>
@@ -109,11 +109,11 @@ public sealed class PlcRecipe
 /// <summary>
 /// Ket qua cua mot thao tac tra ve (them / sua / xoa / ap dung).
 /// </summary>
-/// <param name="Ok">True neu thao tac thanh cong.</param>
+/// <param name="Ok">True neu thao tac thành công.</param>
 /// <param name="Message">Thong diep mo ta ket qua.</param>
 public readonly record struct Result(bool Ok, string Message)
 {
-    /// <summary>Tao ket qua thanh cong.</summary>
+    /// <summary>Tao ket qua thành công.</summary>
     public static Result Success(string message = "OK") => new(true, message);
 
     /// <summary>Tao ket qua that bai.</summary>
@@ -121,14 +121,14 @@ public readonly record struct Result(bool Ok, string Message)
 }
 
 /// <summary>
-/// Ket qua doc mot o nho PLC.
+/// Ket qua doc mot ô nhớ PLC.
 /// </summary>
 public sealed class PlcReadResult
 {
     /// <summary>Id cua tham so da doc (dung de khop ket qua voi danh sach).</summary>
     public long ParameterId { get; init; }
 
-    /// <summary>True neu doc thanh cong.</summary>
+    /// <summary>True neu doc thành công.</summary>
     public bool IsSuccess { get; init; }
 
     /// <summary>Thong diep mo ta ket qua.</summary>
@@ -143,7 +143,7 @@ public sealed class PlcReadResult
     /// <summary>Thoi gian xu ly lenh.</summary>
     public TimeSpan ProcessTime { get; init; }
 
-    /// <summary>Tao ket qua thanh cong.</summary>
+    /// <summary>Tao ket qua thành công.</summary>
     public static PlcReadResult Ok(
         long parameterId,
         string value,
@@ -175,11 +175,11 @@ public sealed class PlcReadResult
 }
 
 /// <summary>
-/// Ket qua ghi mot o nho PLC.
+/// Ket qua ghi mot ô nhớ PLC.
 /// </summary>
 public sealed class PlcWriteResult
 {
-    /// <summary>True neu ghi thanh cong.</summary>
+    /// <summary>True neu ghi thành công.</summary>
     public bool IsSuccess { get; init; }
 
     /// <summary>Thong diep mo ta ket qua.</summary>
@@ -194,7 +194,7 @@ public sealed class PlcWriteResult
     /// <summary>Thoi gian xu ly lenh.</summary>
     public TimeSpan ProcessTime { get; init; }
 
-    /// <summary>Tao ket qua thanh cong.</summary>
+    /// <summary>Tao ket qua thành công.</summary>
     public static PlcWriteResult Ok(string value, string message = "OK", TimeSpan processTime = default) =>
         new() { IsSuccess = true, Value = value, Message = message, ProcessTime = processTime };
 
@@ -327,7 +327,7 @@ public static class PlcValueValidator
         var text = raw?.Trim() ?? string.Empty;
         if (text.Length == 0)
         {
-            error = "Gia tri khong duoc de trong.";
+            error = "Giá trị không được để trống.";
             return false;
         }
 
@@ -336,7 +336,7 @@ public static class PlcValueValidator
             case PlcValueType.Bool:
                 if (!TryParseBool(text, out _))
                 {
-                    error = $"'{text}' khong phai gia tri boolean (true/false, 1/0, on/off).";
+                    error = $"'{text}' không phải giá trị boolean (true/false, 1/0, on/off).";
                     return false;
                 }
 
@@ -345,13 +345,13 @@ public static class PlcValueValidator
             case PlcValueType.Int16:
                 if (!TryParseInteger(text, out var shortValue))
                 {
-                    error = $"'{text}' khong phai so nguyen 16 bit.";
+                    error = $"'{text}' không phải số nguyên 16 bit.";
                     return false;
                 }
 
                 if (shortValue < Int16Min || shortValue > Int16Max)
                 {
-                    error = $"Gia tri {shortValue} ngoai khoang cho phep cua Short ({Int16Min}..{Int16Max}).";
+                    error = $"Giá trị {shortValue} ngoài khoảng cho phép của Short ({Int16Min}..{Int16Max}).";
                     return false;
                 }
 
@@ -360,13 +360,13 @@ public static class PlcValueValidator
             case PlcValueType.Int32:
                 if (!TryParseInteger(text, out var intValue))
                 {
-                    error = $"'{text}' khong phai so nguyen 32 bit.";
+                    error = $"'{text}' không phải số nguyên 32 bit.";
                     return false;
                 }
 
                 if (intValue < Int32Min || intValue > Int32Max)
                 {
-                    error = $"Gia tri {intValue} ngoai khoang cho phep cua Int32 ({Int32Min}..{Int32Max}).";
+                    error = $"Giá trị {intValue} ngoài khoảng cho phép của Int32 ({Int32Min}..{Int32Max}).";
                     return false;
                 }
 
@@ -381,14 +381,14 @@ public static class PlcValueValidator
                     || double.IsNaN(floatValue)
                     || double.IsInfinity(floatValue))
                 {
-                    error = $"'{text}' khong phai so thuc hop le.";
+                    error = $"'{text}' không phải số thực hợp lệ.";
                     return false;
                 }
 
                 return true;
 
             default:
-                error = "Kieu du lieu khong ho tro.";
+                error = "Kiểu dữ liệu không hỗ trợ.";
                 return false;
         }
     }
@@ -424,7 +424,7 @@ public static class PlcValueValidator
     /// </summary>
     /// <param name="text">Chuoi can parse.</param>
     /// <param name="value">Ket qua parse.</param>
-    /// <returns>True neu parse thanh cong.</returns>
+    /// <returns>True neu parse thành công.</returns>
     public static bool TryParseInteger(string text, out long value) =>
         long.TryParse(
             text,
@@ -437,7 +437,7 @@ public static class PlcValueValidator
     /// </summary>
     /// <param name="text">Chuoi can parse.</param>
     /// <param name="value">Ket qua parse.</param>
-    /// <returns>True neu parse thanh cong.</returns>
+    /// <returns>True neu parse thành công.</returns>
     public static bool TryParseBool(string text, out bool value)
     {
         value = false;

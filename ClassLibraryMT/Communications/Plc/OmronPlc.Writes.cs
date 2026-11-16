@@ -61,7 +61,7 @@ public sealed partial class OmronPlc
     public PlcResult WriteBool(string address, bool value)
     {
         if (!FinsAddress.TryParse(address, out var parsed) || !parsed.IsBit)
-            return PlcResult.Fail("ARG", $"Dia chi bit khong hop le: '{address}'.", default);
+            return PlcResult.Fail("ARG", $"Địa chỉ bit không hợp lệ: '{address}'.", default);
 
         var read = ReadWordsAt(parsed.WordAddress, 1);
         if (!read.IsSuccess)
@@ -81,7 +81,7 @@ public sealed partial class OmronPlc
     public PlcResult WriteString(string address, string value, int length)
     {
         if (length <= 0)
-            return PlcResult.Fail("ARG", $"Do dai chuoi phai > 0 (nhan {length}).", default);
+            return PlcResult.Fail("ARG", $"Độ dài chuỗi phải > 0 (nhận {length}).", default);
 
         var words = FinsCodec.EncodeStringAsWords(value, length);
         return WriteWords(address, words);
@@ -198,12 +198,12 @@ public sealed partial class OmronPlc
     public PlcResult WriteBoolArray(string address, bool[] values)
     {
         if (!FinsAddress.TryParse(address, out var parsed) || !parsed.IsBit)
-            return PlcResult.Fail("ARG", $"Dia chi bit khong hop le: '{address}'.", default);
+            return PlcResult.Fail("ARG", $"Địa chỉ bit không hợp lệ: '{address}'.", default);
 
         ArgumentNullException.ThrowIfNull(values);
 
         if (values.Length == 0)
-            return PlcResult.Fail("ARG", "Mang bool rong.", default);
+            return PlcResult.Fail("ARG", "Mảng bool rỗng.", default);
 
         var startBit = parsed.BitAddress!.Value;
         var wordCount = (startBit + values.Length + 15) / 16;
@@ -245,17 +245,17 @@ public sealed partial class OmronPlc
         ArgumentNullException.ThrowIfNull(values);
 
         if (!FinsAddress.TryParse(address, out var parsed))
-            return PlcResult.Fail("ARG", $"Dia chi khong hop le: '{address}'.", default);
+            return PlcResult.Fail("ARG", $"Địa chỉ không hợp lệ: '{address}'.", default);
 
         if (parsed.IsBit)
-            return PlcResult.Fail("ARG", $"Dia chi '{address}' la dia chi bit, hay dung WriteBool.", default);
+            return PlcResult.Fail("ARG", $"Địa chỉ '{address}' là địa chỉ bit, hãy dùng WriteBool.", default);
 
         if (values.Length == 0)
-            return PlcResult.Fail("ARG", "Mang word rong.", default);
+            return PlcResult.Fail("ARG", "Mảng word rỗng.", default);
 
         if (!parsed.FitsWordCount(values.Length))
             return PlcResult.Fail("ARG",
-                $"Ghi {values.Length} word tu '{address}' se tran qua gioi han vung D (32767).", default);
+                $"Ghi {values.Length} word tu '{address}' sẽ tràn qua giới hạn vùng D (32767).", default);
 
         return WriteWordsCore(parsed.WordAddress, values, default);
     }
