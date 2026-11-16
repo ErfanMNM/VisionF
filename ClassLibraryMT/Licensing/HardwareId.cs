@@ -47,6 +47,14 @@ public static partial class HardwareId
         }
         catch { /* bo qua, dung thanh phan khac */ }
 
+        // Linux: /etc/machine-id tuong duong MachineGuid cua Windows.
+        try
+        {
+            if (OperatingSystem.IsLinux() && File.Exists("/etc/machine-id"))
+                machineGuid = File.ReadAllText("/etc/machine-id").Trim();
+        }
+        catch { /* bo qua */ }
+
         var volume = "";
         try
         {
