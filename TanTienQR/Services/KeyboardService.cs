@@ -44,6 +44,17 @@ public sealed class KeyboardService
     private TextBox? _focused;
 
     /// <summary>
+    /// True khi người dùng đang giữ con trỏ trên một control KHÔNG phải ô nhập
+    /// (ví dụ nút "Đăng nhập") trong lúc bàn phím đang mở. Trong thời gian này
+    /// chưa đóng bàn phím, vì đóng sẽ làm layout dịch chuyển và nút trượt khỏi
+    /// dưới ngón tay -> sự kiện Click bị mất (phải bấm lần hai).
+    /// </summary>
+    private bool _pointerDown;
+
+    /// <summary>Yêu cầu đóng bàn phím bị hoãn do <see cref="_pointerDown"/>.</summary>
+    private (TopLevel? TopLevel, TextBox Box)? _pendingClose;
+
+    /// <summary>
     /// Khởi tạo service.
     /// </summary>
     /// <param name="keyboard">ViewModel của bàn phím ảo.</param>
@@ -118,6 +129,26 @@ public sealed class KeyboardService
             OnPointerPressed,
             RoutingStrategies.Bubble | RoutingStrategies.Direct);
 
+        // Theo dõi vòng đời thao tác chạm để hoãn việc đóng bàn phím tới khi
+        // nhả tay. handledEventsToo vì Button có thể đánh dấu Handled.
+        topLevel.AddHandler(
+            InputElement.PointerPressedEvent,
+            OnPointerPressedTunnel,
+            RoutingStrategies.Tunnel,
+            handledEventsToo: true);
+
+        topLevel.AddHandler(
+            InputElement.PointerReleasedEvent,
+            OnPointerEnded,
+            RoutingStrategies.Bubble | RoutingStrategies.Tunnel,
+            handledEventsToo: true);
+
+        topLevel.AddHandler(
+            InputElement.PointerCaptureLostEvent,
+            OnPointerCaptureLost,
+            RoutingStrategies.Bubble | RoutingStrategies.Direct,
+            handledEventsToo: true);
+
         _hooked.Add(topLevel);
     }
 
@@ -141,6 +172,9 @@ public sealed class KeyboardService
         topLevel.RemoveHandler(InputElement.GotFocusEvent, OnGotFocus);
         topLevel.RemoveHandler(InputElement.LostFocusEvent, OnLostFocus);
         topLevel.RemoveHandler(InputElement.PointerPressedEvent, OnPointerPressed);
+        topLevel.RemoveHandler(InputElement.PointerPressedEvent, OnPointerPressedTunnel);
+        topLevel.RemoveHandler(InputElement.PointerReleasedEvent, OnPointerEnded);
+        topLevel.RemoveHandler(InputElement.PointerCaptureLostEvent, OnPointerCaptureLost);
 
         // Nếu ô đang focus thuộc cửa sổ vừa đóng -> đóng bàn phím.
         if (_focused is not null && TopLevel.GetTopLevel(_focused) == topLevel)
@@ -158,11 +192,68 @@ public sealed class KeyboardService
             top.RemoveHandler(InputElement.GotFocusEvent, OnGotFocus);
             top.RemoveHandler(InputElement.LostFocusEvent, OnLostFocus);
             top.RemoveHandler(InputElement.PointerPressedEvent, OnPointerPressed);
+            top.RemoveHandler(InputElement.PointerPressedEvent, OnPointerPressedTunnel);
+            top.RemoveHandler(InputElement.PointerReleasedEvent, OnPointerEnded);
+            top.RemoveHandler(InputElement.PointerCaptureLostEvent, OnPointerCaptureLost);
         }
 
+        _pointerDown = false;
+        _pendingClose = null;
         _hooked.Clear();
         _focused = null;
         _keyboard.Close();
+    }
+
+    /// <summary>
+    /// Bắt đầu chạm: nếu chạm vào control không phải ô nhập / bàn phím khi
+    /// bàn phím đang mở thì đánh dấu để hoãn việc đóng bàn phím.
+    /// </summary>
+    private void OnPointerPressedTunnel(object? sender, PointerPressedEventArgs e)
+    {
+        if (!_keyboard.IsVisible || _focused is null)
+        {
+            return;
+        }
+
+        if (e.Source is not Visual source
+            || FindAncestor<VirtualKeyboard>(source) is not null
+            || FindTextBox(source) is not null)
+        {
+            return;
+        }
+
+        _pointerDown = true;
+    }
+
+    private void OnPointerEnded(object? sender, PointerReleasedEventArgs e) => EndPointer();
+
+    private void OnPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e) => EndPointer();
+
+    /// <summary>
+    /// Kết thúc thao tác chạm: xử lý yêu cầu đóng bàn phím đã hoãn. Đăng ở
+    /// mức Background để Click của nút (chạy lúc nhả) xong trước.
+    /// </summary>
+    private void EndPointer()
+    {
+        if (!_pointerDown)
+        {
+            return;
+        }
+
+        _pointerDown = false;
+
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                if (_pendingClose is not { } pending)
+                {
+                    return;
+                }
+
+                _pendingClose = null;
+                CloseIfFocusLeft(pending.TopLevel, pending.Box);
+            },
+            DispatcherPriority.Background);
     }
 
     private void OnGotFocus(object? sender, RoutedEventArgs e)
@@ -266,7 +357,17 @@ public sealed class KeyboardService
         //
         // Vì vậy đợi tới lượt dispatcher kế tiếp rồi mới quyết định.
         Dispatcher.UIThread.Post(
-            () => CloseIfFocusLeft(sender as TopLevel, textBox),
+            () =>
+            {
+                // Đang giữ con trỏ trên nút -> hoãn đóng tới khi nhả tay.
+                if (_pointerDown)
+                {
+                    _pendingClose = (sender as TopLevel, textBox);
+                    return;
+                }
+
+                CloseIfFocusLeft(sender as TopLevel, textBox);
+            },
             DispatcherPriority.Input);
     }
 

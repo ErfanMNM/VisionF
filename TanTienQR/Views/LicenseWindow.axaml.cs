@@ -14,6 +14,24 @@ public partial class LicenseWindow : Window
     public LicenseWindow()
     {
         InitializeComponent();
+        Closing += OnClosing;
+    }
+
+    /// <summary>
+    /// Chưa có license hợp lệ -> không cho đóng hộp thoại (Alt+F4, nút X...).
+    /// Vẫn cho đóng khi cửa sổ chính/ứng dụng đang tắt để người dùng thoát được app.
+    /// </summary>
+    private void OnClosing(object? sender, WindowClosingEventArgs e)
+    {
+        if (e.CloseReason != WindowCloseReason.WindowClosing)
+        {
+            return;
+        }
+
+        if (DataContext is ViewModels.MainViewModel { IsLicenseValid: false })
+        {
+            e.Cancel = true;
+        }
     }
 
     private void OnCloseClick(object? sender, RoutedEventArgs e)

@@ -179,6 +179,14 @@ public partial class MainWindow : Window
             vm.AttachLoginOverlay(LoginOverlay);
 
             vm.Start(this);
+
+            // Máy chưa có license hợp lệ -> hiện hộp thoại license (không tắt được).
+            if (!vm.IsLicenseValid)
+            {
+                Avalonia.Threading.Dispatcher.UIThread.Post(
+                    () => vm.ShowLicenseWindowCommand.Execute(null),
+                    Avalonia.Threading.DispatcherPriority.Background);
+            }
         }
     }
 

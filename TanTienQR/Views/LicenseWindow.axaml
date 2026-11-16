@@ -93,7 +93,14 @@
                         HorizontalAlignment="Stretch"
                         FontSize="13"
                         Content="Đóng"
+                        IsVisible="{Binding IsLicenseValid}"
                         Click="OnCloseClick" />
+                <Button Classes="chip"
+                        HorizontalAlignment="Stretch"
+                        FontSize="13"
+                        Content="Thoát ứng dụng"
+                        IsVisible="{Binding !IsLicenseValid}"
+                        Command="{Binding ShutdownAppCommand}" />
             </StackPanel>
 
             <TextBlock Grid.Row="2" Classes="label" FontSize="10"
