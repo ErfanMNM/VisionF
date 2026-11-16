@@ -3,6 +3,7 @@ using ClassLibraryMT.Logging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using TanTienQR.Models;
+using TanTienQR.Views;
 
 namespace TanTienQR.ViewModels;
 
@@ -14,6 +15,9 @@ namespace TanTienQR.ViewModels;
 /// Mỗi tab được ẩn/hiện theo quyền của người dùng đang đăng nhập (xem
 /// <see cref="RolePermissions"/>): Worker chỉ xem Thông tin + Sản xuất, Operator
 /// thêm Cấu hình, Quản trị / Lập trình viên có thêm Lịch sử + Tài khoản.
+///
+/// Tab được DỰNG LẦN ĐẦU (lazy): mỗi tab là một <see cref="LazyTabHost"/>,
+/// chỉ tạo View khi người dùng bấm mở tab đó lần đầu, sau đó cache lại.
 /// </summary>
 internal partial class MainViewModel
 {
@@ -22,6 +26,41 @@ internal partial class MainViewModel
 
     /// <summary>Đã từng yêu cầu nạp trang web chưa (để chỉ nạp lần đầu).</summary>
     private bool _webRequested;
+
+    /// <summary>
+    /// Các host tab đã đăng ký, theo <see cref="AppSection"/> — dùng để dựng
+    /// view lazy đúng lúc người dùng mở tab.
+    /// </summary>
+    private readonly Dictionary<AppSection, LazyTabHost> _tabHosts = [];
+
+    /// <summary>
+    /// Đăng ký host của 1 tab (gọi từ <c>MainWindow.OnOpened</c>).
+    ///
+    /// Host được giữ lại để khi người dùng bấm tab lần đầu, ta dựng View
+    /// ngay tại chỗ (không chờ vòng layout) -> tab mở nhanh và không tạo
+    /// hết 9 view khi mở app.
+    /// </summary>
+    /// <param name="section">Tab tương ứng.</param>
+    /// <param name="host">Host chứa view của tab.</param>
+    public void RegisterTabHost(AppSection section, LazyTabHost host)
+    {
+        ArgumentNullException.ThrowIfNull(host);
+
+        _tabHosts[section] = host;
+    }
+
+    /// <summary>
+    /// Dựng view của tab (lazy) nếu chưa dựng. Không có tác dụng nếu tab
+    /// chưa được đăng ký host (vd khi chạy preview trong IDE).
+    /// </summary>
+    /// <param name="section">Tab cần dựng.</param>
+    private void EnsureTabCreated(AppSection section)
+    {
+        if (_tabHosts.TryGetValue(section, out var host))
+        {
+            host.EnsureCreated();
+        }
+    }
 
     // ---------- Tab hiện tại ----------
 
@@ -323,6 +362,9 @@ internal partial class MainViewModel
         }
 
         CurrentSection = section;
+
+        // Dựng view của tab (lazy) đúng lúc người dùng mở tab lần đầu.
+        EnsureTabCreated(section);
 
         if (changed)
         {

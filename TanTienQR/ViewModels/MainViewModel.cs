@@ -44,8 +44,10 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     private readonly ILogger<MainViewModel> _logger;
     private readonly CancellationTokenSource _cts = new();
 
-    private DispatcherTimer? _pollTimer;
-    private Task? _feedTask;
+    /// <summary>ViewModel đăng nhập (overlay trong MainWindow) — xem MainViewModel.Login.cs.</summary>
+    private readonly LoginViewModel _login;
+
+    private DispatcherTimer? _pollTimer;    private Task? _feedTask;
     private Window? _window;
 
     /// <summary>Đánh dấu đã dispose — chặn Dispose() chạy 2 lần.</summary>
@@ -64,6 +66,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         ProductionInfoViewModel productionInfo,
         ProductionOrdersViewModel productionOrders,
         VirtualKeyboardViewModel keyboard,
+        LoginViewModel login,
         IUserActionLogger actionLog,
         ISessionContext session,
         ILogger<MainViewModel> logger)
@@ -79,6 +82,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         _productionInfo = productionInfo;
         _productionOrders = productionOrders;
         _keyboard = keyboard;
+        _login = login;
         _actionLog = actionLog;
         _session = session;
         _logger = logger;
@@ -299,12 +303,6 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
 
     // ---------- Phiên đăng nhập & phân quyền ----------
 
-    /// <summary>
-    /// True khi người dùng bấm "Đăng xuất" (không phải đóng cửa sổ).
-    /// App dùng cờ này để quay lại màn hình đăng nhập thay vì tắt app.
-    /// </summary>
-    public bool IsLogoutRequested { get; private set; }
-
     /// <summary>Tên đăng nhập của người đang dùng app.</summary>
     [ObservableProperty]
     public partial string CurrentUserName { get; set; } = "—";
@@ -349,13 +347,14 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     public bool CanManageUsers => _session.Can(Permission.ManageUsers);
 
     /// <summary>
-    /// Đăng xuất: kết thúc phiên và đóng cửa sổ chính, quay lại màn hình đăng nhập.
+    /// Đăng xuất: kết thúc phiên và hiện lại overlay đăng nhập.
+    ///
+    /// KHÔNG đóng cửa sổ chính — overlay đăng nhập phủ lên lại, người dùng
+    /// đăng nhập tiếp mà không phải dựng lại cửa sổ (hết giật).
     /// </summary>
     [RelayCommand]
     private void Logout()
     {
-        IsLogoutRequested = true;
-
         _actionLog.Log(
             "Auth.Logout",
             "User",
@@ -364,8 +363,8 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
 
         _session.SignOut();
 
-        // Đóng cửa sổ chính -> App nhận biết và mở lại màn hình đăng nhập.
-        _window?.Close();
+        // Hiện lại overlay đăng nhập + tạm dừng app (dừng poll, timer tab Dev).
+        ShowLoginOverlay();
     }
 
     /// <summary>
@@ -633,7 +632,9 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         _pollTimer.Start();
 
         // Đọc kênh kết quả ở nền, dispatch sang luồng UI khi có bản ghi.
-        _feedTask = Task.Run(() => ConsumeFeedAsync(_cts.Token));
+        // Chỉ tạo 1 task consumer cho cả đời app: sau khi đăng xuất, Start()
+        // được gọi lại nhưng consumer cũ vẫn đang chạy -> không tạo thêm.
+        _feedTask ??= Task.Run(() => ConsumeFeedAsync(_cts.Token));
     }
 
     private async Task ConsumeFeedAsync(CancellationToken ct)
@@ -756,6 +757,9 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
 
         _pollTimer?.Stop();
         _pollTimer = null;
+
+        // Dung timer an overlay dang nhap.
+        DisposeLoginOverlay();
 
         // Tắt timer của tab Dev (state + tail log).
         _devView.Dispose();

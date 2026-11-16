@@ -102,15 +102,15 @@ Console.WriteLine("\n[3] ConfigValidation: nhom thong so");
 
 var s = NewSnapshot();
 s.Camera.Ip = "";
-Check("Camera IP rong -> bao loi", !ConfigValidation.Validate(s, out var e3) && e3!.Contains("camera", StringComparison.OrdinalIgnoreCase), e3 ?? "");
+Check("Camera IP rong -> bao loi", !ConfigValidation.Validate(s, out var e3) && e3!.Contains("IP đầu đọc", StringComparison.OrdinalIgnoreCase), e3 ?? "");
 
 s = NewSnapshot();
 s.Camera.Port = 0;
-Check("Camera Port 0 -> bao loi", !ConfigValidation.Validate(s, out var e4) && e4!.Contains("Port camera"), e4 ?? "");
+Check("Camera Port 0 -> bao loi", !ConfigValidation.Validate(s, out var e4) && e4!.Contains("Port TCP"), e4 ?? "");
 
 s = NewSnapshot();
 s.Camera.Port = 70000;
-Check("Camera Port > 65535 -> bao loi", !ConfigValidation.Validate(s, out var e5) && e5!.Contains("Port camera"), e5 ?? "");
+Check("Camera Port > 65535 -> bao loi", !ConfigValidation.Validate(s, out var e5) && e5!.Contains("Port TCP"), e5 ?? "");
 
 s = NewSnapshot();
 s.Camera.DuplicateWindowSeconds = 0;
@@ -211,6 +211,9 @@ Check("Scan queue capacity 0 -> bao loi", !ConfigValidation.Validate(s, out var 
 
 // ---------------------------------------------------------------
 // [4] ConfigDiff: phat hien thay doi yeu cau restart
+//
+// Nhãn trong danh sách thay đổi được LẤY TỪ SCHEMA ([ConfigField] Label)
+// nên test dùng đúng nhãn khai báo trong AppConfigModels.cs.
 // ---------------------------------------------------------------
 Console.WriteLine("\n[4] ConfigDiff: thay doi thong so quan trong");
 
@@ -221,12 +224,12 @@ Check("Khong doi gi -> khong co thay doi", ConfigDiff.DescribeCriticalChanges(be
 after = NewSnapshot();
 after.Camera.Ip = "10.0.0.9";
 var diff = ConfigDiff.DescribeCriticalChanges(before, after);
-Check("Doi IP camera -> co thay doi", diff.Contains("IP camera"), string.Join(",", diff));
+Check("Doi IP camera -> co thay doi", diff.Contains("IP đầu đọc"), string.Join(",", diff));
 
 after = NewSnapshot();
 after.Camera.Port = 9001;
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
-Check("Doi Port camera -> co thay doi", diff.Contains("Port camera"), string.Join(",", diff));
+Check("Doi Port camera -> co thay doi", diff.Contains("Port TCP"), string.Join(",", diff));
 
 after = NewSnapshot();
 after.Plc.Ip = "10.0.0.10";
@@ -236,72 +239,72 @@ Check("Doi IP PLC -> co thay doi", diff.Contains("IP PLC"), string.Join(",", dif
 after = NewSnapshot();
 after.Plc.Port = 9601;
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
-Check("Doi Port PLC -> co thay doi", diff.Contains("Port PLC"), string.Join(",", diff));
+Check("Doi Port PLC -> co thay doi", diff.Contains("Port FINS"), string.Join(",", diff));
 
 after = NewSnapshot();
 after.Plc.TimeoutMs = 2000;
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
-Check("Doi Timeout PLC -> co thay doi", diff.Contains("Timeout PLC"), string.Join(",", diff));
+Check("Doi Timeout PLC -> co thay doi", diff.Contains("Timeout (ms)"), string.Join(",", diff));
 
 after = NewSnapshot();
 after.Plc.Retries = 3;
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
-Check("Doi Retries PLC -> co thay doi", diff.Contains("Số lần thử lại PLC"), string.Join(",", diff));
+Check("Doi Retries PLC -> co thay doi", diff.Contains("Số lần thử lại"), string.Join(",", diff));
 
 after = NewSnapshot();
 after.Plc.ResultAddress = "D20";
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
-Check("Doi dia chi vung D -> co thay doi", diff.Contains("Thông số vùng nhớ D / heartbeat PLC"), string.Join(",", diff));
+Check("Doi dia chi vung D -> co thay doi", diff.Contains("Kết quả (1/0)"), string.Join(",", diff));
 
 after = NewSnapshot();
 after.Plc.RefreshIntervalMs = 1500;
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
-Check("Doi chu ky heartbeat -> co thay doi", diff.Contains("Thông số vùng nhớ D / heartbeat PLC"), string.Join(",", diff));
+Check("Doi chu ky heartbeat -> co thay doi", diff.Contains("Chu kỳ heartbeat (ms)"), string.Join(",", diff));
 
 after = NewSnapshot();
 after.Scanner.TcpHost = "10.0.0.20";
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
-Check("Doi host scanner -> co thay doi", diff.Contains("Host TCP máy quét"), string.Join(",", diff));
+Check("Doi host scanner -> co thay doi", diff.Contains("Host TCP"), string.Join(",", diff));
 
 after = NewSnapshot();
 after.Scanner.TcpPort = 7000;
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
-Check("Doi port scanner -> co thay doi", diff.Contains("Port TCP máy quét"), string.Join(",", diff));
+Check("Doi port scanner -> co thay doi", diff.Contains("Port TCP"), string.Join(",", diff));
 
 after = NewSnapshot();
 after.Scanner.ComPort = "COM5";
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
-Check("Doi COM scanner -> co thay doi", diff.Contains("Cổng COM máy quét"), string.Join(",", diff));
+Check("Doi COM scanner -> co thay doi", diff.Contains("Cổng COM"), string.Join(",", diff));
 
 after = NewSnapshot();
 after.Scanner.BaudRate = 19200;
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
-Check("Doi baud scanner -> co thay doi", diff.Contains("Baud rate máy quét"), string.Join(",", diff));
+Check("Doi baud scanner -> co thay doi", diff.Contains("Baud rate"), string.Join(",", diff));
 
 after = NewSnapshot();
 after.Scanner.Mode = "TcpClient";
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
-Check("Doi mode scanner -> co thay doi", diff.Contains("Chế độ kết nối máy quét"), string.Join(",", diff));
+Check("Doi mode scanner -> co thay doi", diff.Contains("Chế độ"), string.Join(",", diff));
 
 after = NewSnapshot();
 after.Po.BaseUrl = "http://10.0.0.30:5080";
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
-Check("Doi server PO -> co thay doi", diff.Contains("Địa chỉ server PO"), string.Join(",", diff));
+Check("Doi server PO -> co thay doi", diff.Contains("Địa chỉ server"), string.Join(",", diff));
 
 after = NewSnapshot();
 after.Web.Url = "https://khac.checkee.vn";
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
-Check("Doi web URL -> co thay doi", diff.Contains("Cấu hình web Checkee"), string.Join(",", diff));
+Check("Doi web URL -> co thay doi", diff.Contains("URL trang"), string.Join(",", diff));
 
 after = NewSnapshot();
 after.Logging.Sqlite.RetentionDays++;
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
-Check("Doi retention log -> co thay doi restart", diff.Contains("Cấu hình log, xác thực hoặc lưu dữ liệu"), string.Join(",", diff));
+Check("Doi retention log -> co thay doi restart", diff.Contains("Số ngày lưu log"), string.Join(",", diff));
 
 after = NewSnapshot();
 after.Auth.SeedAdminPassword = "changed-secret";
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
-Check("Doi seed password -> co thay doi restart", diff.Contains("Cấu hình log, xác thực hoặc lưu dữ liệu"), string.Join(",", diff));
+Check("Doi seed password -> co thay doi restart", diff.Contains("Mật khẩu seed"), string.Join(",", diff));
 
 // Duplicate window nằm trong CameraOptions -> đọc lúc start nên cũng cần restart.
 after = NewSnapshot();
@@ -309,7 +312,7 @@ after.Camera.DuplicateWindowSeconds = 60;
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
 Check(
     "Doi duplicate window -> bat buoc restart",
-    diff.Contains("Cửa sổ trùng mã của camera"),
+    diff.Contains("Cửa sổ trùng mã (giây)"),
     string.Join(",", diff));
 
 // ---------------------------------------------------------------

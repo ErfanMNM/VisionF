@@ -1,17 +1,24 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using ClassLibraryMT.Logging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Configuration;
 using TanTienQR.Services;
+using TanTienQR.Services.Config;
 
 namespace TanTienQR.ViewModels;
 
 /// <summary>
 /// Trình chỉnh sửa cấu hình runtime cho tab Cấu hình.
+///
+/// Trang Cấu hình được SINH ĐỘNG: toàn bộ section + trường đến từ
+/// <see cref="ConfigSchemaProvider"/> (quét attribute <c>[ConfigSection]</c> /
+/// <c>[ConfigField]</c> trên <see cref="AppConfigSnapshot"/>).
 ///
 /// <see cref="Load"/> đọc từ <see cref="IConfiguration"/> (cấu hình đã merge
 /// giữa appsettings.json và appsettings.Development.json) nên form hiển thị
@@ -22,6 +29,15 @@ namespace TanTienQR.ViewModels;
 /// (IP/host/port/timeout/...) chỉ có hiệu lực sau khi khởi động lại ứng dụng.
 /// Vì vậy sau khi lưu có thay đổi quan trọng, ứng dụng đánh dấu trạng thái
 /// "cần restart" và hiển thị banner kèm nút <c>Restart Now</c> / <c>Restart Later</c>.
+///
+/// ===== THÊM SETTING MỚI =====
+/// 1) Thêm property vào class section trong <c>Services/AppConfigModels.cs</c>
+///    kèm <c>[JsonPropertyName("TenKey")]</c> + <c>[ConfigField("Nhãn", ...)]</c>.
+/// 2) (Tuỳ chọn) Thêm giá trị mặc định vào <c>appsettings.json</c>.
+/// 3) (Tuỳ chọn) Nếu service đọc lúc start: thêm 1 dòng bind trong
+///    <c>Services/TanTienAppServices.cs</c>.
+///
+/// Form, validation và diff tự động hỗ trợ — không cần sửa XAML.
 /// </summary>
 internal partial class ConfigEditorViewModel : ViewModelBase
 {
@@ -52,78 +68,75 @@ internal partial class ConfigEditorViewModel : ViewModelBase
         _store = store;
         _configuration = configuration;
         _actionLog = actionLog;
+
+        BuildSectionsFromSchema();
     }
 
-    // ---------- Camera ----------
+    // ---------- Form động ----------
 
-    [ObservableProperty] public partial string CameraIp { get; set; } = "127.0.0.1";
-    [ObservableProperty] public partial int CameraPort { get; set; } = 9000;
-    [ObservableProperty] public partial int CameraDuplicateWindowSeconds { get; set; } = 30;
+    /// <summary>
+    /// Các section cấu hình (mỗi section là 1 card trên UI).
+    /// </summary>
+    public ObservableCollection<ConfigSectionViewModel> Sections { get; } = new();
 
-    // ---------- PLC ----------
+    /// <summary>
+    /// Toàn bộ trường của mọi section (dạng phẳng) — dùng cho validate/diff.
+    /// </summary>
+    public ReadOnlyObservableCollection<ConfigFieldViewModel> AllFields { get; private set; } =
+        new(new ObservableCollection<ConfigFieldViewModel>());
 
-    [ObservableProperty] public partial string PlcIp { get; set; } = "127.0.0.1";
-    [ObservableProperty] public partial int PlcPort { get; set; } = 9600;
-    [ObservableProperty] public partial int PlcRemoteNode { get; set; }
-    [ObservableProperty] public partial int PlcLocalNode { get; set; } = 1;
-    [ObservableProperty] public partial int PlcTimeoutMs { get; set; } = 1000;
-    [ObservableProperty] public partial int PlcRetries { get; set; }
+    /// <summary>
+    /// Dựng form động từ schema (chạy 1 lần khi khởi tạo ViewModel).
+    /// </summary>
+    private void BuildSectionsFromSchema()
+    {
+        var all = new ObservableCollection<ConfigFieldViewModel>();
 
-    // ---------- Địa chỉ vùng D ----------
+        foreach (var sectionSchema in ConfigSchemaProvider.Sections)
+        {
+            var sectionVm = new ConfigSectionViewModel(sectionSchema);
 
-    [ObservableProperty] public partial string ResultAddress { get; set; } = "D12";
-    [ObservableProperty] public partial string ReadyAddress { get; set; } = "D16";
-    [ObservableProperty] public partial int RefreshIntervalMs { get; set; } = 1000;
+            foreach (var fieldSchema in sectionSchema.Fields)
+            {
+                var fieldVm = CreateFieldViewModel(fieldSchema, GetDefaultValue(fieldSchema));
+                fieldVm.ValueChanged += OnFieldChanged;
+                sectionVm.Fields.Add(fieldVm);
+                all.Add(fieldVm);
+            }
 
-    // ---------- Máy quét cầm tay (Scanner) ----------
+            Sections.Add(sectionVm);
+        }
 
-    [ObservableProperty] public partial bool ScannerEnabled { get; set; } = true;
-    [ObservableProperty] public partial string ScannerMode { get; set; } = "TcpServer";
-    [ObservableProperty] public partial string ScannerTcpHost { get; set; } = "127.0.0.1";
-    [ObservableProperty] public partial int ScannerTcpPort { get; set; } = 6999;
-    [ObservableProperty] public partial string ScannerComPort { get; set; } = "COM3";
-    [ObservableProperty] public partial int ScannerBaudRate { get; set; } = 9600;
+        AllFields = new ReadOnlyObservableCollection<ConfigFieldViewModel>(all);
+    }
 
-    // ---------- Server Production Order (Po) ----------
+    /// <summary>
+    /// Lấy giá trị mặc định của một trường từ model (instance mới).
+    /// </summary>
+    /// <param name="schema">Schema của trường.</param>
+    /// <returns>Giá trị mặc định.</returns>
+    private static object? GetDefaultValue(ConfigFieldSchema schema)
+    {
+        var instance = Activator.CreateInstance(schema.Section.ModelType);
+        return schema.GetValue(instance);
+    }
 
-    [ObservableProperty] public partial string PoBaseUrl { get; set; } = "http://127.0.0.1:5080";
-    [ObservableProperty] public partial string PoDbRoot { get; set; } = "logs/po";
-    [ObservableProperty] public partial int PoActivationIntervalMs { get; set; } = 2500;
-    [ObservableProperty] public partial bool PoAutoActivate { get; set; } = true;
-    [ObservableProperty] public partial int PoCodeSampleSize { get; set; } = 100;
-
-    // ---------- Web ----------
-
-    [ObservableProperty] public partial string WebUrl { get; set; } = "https://estrace.checkee.vn";
-    [ObservableProperty] public partial bool WebEnabled { get; set; } = true;
-
-    // ---------- Logging ----------
-
-    [ObservableProperty] public partial string LogDbPath { get; set; } = "logs/app.db";
-    [ObservableProperty] public partial string LogMinLevel { get; set; } = "Information";
-    [ObservableProperty] public partial int LogRetentionDays { get; set; } = 30;
-    [ObservableProperty] public partial bool LogEnableUserActions { get; set; } = true;
-    [ObservableProperty] public partial int LogBatchSize { get; set; } = 100;
-    [ObservableProperty] public partial int LogFlushIntervalMs { get; set; } = 1000;
-    [ObservableProperty] public partial int LogPruneIntervalMs { get; set; } = 3600000;
-    [ObservableProperty] public partial bool HistoryEnabled { get; set; } = true;
-    [ObservableProperty] public partial int HistoryPageSize { get; set; } = 200;
-
-    // ---------- Auth / Database ----------
-
-    [ObservableProperty] public partial string AuthDbPath { get; set; } = "logs/users.db";
-    [ObservableProperty] public partial int AuthMaxFailedAttempts { get; set; } = 5;
-    [ObservableProperty] public partial int AuthLockoutMinutes { get; set; } = 5;
-    [ObservableProperty] public partial int AuthPbkdf2Iterations { get; set; } = 210000;
-    [ObservableProperty] public partial string AuthSeedAdminUser { get; set; } = "admin";
-    [ObservableProperty] public partial string AuthSeedAdminPassword { get; set; } = "admin";
-    [ObservableProperty] public partial string PlcSettingsDbPath { get; set; } = "logs/plc.db";
-    [ObservableProperty] public partial string ScansDbPath { get; set; } = "logs/scans.db";
-    [ObservableProperty] public partial int ScansBatchSize { get; set; } = 100;
-    [ObservableProperty] public partial int ScansFlushIntervalMs { get; set; } = 1000;
-    [ObservableProperty] public partial int ScansQueueCapacity { get; set; } = 20000;
-    [ObservableProperty] public partial int ScansRetentionDays { get; set; }
-    [ObservableProperty] public partial int ScansPruneIntervalMs { get; set; } = 3600000;
+    /// <summary>
+    /// Tạo ViewModel cho một trường, dùng đúng lớp vỏ theo loại control để
+    /// Avalonia 12 chọn đúng DataTemplate (Avalonia 12 đã bỏ DataTemplateSelector).
+    /// </summary>
+    /// <param name="schema">Schema của trường.</param>
+    /// <param name="value">Giá trị khởi tạo.</param>
+    /// <returns>ViewModel của trường.</returns>
+    private static ConfigFieldViewModel CreateFieldViewModel(ConfigFieldSchema schema, object? value) =>
+        schema.Control switch
+        {
+            ConfigControlKind.Bool => new BoolField(schema, value),
+            ConfigControlKind.Number => new NumberField(schema, value),
+            ConfigControlKind.Combo => new ComboField(schema, value),
+            ConfigControlKind.Password => new PasswordField(schema, value),
+            _ => new TextField(schema, value),
+        };
 
     // ---------- Trạng thái ----------
 
@@ -208,68 +221,17 @@ internal partial class ConfigEditorViewModel : ViewModelBase
     {
         var snapshot = _store.Load();
 
-        _isLoading = true;
-        try
+        foreach (var field in AllFields)
         {
-            CameraIp = ReadString("Camera:Ip", snapshot.Camera.Ip);
-            CameraPort = ReadInt("Camera:Port", snapshot.Camera.Port);
-            CameraDuplicateWindowSeconds = ReadInt(
-                "Camera:DuplicateWindowSeconds", snapshot.Camera.DuplicateWindowSeconds);
-
-            PlcIp = ReadString("Plc:Ip", snapshot.Plc.Ip);
-            PlcPort = ReadInt("Plc:Port", snapshot.Plc.Port);
-            PlcRemoteNode = ReadInt("Plc:RemoteNode", snapshot.Plc.RemoteNode);
-            PlcLocalNode = ReadInt("Plc:LocalNode", snapshot.Plc.LocalNode);
-            PlcTimeoutMs = ReadInt("Plc:TimeoutMs", snapshot.Plc.TimeoutMs);
-            PlcRetries = ReadInt("Plc:Retries", snapshot.Plc.Retries);
-
-            ResultAddress = ReadString("Plc:ResultAddress", snapshot.Plc.ResultAddress);
-            ReadyAddress = ReadString("Plc:ReadyAddress", snapshot.Plc.ReadyAddress);
-            RefreshIntervalMs = ReadInt("Plc:RefreshIntervalMs", snapshot.Plc.RefreshIntervalMs);
-
-            ScannerEnabled = ReadBool("Scanner:Enabled", snapshot.Scanner.Enabled);
-            ScannerMode = ReadString("Scanner:Mode", snapshot.Scanner.Mode);
-            ScannerTcpHost = ReadString("Scanner:TcpHost", snapshot.Scanner.TcpHost);
-            ScannerTcpPort = ReadInt("Scanner:TcpPort", snapshot.Scanner.TcpPort);
-            ScannerComPort = ReadString("Scanner:ComPort", snapshot.Scanner.ComPort);
-            ScannerBaudRate = ReadInt("Scanner:BaudRate", snapshot.Scanner.BaudRate);
-
-            PoBaseUrl = ReadString("Po:BaseUrl", snapshot.Po.BaseUrl);
-            PoDbRoot = ReadString("Po:DbRoot", snapshot.Po.DbRoot);
-            PoActivationIntervalMs = ReadInt("Po:ActivationIntervalMs", snapshot.Po.ActivationIntervalMs);
-            PoAutoActivate = ReadBool("Po:AutoActivate", snapshot.Po.AutoActivate);
-            PoCodeSampleSize = ReadInt("Po:CodeSampleSize", snapshot.Po.CodeSampleSize);
-
-            WebUrl = ReadString("Web:Url", snapshot.Web.Url);
-            WebEnabled = ReadBool("Web:Enabled", snapshot.Web.Enabled);
-
-            LogDbPath = ReadString("Logging:Sqlite:Path", snapshot.Logging.Sqlite.Path);
-            LogMinLevel = ReadString("Logging:Sqlite:MinLevel", snapshot.Logging.Sqlite.MinLevel);
-            LogRetentionDays = ReadInt("Logging:Sqlite:RetentionDays", snapshot.Logging.Sqlite.RetentionDays);
-            LogEnableUserActions = ReadBool("Logging:Sqlite:EnableUserActions", snapshot.Logging.Sqlite.EnableUserActions);
-            LogBatchSize = ReadInt("Logging:Sqlite:BatchSize", snapshot.Logging.Sqlite.BatchSize);
-            LogFlushIntervalMs = ReadInt("Logging:Sqlite:FlushIntervalMs", snapshot.Logging.Sqlite.FlushIntervalMs);
-            LogPruneIntervalMs = ReadInt("Logging:Sqlite:PruneIntervalMs", snapshot.Logging.Sqlite.PruneIntervalMs);
-            HistoryEnabled = ReadBool("Logging:History:Enabled", snapshot.Logging.History.Enabled);
-            HistoryPageSize = ReadInt("Logging:History:PageSize", snapshot.Logging.History.PageSize);
-
-            AuthDbPath = ReadString("Auth:DbPath", snapshot.Auth.DbPath);
-            AuthMaxFailedAttempts = ReadInt("Auth:MaxFailedAttempts", snapshot.Auth.MaxFailedAttempts);
-            AuthLockoutMinutes = ReadInt("Auth:LockoutMinutes", snapshot.Auth.LockoutMinutes);
-            AuthPbkdf2Iterations = ReadInt("Auth:Pbkdf2Iterations", snapshot.Auth.Pbkdf2Iterations);
-            AuthSeedAdminUser = ReadString("Auth:SeedAdminUser", snapshot.Auth.SeedAdminUser);
-            AuthSeedAdminPassword = ReadString("Auth:SeedAdminPassword", snapshot.Auth.SeedAdminPassword);
-            PlcSettingsDbPath = ReadString("PlcSettings:DbPath", snapshot.PlcSettings.DbPath);
-            ScansDbPath = ReadString("Scans:DbPath", snapshot.Scans.DbPath);
-            ScansBatchSize = ReadInt("Scans:BatchSize", snapshot.Scans.BatchSize);
-            ScansFlushIntervalMs = ReadInt("Scans:FlushIntervalMs", snapshot.Scans.FlushIntervalMs);
-            ScansQueueCapacity = ReadInt("Scans:QueueCapacity", snapshot.Scans.QueueCapacity);
-            ScansRetentionDays = ReadInt("Scans:RetentionDays", snapshot.Scans.RetentionDays);
-            ScansPruneIntervalMs = ReadInt("Scans:PruneIntervalMs", snapshot.Scans.PruneIntervalMs);
+            var value = ReadValue(field.Schema, snapshot);
+            field.SetValueSilently(value, resetOriginal: true);
+            field.SetError(null);
         }
-        finally
+
+        // Icon là static resource -> nạp sau khi resource của app sẵn sàng.
+        foreach (var section in Sections)
         {
-            _isLoading = false;
+            section.RefreshIcon();
         }
 
         // Mốc so sánh = cấu hình đang chạy.
@@ -300,123 +262,57 @@ internal partial class ConfigEditorViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Đọc chuỗi từ cấu hình đang chạy, fallback về giá trị từ file.</summary>
-    private string ReadString(string key, string fallback)
-    {
-        var value = _configuration[key];
-        return string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
-    }
-
-    /// <summary>Đọc số từ cấu hình đang chạy, fallback về giá trị từ file.</summary>
-    private int ReadInt(string key, int fallback)
-    {
-        var value = _configuration[key];
-        return int.TryParse(value, out var parsed) ? parsed : fallback;
-    }
-
-    /// <summary>Đọc bool từ cấu hình đang chạy, fallback về giá trị từ file.</summary>
-    private bool ReadBool(string key, bool fallback)
-    {
-        var value = _configuration[key];
-        return bool.TryParse(value, out var parsed) ? parsed : fallback;
-    }
-
     /// <summary>
-    /// Gọi lại mỗi khi một property của ViewModel thay đổi.
-    ///
-    /// Khi người dùng sửa một ô nhập trong form Cấu hình, ta tự đánh dấu
-    /// "chưa lưu" (dirty) bằng cách so sánh form hiện tại với mốc cấu hình
-    /// đã lưu. Nhờ vậy người dùng luôn thấy trạng thái rõ ràng trước khi
-    /// rời khỏi trang.
+    /// Đọc giá trị của một trường từ snapshot, có overlay từ
+    /// <see cref="IConfiguration"/> (Development.json + biến môi trường).
     /// </summary>
-    partial void OnCameraIpChanged(string value) => OnEditableFieldChanged();
-
-    partial void OnCameraPortChanged(int value) => OnEditableFieldChanged();
-
-    partial void OnCameraDuplicateWindowSecondsChanged(int value) => OnEditableFieldChanged();
-
-    partial void OnPlcIpChanged(string value) => OnEditableFieldChanged();
-
-    partial void OnPlcPortChanged(int value) => OnEditableFieldChanged();
-
-    partial void OnPlcRemoteNodeChanged(int value) => OnEditableFieldChanged();
-
-    partial void OnPlcLocalNodeChanged(int value) => OnEditableFieldChanged();
-
-    partial void OnPlcTimeoutMsChanged(int value) => OnEditableFieldChanged();
-
-    partial void OnPlcRetriesChanged(int value) => OnEditableFieldChanged();
-
-    partial void OnResultAddressChanged(string value) => OnEditableFieldChanged();
-
-    partial void OnReadyAddressChanged(string value) => OnEditableFieldChanged();
-
-    partial void OnRefreshIntervalMsChanged(int value) => OnEditableFieldChanged();
-
-    partial void OnScannerEnabledChanged(bool value) => OnEditableFieldChanged();
-
-    partial void OnScannerModeChanged(string value) => OnEditableFieldChanged();
-
-    partial void OnScannerTcpHostChanged(string value) => OnEditableFieldChanged();
-
-    partial void OnScannerTcpPortChanged(int value) => OnEditableFieldChanged();
-
-    partial void OnScannerComPortChanged(string value) => OnEditableFieldChanged();
-
-    partial void OnScannerBaudRateChanged(int value) => OnEditableFieldChanged();
-
-    partial void OnPoBaseUrlChanged(string value) => OnEditableFieldChanged();
-
-    partial void OnPoDbRootChanged(string value) => OnEditableFieldChanged();
-
-    partial void OnPoActivationIntervalMsChanged(int value) => OnEditableFieldChanged();
-
-    partial void OnPoAutoActivateChanged(bool value) => OnEditableFieldChanged();
-
-    partial void OnPoCodeSampleSizeChanged(int value) => OnEditableFieldChanged();
-
-    partial void OnWebUrlChanged(string value) => OnEditableFieldChanged();
-
-    partial void OnWebEnabledChanged(bool value) => OnEditableFieldChanged();
-
-    partial void OnLogDbPathChanged(string value) => OnEditableFieldChanged();
-    partial void OnLogMinLevelChanged(string value) => OnEditableFieldChanged();
-    partial void OnLogRetentionDaysChanged(int value) => OnEditableFieldChanged();
-    partial void OnLogEnableUserActionsChanged(bool value) => OnEditableFieldChanged();
-    partial void OnLogBatchSizeChanged(int value) => OnEditableFieldChanged();
-    partial void OnLogFlushIntervalMsChanged(int value) => OnEditableFieldChanged();
-    partial void OnLogPruneIntervalMsChanged(int value) => OnEditableFieldChanged();
-    partial void OnHistoryEnabledChanged(bool value) => OnEditableFieldChanged();
-    partial void OnHistoryPageSizeChanged(int value) => OnEditableFieldChanged();
-    partial void OnAuthDbPathChanged(string value) => OnEditableFieldChanged();
-    partial void OnAuthMaxFailedAttemptsChanged(int value) => OnEditableFieldChanged();
-    partial void OnAuthLockoutMinutesChanged(int value) => OnEditableFieldChanged();
-    partial void OnAuthPbkdf2IterationsChanged(int value) => OnEditableFieldChanged();
-    partial void OnAuthSeedAdminUserChanged(string value) => OnEditableFieldChanged();
-    partial void OnAuthSeedAdminPasswordChanged(string value) => OnEditableFieldChanged();
-    partial void OnPlcSettingsDbPathChanged(string value) => OnEditableFieldChanged();
-    partial void OnScansDbPathChanged(string value) => OnEditableFieldChanged();
-    partial void OnScansBatchSizeChanged(int value) => OnEditableFieldChanged();
-    partial void OnScansFlushIntervalMsChanged(int value) => OnEditableFieldChanged();
-    partial void OnScansQueueCapacityChanged(int value) => OnEditableFieldChanged();
-    partial void OnScansRetentionDaysChanged(int value) => OnEditableFieldChanged();
-    partial void OnScansPruneIntervalMsChanged(int value) => OnEditableFieldChanged();
-
-    /// <summary>Cờ nội bộ: đang nạp dữ liệu vào form.</summary>
-    private bool _isLoading;
-
-    /// <summary>
-    /// Được gọi mỗi khi một ô nhập của form thay đổi — dùng để cập nhật
-    /// cờ "chưa lưu" (dirty) và làm mới trạng thái nút Lưu.
-    /// </summary>
-    private void OnEditableFieldChanged()
+    /// <param name="schema">Schema của trường.</param>
+    /// <param name="snapshot">Snapshot từ file.</param>
+    /// <returns>Giá trị hiển thị.</returns>
+    private object? ReadValue(ConfigFieldSchema schema, AppConfigSnapshot snapshot)
     {
-        // Bỏ qua việc đánh dấu dirty trong lúc đang nạp form.
-        if (_isLoading)
+        // 1) Giá trị trong file JSON.
+        var sectionValue = schema.Section.ResolveOwner(snapshot);
+        var fileValue = schema.GetValue(sectionValue);
+
+        // 2) Overlay từ IConfiguration (đã merge Development + env).
+        var configValue = _configuration[schema.JsonPath];
+        if (string.IsNullOrWhiteSpace(configValue))
         {
-            return;
+            return fileValue;
         }
 
+        if (schema.IsNumeric)
+        {
+            var type = schema.NumericType ?? typeof(int);
+            try
+            {
+                return Convert.ChangeType(configValue.Trim(), type, System.Globalization.CultureInfo.InvariantCulture);
+            }
+            catch (Exception ex) when (ex is FormatException or InvalidCastException or OverflowException)
+            {
+                return fileValue;
+            }
+        }
+
+        if (schema.Control == ConfigControlKind.Bool)
+        {
+            return bool.TryParse(configValue.Trim(), out var parsed) ? parsed : fileValue;
+        }
+
+        return configValue.Trim();
+    }
+
+    /// <summary>
+    /// Được gọi mỗi khi BẤT KỲ trường nào đó trong form thay đổi.
+    ///
+    /// Đây là điểm móc DUY NHẤT để tính lại trạng thái dirty và trạng thái
+    /// nút Lưu — không cần mỗi property một hàm OnXChanged.
+    /// </summary>
+    /// <param name="sender">Trường vừa thay đổi.</param>
+    /// <param name="e">Tham số sự kiện.</param>
+    private void OnFieldChanged(object? sender, EventArgs e)
+    {
         UpdateDirtyState();
     }
 
@@ -428,18 +324,12 @@ internal partial class ConfigEditorViewModel : ViewModelBase
             return;
         }
 
-        var dirty = !AreEquivalent(BuildSnapshot(), _baseline);
+        var dirty = AllFields.Any(f => f.IsDirty);
         if (dirty != HasUnsavedChanges)
         {
             HasUnsavedChanges = dirty;
         }
     }
-
-    /// <summary>
-    /// So sánh hai snapshot theo toàn bộ trường hiển thị trên form.
-    /// </summary>
-    private static bool AreEquivalent(AppConfigSnapshot a, AppConfigSnapshot b) =>
-        ConfigDiff.AreEquivalent(a, b);
 
     /// <summary>
     /// Hoàn tác các thay đổi chưa lưu về giá trị trong file.
@@ -459,7 +349,15 @@ internal partial class ConfigEditorViewModel : ViewModelBase
     /// </summary>
     private bool Validate()
     {
-        if (!ConfigValidation.Validate(BuildSnapshot(), out var error))
+        // Xoá lỗi cũ trước khi validate lại.
+        foreach (var field in AllFields)
+        {
+            field.SetError(null);
+        }
+
+        var snapshot = BuildSnapshot();
+
+        if (!ConfigValidation.Validate(snapshot, out var error))
         {
             ConfigMessageText = error ?? "Cấu hình không hợp lệ.";
             ConfigMessageKind = MessageKind.Error;
@@ -467,14 +365,6 @@ internal partial class ConfigEditorViewModel : ViewModelBase
         }
 
         return true;
-    }
-
-    /// <summary>Đặt thông báo lỗi và trả về false (dùng cho Validate).</summary>
-    private bool Fail(string message)
-    {
-        ConfigMessageText = message;
-        ConfigMessageKind = MessageKind.Error;
-        return false;
     }
 
     /// <summary>
@@ -490,7 +380,8 @@ internal partial class ConfigEditorViewModel : ViewModelBase
 
         var snapshot = BuildSnapshot();
 
-        if (!_store.Save(snapshot))
+        // Dùng SaveMerged để GIỮ NGUYÊN các key lạ có sẵn trong file.
+        if (!_store.SaveMerged(snapshot))
         {
             ConfigMessageText = "Không ghi được file cấu hình. Kiểm tra quyền truy cập thư mục ứng dụng.";
             ConfigMessageKind = MessageKind.Error;
@@ -511,6 +402,12 @@ internal partial class ConfigEditorViewModel : ViewModelBase
         // lúc nạp form.
         var runningSnapshot = _pendingRestartSnapshot ?? _runningSnapshot;
         var criticalChanges = DescribeCriticalChanges(runningSnapshot, snapshot);
+
+        // Cập nhật giá trị gốc của các trường -> form sạch.
+        foreach (var field in AllFields)
+        {
+            field.SetValueSilently(field.Value, resetOriginal: true);
+        }
 
         HasUnsavedChanges = false;
 
@@ -700,80 +597,117 @@ internal partial class ConfigEditorViewModel : ViewModelBase
     private AppConfigSnapshot _runningSnapshot = new();
 
     /// <summary>
-    /// Dựng snapshot từ các giá trị hiện tại trên form.
+    /// Dựng snapshot từ các giá trị hiện tại trên form (đi qua schema).
     /// </summary>
-    private AppConfigSnapshot BuildSnapshot() => new()
+    /// <returns>Snapshot cấu hình hiện tại.</returns>
+    private AppConfigSnapshot BuildSnapshot()
     {
-        Camera = new CameraConfig
-        {
-            Ip = CameraIp.Trim(),
-            Port = CameraPort,
-            DuplicateWindowSeconds = CameraDuplicateWindowSeconds,
-        },
-        Plc = new PlcConfig
-        {
-            Ip = PlcIp.Trim(),
-            Port = PlcPort,
-            RemoteNode = PlcRemoteNode,
-            LocalNode = PlcLocalNode,
-            TimeoutMs = PlcTimeoutMs,
-            Retries = PlcRetries,
-            ResultAddress = ResultAddress.Trim(),
-            ReadyAddress = ReadyAddress.Trim(),
-            RefreshIntervalMs = RefreshIntervalMs,
-        },
-        Scanner = new ScannerConfig
-        {
-            Enabled = ScannerEnabled,
-            Mode = NormalizeScannerMode(ScannerMode),
-            TcpHost = ScannerTcpHost.Trim(),
-            TcpPort = ScannerTcpPort,
-            ComPort = ScannerComPort.Trim(),
-            BaudRate = ScannerBaudRate,
-        },
-        Po = new PoConfig
-        {
-            BaseUrl = PoBaseUrl.Trim(),
-            DbRoot = PoDbRoot.Trim(),
-            ActivationIntervalMs = PoActivationIntervalMs,
-            AutoActivate = PoAutoActivate,
-            CodeSampleSize = PoCodeSampleSize,
-        },
-        Web = new WebConfig
-        {
-            Url = WebUrl.Trim(),
-            Enabled = WebEnabled,
-        },
-        Logging = new LoggingConfig
-        {
-            Sqlite = new SqliteLoggingConfig
-            {
-                Path = LogDbPath.Trim(), MinLevel = LogMinLevel.Trim(), RetentionDays = LogRetentionDays,
-                EnableUserActions = LogEnableUserActions, BatchSize = LogBatchSize,
-                FlushIntervalMs = LogFlushIntervalMs, PruneIntervalMs = LogPruneIntervalMs,
-            },
-            History = new LoggingHistoryConfig { Enabled = HistoryEnabled, PageSize = HistoryPageSize },
-        },
-        Auth = new AuthConfig
-        {
-            DbPath = AuthDbPath.Trim(), MaxFailedAttempts = AuthMaxFailedAttempts,
-            LockoutMinutes = AuthLockoutMinutes, Pbkdf2Iterations = AuthPbkdf2Iterations,
-            SeedAdminUser = AuthSeedAdminUser.Trim(), SeedAdminPassword = AuthSeedAdminPassword,
-        },
-        PlcSettings = new PlcSettingsConfig { DbPath = PlcSettingsDbPath.Trim() },
-        Scans = new ScanConfig
-        {
-            DbPath = ScansDbPath.Trim(), BatchSize = ScansBatchSize, FlushIntervalMs = ScansFlushIntervalMs,
-            QueueCapacity = ScansQueueCapacity, RetentionDays = ScansRetentionDays,
-            PruneIntervalMs = ScansPruneIntervalMs,
-        },
-    };
+        var snapshot = new AppConfigSnapshot();
 
-    /// <summary>Chuẩn hóa chế độ scanner về TcpServer / TcpClient.</summary>
-    private static string NormalizeScannerMode(string mode) =>
-        string.Equals(mode?.Trim(), "TcpClient", StringComparison.OrdinalIgnoreCase)
-            ? "TcpClient"
-            : "TcpServer";
+        foreach (var sectionSchema in ConfigSchemaProvider.Sections)
+        {
+            var sectionValue = Activator.CreateInstance(sectionSchema.ModelType);
+            if (sectionValue is null)
+            {
+                continue;
+            }
+
+            foreach (var fieldSchema in sectionSchema.Fields)
+            {
+                var field = AllFields.FirstOrDefault(f =>
+                    string.Equals(f.JsonPath, fieldSchema.JsonPath, StringComparison.Ordinal));
+
+                if (field is null)
+                {
+                    continue;
+                }
+
+                fieldSchema.SetValue(sectionValue, NormalizeFieldValue(fieldSchema, field.Value));
+            }
+
+            // Gán section (và các section con lồng trong nó) vào snapshot.
+            SetSectionValue(snapshot, sectionSchema, sectionValue);
+        }
+
+        return snapshot;
+    }
+
+    /// <summary>
+    /// Gán giá trị của một section (kể cả section lồng nhau) vào snapshot.
+    /// </summary>
+    /// <param name="snapshot">Snapshot đích.</param>
+    /// <param name="sectionSchema">Schema của section.</param>
+    /// <param name="value">Giá trị section.</param>
+    private static void SetSectionValue(
+        AppConfigSnapshot snapshot,
+        ConfigSectionSchema sectionSchema,
+        object value)
+    {
+        var chain = sectionSchema.PropertyChain;
+        if (chain.Count == 0)
+        {
+            return;
+        }
+
+        // Đi tới object cha (bỏ property cuối cùng).
+        object? current = snapshot;
+        for (var i = 0; i < chain.Count - 1; i++)
+        {
+            if (current is null)
+            {
+                return;
+            }
+
+            current = chain[i].GetValue(current);
+        }
+
+        if (current is null)
+        {
+            return;
+        }
+
+        chain[^1].SetValue(current, value);
+    }
+
+    /// <summary>
+    /// Chuẩn hoá giá trị trước khi gán vào model: cắt khoảng trắng cho string,
+    /// chuẩn hoá chế độ scanner, giữ số nguyên dạng long nếu schema yêu cầu.
+    /// </summary>
+    /// <param name="schema">Schema của trường.</param>
+    /// <param name="value">Giá trị thô từ form.</param>
+    /// <returns>Giá trị đã chuẩn hoá.</returns>
+    private static object? NormalizeFieldValue(ConfigFieldSchema schema, object? value)
+    {
+        if (value is null)
+        {
+            return null;
+        }
+
+        if (value is string s)
+        {
+            var trimmed = s.Trim();
+
+            // Chế độ máy quét chỉ nhận TcpServer / TcpClient.
+            if (string.Equals(schema.JsonPath, "Scanner:Mode", StringComparison.Ordinal))
+            {
+                return string.Equals(trimmed, "TcpClient", StringComparison.OrdinalIgnoreCase)
+                    ? "TcpClient"
+                    : "TcpServer";
+            }
+
+            return trimmed;
+        }
+
+        return value;
+    }
+
+    /// <summary>
+    /// Tìm schema section theo key gốc.
+    /// </summary>
+    /// <param name="key">Key cần tìm (VD: "Sqlite").</param>
+    /// <returns>Schema tương ứng, null nếu không có.</returns>
+    private static ConfigSectionSchema? FindSection(string key) =>
+        ConfigSchemaProvider.FindSection(key);
 
     /// <summary>
     /// So sánh hai snapshot và trả về danh sách các thông số QUAN TRỌNG đã đổi.
@@ -785,6 +719,8 @@ internal partial class ConfigEditorViewModel : ViewModelBase
     /// <summary>
     /// Tạo nội dung banner yêu cầu restart từ danh sách thông số đã đổi.
     /// </summary>
+    /// <param name="changes">Danh sách nhãn thông số đã đổi.</param>
+    /// <returns>Nội dung banner.</returns>
     private static string BuildRestartMessage(List<string> changes)
     {
         if (changes.Count == 0)

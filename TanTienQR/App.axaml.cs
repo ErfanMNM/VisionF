@@ -35,8 +35,8 @@ public partial class App : Application
         // app khong can cai font vao may (vuot qua gioi han Native AOT).
         // EmbeddedFontCollection(Uri key, Uri source):
         //   key    = dinh danh collection (phai khac nhau giua cac font)
-        //   source = file .ttf trong avares://
-        // Font .ttf duoc nhung trong app -> khong can cai font vao may,
+        //   source = duong dan file .ttf trong avares://
+        // Font .ttf duoc nhung vao app -> khong can cai font vao may,
         // va khong dung reflection nen giu duoc kha nang Native AOT.
         //
         // LUU Y: key cua EmbeddedFontCollection phai theo scheme "fonts:"
@@ -61,7 +61,7 @@ public partial class App : Application
         FontManager.Current.AddFontCollection(
             new EmbeddedFontCollection(
                 new Uri("fonts:JetBrainsMedium"),
-                new Uri("avares://TanTienQR/Assets/Fonts/JetBrainsMedium.ttf")));
+                new Uri("avares://TanTienQR/Assets/Fonts/JetBrainsMedium-Regular.ttf")));
     }
 
     public override void OnFrameworkInitializationCompleted()
@@ -114,18 +114,61 @@ public partial class App : Application
             _host.Services.GetRequiredService<HandheldScannerService>().Start();
 
             // Đăng nhập là BẮT BUỘC trước khi vào ứng dụng.
-            // ShutdownMode = OnExplicitShutdown để đóng cửa sổ đăng nhập KHÔNG
-            // tắt app (đăng xuất sẽ quay lại cửa sổ đăng nhập).
+            // ShutdownMode = OnExplicitShutdown để đóng cửa sổ KHÔNG tự tắt app
+            // (đăng xuất chỉ hiện lại overlay đăng nhập, không đóng cửa sổ).
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
-            // Tạo tài khoản quản trị mặc định (admin/admin) ở lần chạy đầu.
+            // Seed tài khoản quản trị mặc định (admin/admin) ở lần chạy đầu.
             // Tài khoản này bắt buộc đổi mật khẩu ở lần đăng nhập đầu tiên.
-            // Gọi bên trong RunLoginLoopAsync để chắc chắn seed xong mới
-            // hiển thị cửa sổ đăng nhập.
+            // Chạy nền (fire-and-forget) để không chặn framework khởi tạo —
+            // đăng nhập thật sự chỉ có thể xảy ra sau khi seed xong.
+            _ = EnsureSeedAdminAsync();
 
-            // Chạy vòng lặp: đăng nhập -> vào app -> đăng xuất -> đăng nhập lại.
-            _ = RunLoginLoopAsync(desktop);
+            // ---- Bàn phím ảo: đăng ký singleton toàn cục ----
+            // Mọi cửa sổ (kể cả hộp thoại con) dùng chung một bàn phím +
+            // một ô nhập đang focus.
+            var keyboardService = _host.Services.GetRequiredService<KeyboardService>();
+            VirtualKeyboardHost.Register(keyboardService);
+
+            // =================================================================
+            //  CỬA SỔ DUY NHẤT + OVERLAY ĐĂNG NHẬP
+            // =================================================================
+            // Trước đây: tạo LoginShellWindow -> poll IsVisible -> đóng ->
+            // tạo MainWindow -> Show -> FullScreen (2 lần chuyển state) ->
+            // poll IsVisible. Kết quả: giật 1 frame trống + trễ ~120ms.
+            //
+            // Nay: chỉ tạo MainWindow 1 lần, hiện NGAY. Màn hình đăng nhập là
+            // một OVERLAY (LoginView) phủ lên cửa sổ chính (MainViewModel.
+            // IsLoginOverlayVisible = true). Bấm "Đăng nhập" chỉ fade overlay
+            // đi — không đổi cửa sổ, không giật.
+            //
+            // Việc chờ đăng nhập KHÔNG dùng polling: MainViewModel nhận sự kiện
+            // RequestAuthenticated từ LoginViewModel và tự ẩn overlay.
+            // =================================================================
+            var mainVm = _host.Services.GetRequiredService<MainViewModel>();
+            var mainWindow = new MainWindow
+            {
+                DataContext = mainVm,
+            };
+
+            // Bàn phím ảo: theo dõi ô nhập đang focus trong cửa sổ này.
+            // Overlay đăng nhập nằm trong cùng cửa sổ -> cùng được theo dõi.
+            keyboardService.Attach(mainWindow);
+
+            desktop.MainWindow = mainWindow;
+
+            // Đóng cửa sổ chính = THOÁT ứng dụng.
+            //
+            // ShutdownMode = OnExplicitShutdown nên đóng cửa sổ KHÔNG tự tắt
+            // app (cần thiết cho đăng xuất: overlay đăng nhập hiện lại mà cửa
+            // sổ vẫn còn). Vì vậy phải tự gọi Shutdown() khi cửa sổ đóng.
+            mainWindow.Closed += (_, _) => desktop.Shutdown();
+
             desktop.ShutdownRequested += OnShutdownRequested;
+
+            // Hiện cửa sổ ngay. Overlay đăng nhập đã bật sẵn trong
+            // MainViewModel nên người dùng thấy màn hình đăng nhập ngay.
+            mainWindow.Show();
         }
 
         base.OnFrameworkInitializationCompleted();
@@ -156,92 +199,6 @@ public partial class App : Application
         {
             Console.Error.WriteLine(
                 "[TanTienQR] Khong tao duoc tai khoan quan tri mac dinh: " + ex.Message);
-        }
-    }
-
-    /// <summary>
-    /// Vòng lặp đăng nhập: hiện cửa sổ đăng nhập, chờ kết quả; nếu thành công
-    /// thì mở cửa sổ chính và chờ người dùng đóng (đăng xuất) rồi quay lại
-    /// cửa sổ đăng nhập.
-    /// </summary>
-    /// <param name="desktop">Lifetime của ứng dụng.</param>
-    private async Task RunLoginLoopAsync(IClassicDesktopStyleApplicationLifetime desktop)
-    {
-        try
-        {
-            // Seed tài khoản quản trị mặc định TRƯỚC khi hiện màn hình đăng nhập.
-            await EnsureSeedAdminAsync().ConfigureAwait(true);
-
-            // Đăng ký bàn phím ảo làm singleton toàn cục: mọi cửa sổ (kể cả
-            // hộp thoại con) dùng chung một bàn phím + một ô nhập đang focus.
-            var keyboardService = _host!.Services.GetRequiredService<KeyboardService>();
-            VirtualKeyboardHost.Register(keyboardService);
-
-            while (true)
-            {
-                // ---- 1. Màn hình đăng nhập (khung full-size, 2 cột) ----
-                var loginVm = _host.Services.GetRequiredService<LoginViewModel>();
-                var loginWindow = new LoginShellWindow
-                {
-                    DataContext = loginVm,
-                };
-
-                loginVm.Attach(loginWindow);
-
-                // Bàn phím ảo: theo dõi ô nhập đang focus trong cửa sổ này.
-                keyboardService.Attach(loginWindow);
-
-                desktop.MainWindow = loginWindow;
-                loginWindow.Show();
-
-                // Chờ tới khi cửa sổ đăng nhập đóng.
-                while (loginWindow.IsVisible)
-                {
-                    await Task.Delay(120).ConfigureAwait(true);
-                }
-
-                // Không đăng nhập được -> thoát ứng dụng.
-                if (!loginVm.IsAuthenticated)
-                {
-                    desktop.Shutdown();
-                    return;
-                }
-
-                // ---- 2. Cửa sổ chính ----
-                var mainWindow = new MainWindow
-                {
-                    DataContext = _host.Services.GetRequiredService<MainViewModel>(),
-                };
-
-                // Bàn phím ảo: theo dõi ô nhập đang focus trong cửa sổ này.
-                keyboardService.Attach(mainWindow);
-
-                desktop.MainWindow = mainWindow;
-                mainWindow.Show();
-
-                // Chờ tới khi cửa sổ chính đóng.
-                while (mainWindow.IsVisible)
-                {
-                    await Task.Delay(120).ConfigureAwait(true);
-                }
-
-                // Người dùng đóng app (không phải đăng xuất) -> thoát.
-                var mainVm = mainWindow.DataContext as MainViewModel;
-                if (mainVm is null || !mainVm.IsLogoutRequested)
-                {
-                    desktop.Shutdown();
-                    return;
-                }
-
-                // ---- 3. Đăng xuất: quay lại màn hình đăng nhập ----
-                desktop.MainWindow = null;
-            }
-        }
-        catch (Exception ex)
-        {
-            // Lỗi trong vòng lặp -> đóng app an toàn thay vì treo.
-            Console.Error.WriteLine("[TanTienQR] Loi trong luong dang nhap: " + ex);
-            desktop.Shutdown();
         }
     }
 

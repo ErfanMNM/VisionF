@@ -17,6 +17,7 @@
         CanMinimize="True"
         CanMaximize="True"
         WindowDecorations="None"
+        WindowState="FullScreen"
         WindowStartupLocation="CenterScreen">
 
     <Design.DataContext>
@@ -606,17 +607,39 @@
                 </Grid>
             </Border>
 
-            <!-- ===== Vùng nội dung tab ===== -->
+            <!-- ===== Vùng nội dung tab =====
+                 Lazy: mỗi tab là 1 LazyTabHost, chỉ dựng view khi người
+                 dùng mở tab lần đầu (sau đó cache lại). Nhờ vậy frame đầu
+                 tiên chỉ phải dựng InfoView, không dựng sẵn 9 view + 2
+                 WebView2 như trước. -->
             <Grid Grid.Column="1">
-                <views:InfoView IsVisible="{Binding IsInfoVisible}" />
-                <views:ProductionView IsVisible="{Binding IsProductionVisible}" />
-                <views:ConfigView IsVisible="{Binding IsConfigVisible}" />
-                <views:HistoryView IsVisible="{Binding IsHistoryVisible}" />
-                <views:AccountsView IsVisible="{Binding IsAccountsVisible}" />
-                <views:PlcSettingsView IsVisible="{Binding IsPlcSettingsVisible}" />
-                <views:DevView IsVisible="{Binding IsDevVisible}" />
-                <views:CodeLookupView IsVisible="{Binding IsCodeLookupVisible}" />
-                <views:ProductionOrdersView IsVisible="{Binding IsProductionOrdersVisible}" />
+                <views:LazyTabHost x:Name="InfoTab"
+                                   IsVisible="{Binding IsInfoVisible}"
+                                   Factory="{x:Static views:LazyTabFactories.Info}" />
+                <views:LazyTabHost x:Name="ProductionTab"
+                                   IsVisible="{Binding IsProductionVisible}"
+                                   Factory="{x:Static views:LazyTabFactories.Production}" />
+                <views:LazyTabHost x:Name="ConfigTab"
+                                   IsVisible="{Binding IsConfigVisible}"
+                                   Factory="{x:Static views:LazyTabFactories.Config}" />
+                <views:LazyTabHost x:Name="HistoryTab"
+                                   IsVisible="{Binding IsHistoryVisible}"
+                                   Factory="{x:Static views:LazyTabFactories.History}" />
+                <views:LazyTabHost x:Name="AccountsTab"
+                                   IsVisible="{Binding IsAccountsVisible}"
+                                   Factory="{x:Static views:LazyTabFactories.Accounts}" />
+                <views:LazyTabHost x:Name="PlcSettingsTab"
+                                   IsVisible="{Binding IsPlcSettingsVisible}"
+                                   Factory="{x:Static views:LazyTabFactories.PlcSettings}" />
+                <views:LazyTabHost x:Name="DevTab"
+                                   IsVisible="{Binding IsDevVisible}"
+                                   Factory="{x:Static views:LazyTabFactories.Dev}" />
+                <views:LazyTabHost x:Name="CodeLookupTab"
+                                   IsVisible="{Binding IsCodeLookupVisible}"
+                                   Factory="{x:Static views:LazyTabFactories.CodeLookup}" />
+                <views:LazyTabHost x:Name="ProductionOrdersTab"
+                                   IsVisible="{Binding IsProductionOrdersVisible}"
+                                   Factory="{x:Static views:LazyTabFactories.ProductionOrders}" />
             </Grid>
         </Grid>
 
@@ -630,5 +653,33 @@
              lại toàn bộ chỗ. -->
         <controls:VirtualKeyboard Grid.Row="4"
                                  DataContext="{Binding Keyboard}" />
+
+        <!-- ===== OVERLAY ĐĂNG NHẬP =====
+             Phủ lên cửa sổ chính (ZIndex cao, nằm SAU CÙNG trong Grid).
+             Nhờ vậy app chỉ có MỘT cửa sổ: bấm "Đăng nhập" chỉ fade overlay,
+             không tạo/đóng cửa sổ -> hết giật (1 frame trống) và không
+             chuyển WindowState 2 lần.
+
+             Hiệu ứng mờ: Opacity gắn với LoginOverlayOpacity (0 -> 1),
+             Transition 180ms. Khi ẩn, MainViewModel đợi hết hiệu ứng rồi mới
+             tắt IsVisible -> overlay không chặn chuột/bàn phím.
+             Nền ngoài overlay được làm mờ (dim) để tách khỏi giao diện chính. -->
+        <Border Grid.Row="0"
+                Grid.RowSpan="5"
+                Grid.Column="0"
+                ZIndex="1000"
+                Background="#66000000"
+                Opacity="{Binding LoginOverlayOpacity}"
+                IsVisible="{Binding IsLoginOverlayVisible}">
+            <Border.Transitions>
+                <Transitions>
+                    <DoubleTransition Property="Opacity"
+                                      Duration="0:0:0.18"
+                                      Easing="CubicEaseOut" />
+                </Transitions>
+            </Border.Transitions>
+            <views:LoginView x:Name="LoginOverlay"
+                             DataContext="{Binding Login}" />
+        </Border>
     </Grid>
 </Window>

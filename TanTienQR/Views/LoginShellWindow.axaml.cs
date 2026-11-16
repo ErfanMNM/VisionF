@@ -2,7 +2,6 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
-using TanTienQR.ViewModels;
 
 namespace TanTienQR.Views;
 
@@ -10,6 +9,11 @@ namespace TanTienQR.Views;
 /// Khung đăng nhập full-size: dùng chung kích thước và custom chrome với
 /// <see cref="MainWindow"/> (1360x820, WindowDecorations=None), layout 2 cột
 /// branding + form, đổi mật khẩu lần đầu là bước 2 ngay trong khung.
+///
+/// Phần ruột đăng nhập đã được tách sang <see cref="LoginView"/> để dùng lại
+/// làm OVERLAY trong <see cref="MainWindow"/> — nhờ vậy app không còn tạo /
+/// đóng 2 cửa sổ (hết giật khi bấm đăng nhập). Khung này giữ lại làm
+/// wrapper cho trình xem trước trong IDE và cho audit harness.
 /// </summary>
 public partial class LoginShellWindow : Window
 {
@@ -37,37 +41,6 @@ public partial class LoginShellWindow : Window
         // kiosk/quầy sản xuất, người dùng đăng nhập ngay sau khi bật app).
         // Dùng API chuẩn WindowState = FullScreen nên tương thích Native AOT.
         SetFullScreen(true);
-
-        FocusStepInput();
-        if (DataContext is LoginViewModel vm)
-        {
-            vm.StepChanged += OnStepChanged;
-        }
-    }
-
-    protected override void OnClosed(EventArgs e)
-    {
-        if (DataContext is LoginViewModel vm)
-        {
-            vm.StepChanged -= OnStepChanged;
-        }
-
-        base.OnClosed(e);
-    }
-
-    private void OnStepChanged(object? sender, EventArgs e) => FocusStepInput();
-
-    private void FocusStepInput()
-    {
-        if (DataContext is not LoginViewModel vm)
-        {
-            return;
-        }
-
-        Control? target = vm.IsChangePasswordStep
-            ? this.FindControl<TextBox>("CurrentBox")
-            : this.FindControl<TextBox>("UsernameBox");
-        target?.Focus();
     }
 
     // Kéo di chuyển cửa sổ từ thanh tiêu đề tự vẽ (bỏ qua khi bấm vào nút).

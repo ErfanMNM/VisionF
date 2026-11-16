@@ -206,10 +206,10 @@ public static class TanTienAppServices
         services.AddSingleton<VirtualKeyboardViewModel>();
         services.AddSingleton<KeyboardService>();
 
-        // LoginViewModel: Transient vì mỗi lần đăng nhập cần trạng thái
-        // form sạch (tên đăng nhập / mật khẩu / lỗi) — không dùng lại
-        // instance của lần trước.
-        services.AddTransient<LoginViewModel>();
+// LoginViewModel: Singleton vì overlay đăng nhập nằm trong MainWindow và
+// được dùng lại qua nhiều lần đăng nhập / đăng xuất. Trạng thái form
+// được Reset() khi đăng xuất -> mỗi lần đăng nhập vẫn có form sạch.
+services.AddSingleton<LoginViewModel>();
 
         return services;
     }

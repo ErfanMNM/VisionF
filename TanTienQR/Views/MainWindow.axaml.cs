@@ -19,6 +19,12 @@ public partial class MainWindow : Window
     /// </summary>
     private bool _isFullScreen;
 
+    /// <summary>
+    /// True khi cửa sổ đã vào chế độ fullscreen lần đầu (để không set lại
+    /// WindowState trong <see cref="OnOpened"/> -> tránh chuyển state 2 lần).
+    /// </summary>
+    private bool _fullScreenApplied;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -146,33 +152,60 @@ public partial class MainWindow : Window
     {
         base.OnOpened(e);
 
-        // ===== Tự toàn màn hình khi app mở =====
-        // Cửa sổ chính luôn chiếm hết màn hình làm việc (máy chạy trong kiosk
-        // / quầy sản xuất). Dùng API chuẩn WindowState = FullScreen nên tương
-        // thích Native AOT (không reflection, không P/Invoke).
-        SetFullScreen(true);
+        // ===== Toàn màn hình =====
+        // XAML đã khai báo WindowState="FullScreen" -> cửa sổ vào fullscreen
+        // ngay từ frame đầu, KHÔNG chuyển state 2 lần (Normal -> FullScreen).
+        // Ở đây chỉ đồng bộ cờ nội bộ để F11/Esc hoạt động đúng.
+        if (!_fullScreenApplied && WindowState == WindowState.FullScreen)
+        {
+            _fullScreenApplied = true;
+            _isFullScreen = true;
+        }
+        else if (!_fullScreenApplied)
+        {
+            SetFullScreen(true);
+            _fullScreenApplied = true;
+        }
 
         // Chỉ chạy khi cửa sổ thật sự hiển thị (không chạy trong trình xem trước).
         if (DataContext is MainViewModel vm)
         {
+            // Đăng ký các host tab (lazy) -> MainViewModel dựng view đúng lúc
+            // người dùng bấm mở tab, thay vì dựng sẵn cả 9 view.
+            RegisterTabHosts(vm);
+
+            // Gắn overlay đăng nhập: MainViewModel đăng ký sự kiện
+            // RequestAuthenticated để ẩn overlay khi đăng nhập xong.
+            vm.AttachLoginOverlay(LoginOverlay);
+
             vm.Start(this);
         }
+    }
+
+    /// <summary>
+    /// Đăng ký các host tab lazy với ViewModel.
+    /// </summary>
+    /// <param name="vm">ViewModel chính.</param>
+    private void RegisterTabHosts(MainViewModel vm)
+    {
+        vm.RegisterTabHost(TanTienQR.Models.AppSection.Info, InfoTab);
+        vm.RegisterTabHost(TanTienQR.Models.AppSection.Production, ProductionTab);
+        vm.RegisterTabHost(TanTienQR.Models.AppSection.Configuration, ConfigTab);
+        vm.RegisterTabHost(TanTienQR.Models.AppSection.History, HistoryTab);
+        vm.RegisterTabHost(TanTienQR.Models.AppSection.Accounts, AccountsTab);
+        vm.RegisterTabHost(TanTienQR.Models.AppSection.PlcSettings, PlcSettingsTab);
+        vm.RegisterTabHost(TanTienQR.Models.AppSection.Dev, DevTab);
+        vm.RegisterTabHost(TanTienQR.Models.AppSection.CodeLookup, CodeLookupTab);
+        vm.RegisterTabHost(TanTienQR.Models.AppSection.ProductionOrders, ProductionOrdersTab);
     }
 
     protected override void OnClosed(EventArgs e)
     {
         if (DataContext is MainViewModel vm)
         {
-            // Nếu người dùng bấm "Đăng xuất" thì chỉ dừng tạm (app còn chạy để
-            // đăng nhập lại) — chỉ dispose khi cửa sổ đóng hẳn (thoát app).
-            if (vm.IsLogoutRequested)
-            {
-                vm.Stop();
-            }
-            else
-            {
-                vm.Dispose();
-            }
+            // Đóng cửa sổ = thoát app -> dispose VM (dừng timer, huỷ token).
+            // Đăng xuất KHÔNG đóng cửa sổ nữa (chỉ hiện lại overlay).
+            vm.Dispose();
         }
 
         base.OnClosed(e);

@@ -21,7 +21,7 @@ namespace TanTienQR.Services;
 ///   nhập thì mở bàn phím NGAY, kể cả khi ô đó đã có focus sẵn.
 ///
 ///   Đây là điểm mấu chốt: nhiều cửa sổ tự focus vào ô nhập đầu tiên khi
-///   mở (xem <c>LoginShellWindow.FocusStepInput</c>). Nếu chỉ dựa vào
+///   mở (xem <c>LoginView.FocusStepInput</c>). Nếu chỉ dựa vào
 ///   <c>GotFocus</c> thì lần chạm đầu tiên sẽ KHÔNG sinh sự kiện focus mới
 ///   (focus không đổi) -> bàn phím không mở -> người dùng phải nhấn đúp.
 ///   Bắt <c>PointerPressed</c> giải quyết đúng trường hợp này.

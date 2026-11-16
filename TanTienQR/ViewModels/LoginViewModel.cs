@@ -21,13 +21,15 @@ internal enum LoginStep
 }
 
 /// <summary>
-/// ViewModel cho khung đăng nhập full-size (wizard 2 bước ngay trong khung).
+/// ViewModel cho phần đăng nhập (wizard 2 bước).
 ///
 /// Bước 1 đăng nhập qua <see cref="IUserService.AuthenticateAsync"/>. Nếu tài
 /// khoản có <c>MustChangePassword</c> thì chuyển sang bước 2 và gọi
 /// <see cref="IUserService.SetPasswordAsync"/> trực tiếp — không mở dialog riêng.
-/// Đăng nhập thành công (hoặc huỷ) sẽ phát <see cref="RequestClose"/> để shell
-/// tự đóng; <c>App</c> dựa vào <see cref="IsAuthenticated"/> để mở MainWindow.
+///
+/// Đăng nhập thành công phát <see cref="RequestAuthenticated"/> (App dùng để
+/// ẩn overlay) và <see cref="RequestClose"/> (khung cũ dùng để tự đóng).
+/// Huỷ phát <see cref="RequestClose"/> với <see cref="IsAuthenticated"/> = false.
 /// </summary>
 internal sealed partial class LoginViewModel : ViewModelBase
 {
@@ -39,16 +41,32 @@ internal sealed partial class LoginViewModel : ViewModelBase
     /// <summary>Bàn phím ảo (dùng chung với cửa sổ chính).</summary>
     private readonly VirtualKeyboardViewModel _keyboard;
 
-    /// <summary>Cửa sổ shell — dùng để tự đóng khi xong wizard.</summary>
-    private Window? _owner;
+    /// <summary>
+    /// Chủ sở hữu hiện tại: có thể là <see cref="Window"/> (khung cũ) hoặc
+    /// <see cref="UserControl"/> cha (overlay trong MainWindow).
+    /// </summary>
+    private Control? _owner;
 
     /// <summary>Tài khoản đang chờ đổi mật khẩu ở bước 2.</summary>
     private UserAccount? _pendingUser;
 
-    /// <summary>True khi đăng nhập thành công (App dùng để mở MainWindow).</summary>
+    /// <summary>True khi đăng nhập thành công.</summary>
     public bool IsAuthenticated { get; private set; }
 
-    /// <summary>Shell đăng ký để tự đóng khi wizard xong / huỷ.</summary>
+    /// <summary>
+    /// Phát khi đăng nhập THÀNH CÔNG — App dùng để ẩn overlay đăng nhập.
+    ///
+    /// Không dùng polling (Task.Delay) để chờ: đây là đường báo sự kiện,
+    /// đồng bộ trên luồng UI -> overlay biến mất ngay khi đăng nhập xong.
+    /// </summary>
+    public event EventHandler? RequestAuthenticated;
+
+    /// <summary>
+    /// Shell đăng ký để tự đóng khi wizard xong / huỷ.
+    ///
+    /// Với overlay trong MainWindow, sự kiện này KHÔNG đóng cửa sổ — chỉ
+    /// dùng để báo "huỷ / thoát ứng dụng".
+    /// </summary>
     public event EventHandler? RequestClose;
 
     /// <summary>Shell đăng ký để focus ô nhập khi chuyển bước.</summary>
@@ -74,10 +92,20 @@ internal sealed partial class LoginViewModel : ViewModelBase
     public VirtualKeyboardViewModel Keyboard => _keyboard;
 
     /// <summary>
-    /// Gắn cửa sổ shell để có thể tự đóng khi xong wizard.
+    /// Gắn chủ sở hữu để có thể tự đóng khi xong wizard.
+    ///
+    /// Nhận <see cref="Control"/> để hỗ trợ cả 2 kiểu dùng:
+    /// - <see cref="Window"/>: khung đăng nhập cũ (LoginShellWindow) — đóng
+    ///   khung khi đăng nhập xong.
+    /// - <see cref="UserControl"/>: overlay đăng nhập trong MainWindow — KHÔNG
+    ///   đóng gì, chỉ dùng để báo sự kiện.
+    ///
+    /// Kiểu tham số là <see cref="Control"/> (chứ không phải
+    /// <see cref="TopLevel"/>) vì UserControl KHÔNG phải TopLevel — nó chỉ là
+    /// một phần tử con bên trong cửa sổ.
     /// </summary>
-    /// <param name="owner">Cửa sổ cha.</param>
-    public void Attach(Window? owner)
+    /// <param name="owner">Chủ sở hữu (cửa sổ hoặc control cha).</param>
+    public void Attach(Control? owner)
     {
         if (_owner is not null)
         {
@@ -92,7 +120,19 @@ internal sealed partial class LoginViewModel : ViewModelBase
         }
     }
 
-    private void OnRequestCloseOwner(object? sender, EventArgs e) => _owner?.Close();
+    /// <summary>
+    /// Chỉ đóng chủ sở hữu khi nó là CỬA SỔ.
+    ///
+    /// Với overlay (UserControl) không được đóng gì — nếu không sẽ mất cả
+    /// cửa sổ chính lúc đăng nhập thành công.
+    /// </summary>
+    private void OnRequestCloseOwner(object? sender, EventArgs e)
+    {
+        if (_owner is Window window)
+        {
+            window.Close();
+        }
+    }
 
     // ---------- Bước wizard ----------
 
@@ -327,6 +367,7 @@ internal sealed partial class LoginViewModel : ViewModelBase
                 $"Dang nhap thanh cong voi vai tro {user.RoleName}",
                 UserActionResults.Success);
 
+            RequestAuthenticated?.Invoke(this, EventArgs.Empty);
             RequestClose?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex)
@@ -461,6 +502,7 @@ internal sealed partial class LoginViewModel : ViewModelBase
                 $"Dang nhap thanh cong voi vai tro {user.RoleName}",
                 UserActionResults.Success);
 
+            RequestAuthenticated?.Invoke(this, EventArgs.Empty);
             RequestClose?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex)
@@ -496,5 +538,42 @@ internal sealed partial class LoginViewModel : ViewModelBase
 
         return string.Equals(
             username.Trim(), seedUser.Trim(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Đặt lại form đăng nhập về trạng thái sạch (dùng khi đăng xuất).
+    ///
+    /// - Xoá tên đăng nhập / mật khẩu / thông báo lỗi.
+    /// - Về lại bước 1 (<see cref="LoginStep.SignIn"/>).
+    /// - Xoá trạng thái <see cref="IsAuthenticated"/>.
+    ///
+    /// Bàn phím ảo và trạng thái "đang xử lý" cũng được reset để lần đăng
+    /// nhập sau không bị kẹt ở trạng thái của lần trước.
+    /// </summary>
+    public void Reset()
+    {
+        IsAuthenticated = false;
+        IsBusy = false;
+
+        _pendingUser = null;
+
+        Username = string.Empty;
+        Password = string.Empty;
+        CurrentPassword = string.Empty;
+        NewPassword = string.Empty;
+        ConfirmPassword = string.Empty;
+
+        ErrorMessage = string.Empty;
+        WarningMessage = string.Empty;
+
+        RefreshPasswordStrength(null);
+
+        Step = LoginStep.SignIn;
+
+        OnPropertyChanged(nameof(PendingUsername));
+        OnPropertyChanged(nameof(PendingDisplayName));
+
+        // Đóng bàn phím ảo (nếu đang mở) cho sạch trạng thái.
+        _keyboard.Close();
     }
 }

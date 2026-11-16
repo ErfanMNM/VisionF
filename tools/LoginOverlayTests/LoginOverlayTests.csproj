@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    LoginOverlayTests — kiểm thử luồng đăng nhập kiểu OVERLAY của TanTienQR.
+
+    Dùng Avalonia.Headless + Skia: KHÔNG mở cửa sổ thật trên desktop,
+    KHÔNG chụp màn hình, KHÔNG ảnh hưởng phiên làm việc của người dùng.
+
+    Kiểm tra:
+      [1] MainWindow hiện NGAY với overlay đăng nhập phủ lên
+      [2] Overlay là LoginView (UserControl), nằm trong MainWindow, ZIndex cao
+      [3] Đăng nhập thành công -> overlay ẨN đi, KHÔNG tạo cửa sổ mới
+      [4] Cờ quyền / thông tin user cập nhật sau đăng nhập
+      [5] Đăng xuất -> overlay HIỆN LẠI, form reset sạch
+      [6] Tab lazy: chỉ InfoView dựng sẵn, tab nặng dựng khi mở
+      [7] MainWindow FullScreen ngay từ đầu (không chuyển state 2 lần)
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>LoginOverlayTests</RootNamespace>
+    <AssemblyName>LoginOverlayTests</AssemblyName>
+    <IsAotCompatible>false</IsAotCompatible>
+    <PublishAot>false</PublishAot>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <NoWarn>$(NoWarn);CA1416;AVLN5001;IL3000</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Headless" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Skia" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Controls.WebView" Version="12.1.1" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.14" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.14" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\TanTienQR\TanTienQR.csproj" />
+  </ItemGroup>
+
+</Project>
