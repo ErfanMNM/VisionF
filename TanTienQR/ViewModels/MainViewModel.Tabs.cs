@@ -1,4 +1,4 @@
-using ClassLibraryMT.Auth;
+﻿using ClassLibraryMT.Auth;
 using ClassLibraryMT.Logging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -75,9 +75,14 @@ internal partial class MainViewModel
     [NotifyPropertyChangedFor(nameof(IsDevVisible))]
     [NotifyPropertyChangedFor(nameof(IsCodeLookupVisible))]
     [NotifyPropertyChangedFor(nameof(IsProductionOrdersVisible))]
+    [NotifyPropertyChangedFor(nameof(IsMoreActive))]
     [NotifyPropertyChangedFor(nameof(PageTitle))]
     [NotifyPropertyChangedFor(nameof(PageSubtitle))]
     public partial AppSection CurrentSection { get; set; } = AppSection.Info;
+
+    /// <summary>True khi đang ở một tab nằm trong menu Thêm (không phải Thông tin / Sản xuất / Chỉnh PLC).</summary>
+    public bool IsMoreActive =>
+        CurrentSection is not (AppSection.Info or AppSection.Production or AppSection.PlcSettings);
 
     /// <summary>True khi đang ở tab Thông tin.</summary>
     public bool IsInfoVisible => CurrentSection == AppSection.Info;

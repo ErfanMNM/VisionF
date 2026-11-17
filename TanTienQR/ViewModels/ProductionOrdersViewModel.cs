@@ -84,6 +84,10 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
     [ObservableProperty]
     public partial string StatusMessage { get; set; } = "Chưa tải PO nào.";
 
+    /// <summary>True khi <see cref="StatusMessage"/> là thông báo lỗi (hiện màu đỏ).</summary>
+    [ObservableProperty]
+    public partial bool IsStatusError { get; set; }
+
     /// <summary>True khi có PO đang chạy.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanCancel))]
@@ -130,6 +134,7 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
         if (IsBusy) return;
 
         IsBusy = true;
+        IsStatusError = false;
         StatusMessage = "Đang cào PO từ server...";
 
         try
@@ -151,7 +156,8 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
         }
         catch (Exception ex)
         {
-            StatusMessage = "Không cào được PO: " + ex.Message;
+            StatusMessage = DescribeDownloadError(ex);
+            IsStatusError = true;
 
             _actionLog.Log(
                 "Po.Download",
@@ -165,6 +171,21 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
             RefreshRunningState();
         }
     }
+
+    /// <summary>Chuyển lỗi khi cào PO thành thông báo dễ hiểu cho người dùng.</summary>
+    private static string DescribeDownloadError(Exception ex) => ex switch
+        {
+        ClassLibraryMT.Po.PoServerException => ex.Message,
+        HttpRequestException { StatusCode: { } code } =>
+            $"Server PO trả về lỗi HTTP {(int)code}. Vui lòng thử lại sau.",
+        HttpRequestException =>
+            "Không kết nối được tới server PO. Kiểm tra server đã chạy chưa và mạng/địa chỉ (Po:BaseUrl).",
+        TaskCanceledException or TimeoutException =>
+            "Server PO không phản hồi (quá thời gian chờ).",
+        System.Text.Json.JsonException =>
+            "Dữ liệu server PO trả về không hợp lệ.",
+        _ => "Không cào được PO: " + ex.Message,
+    };
 
     /// <summary>
     /// Bắt đầu sản xuất cho PO được chọn.

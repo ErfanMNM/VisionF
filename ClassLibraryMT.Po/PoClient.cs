@@ -60,14 +60,52 @@ public sealed class PoClient : IPoClient, IDisposable
     {
         var path = includeCompleted ? "api/po?includeCompleted=true" : "api/po";
 
-        using var response = await _http.GetAsync(path, ct).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-
-        var orders = await response.Content
-            .ReadFromJsonAsync(PoJsonContext.Default.ListProductionOrder, ct)
+        var orders = await GetJsonAsync(path, PoJsonContext.Default.ListProductionOrder, ct)
             .ConfigureAwait(false);
 
         return orders ?? [];
+    }
+
+    /// <summary>
+    /// GET + đọc JSON; mọi lỗi mạng/HTTP/JSON được bọc thành <see cref="PoServerException"/>.
+    /// </summary>
+    private async Task<T?> GetJsonAsync<T>(
+        string path,
+        System.Text.Json.Serialization.Metadata.JsonTypeInfo<T> typeInfo,
+        CancellationToken ct)
+    {
+        try
+        {
+            using var response = await _http.GetAsync(path, ct).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new PoServerException(
+                    $"Server PO trả về lỗi HTTP {(int)response.StatusCode} {response.ReasonPhrase}.");
+            }
+
+            return await response.Content.ReadFromJsonAsync(typeInfo, ct).ConfigureAwait(false);
+        }
+        catch (PoServerException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException ex)
+        {
+            throw new PoServerException("Server PO không phản hồi (quá thời gian chờ).", ex);
+        }
+        catch (HttpRequestException ex)
+        {
+            throw new PoServerException(
+                "Không kết nối được tới server PO. Kiểm tra server đã chạy chưa và địa chỉ (Po:BaseUrl).", ex);
+        }
+        catch (JsonException ex)
+        {
+            throw new PoServerException("Dữ liệu server PO trả về không hợp lệ.", ex);
+        }
     }
 
     /// <summary>
@@ -80,13 +118,9 @@ public sealed class PoClient : IPoClient, IDisposable
         if (string.IsNullOrWhiteSpace(orderNo))
             return [];
 
-        using var response = await _http
-            .GetAsync($"api/po/{Uri.EscapeDataString(orderNo.Trim())}/codes", ct)
-            .ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-
-        var codes = await response.Content
-            .ReadFromJsonAsync(PoJsonContext.Default.ListPoCode, ct)
+        var codes = await GetJsonAsync(
+                $"api/po/{Uri.EscapeDataString(orderNo.Trim())}/codes",
+                PoJsonContext.Default.ListPoCode, ct)
             .ConfigureAwait(false);
 
         return codes ?? [];

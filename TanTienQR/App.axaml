@@ -253,6 +253,15 @@
         <Style Selector="Button.menubtn:pointerover /template/ ContentPresenter#PART_ContentPresenter">
             <Setter Property="Background" Value="{StaticResource BgRaised}" />
         </Style>
+        <Style Selector="Button.menubtn.active /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{StaticResource AccentSoft}" />
+        </Style>
+        <Style Selector="Button.menubtn.active TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Accent}" />
+        </Style>
+        <Style Selector="TextBlock.statusError">
+            <Setter Property="Foreground" Value="{StaticResource Danger}" />
+        </Style>
         <Style Selector="Button.menubtn.danger TextBlock">
             <Setter Property="Foreground" Value="{StaticResource Danger}" />
         </Style>

@@ -113,6 +113,9 @@ internal sealed partial class ProductionInfoViewModel : ViewModelBase, IDisposab
     /// <summary>Chuỗi mô tả trạng thái thao tác (đồng bộ với tab PO).</summary>
     public string StatusMessage => Orders.StatusMessage;
 
+    /// <summary>True khi thông báo trạng thái là lỗi.</summary>
+    public bool IsStatusError => Orders.IsStatusError;
+
     /// <summary>True khi có thể bắt đầu sản xuất PO đang chọn.</summary>
     public bool CanStart => Orders.CanStart;
 
@@ -236,6 +239,7 @@ internal sealed partial class ProductionInfoViewModel : ViewModelBase, IDisposab
     {
         OnPropertyChanged(nameof(HasNoOrders));
         OnPropertyChanged(nameof(StatusMessage));
+        OnPropertyChanged(nameof(IsStatusError));
         OnPropertyChanged(nameof(CanStart));
         OnPropertyChanged(nameof(CanCancel));
         OnPropertyChanged(nameof(IsHalted));

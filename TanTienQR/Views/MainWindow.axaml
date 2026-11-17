@@ -1,4 +1,4 @@
-<Window xmlns="https://github.com/avaloniaui"
+﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:TanTienQR.ViewModels"
         xmlns:views="using:TanTienQR.Views"
@@ -218,17 +218,6 @@
                     </Button>
 
                     <Button Classes="tabbar"
-                            Classes.active="{Binding IsConfigVisible}"
-                            Command="{Binding ShowConfigTabCommand}">
-                        <StackPanel Orientation="Horizontal" Spacing="8"
-                                    HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <Path Classes="icon" Width="16" Height="16" Stretch="Uniform"
-                                  Data="{StaticResource Icon.Sliders}" />
-                            <TextBlock Text="Cấu hình" />
-                        </StackPanel>
-                    </Button>
-
-                    <Button Classes="tabbar"
                             Classes.active="{Binding IsPlcSettingsVisible}"
                             IsVisible="{Binding CanEditPlc}"
                             Command="{Binding ShowPlcSettingsTabCommand}">
@@ -240,65 +229,17 @@
                         </StackPanel>
                     </Button>
 
-                    <Button Classes="tabbar"
-                            Classes.active="{Binding IsHistoryVisible}"
-                            IsVisible="{Binding CanViewHistory}"
-                            Command="{Binding ShowHistoryTabCommand}">
+                    <!-- Mục "Thêm": gom các tab ít dùng vào menu xổ xuống -->
+                    <Button x:Name="MoreMenuButton"
+                            Classes="tabbar"
+                            Classes.active="{Binding IsMoreActive}"
+                            Click="OnMoreMenuClick">
                         <StackPanel Orientation="Horizontal" Spacing="8"
                                     HorizontalAlignment="Center" VerticalAlignment="Center">
                             <Path Classes="icon" Width="16" Height="16" Stretch="Uniform"
-                                  Data="{StaticResource Icon.Bars}" />
-                            <TextBlock Text="Lịch sử" />
-                        </StackPanel>
-                    </Button>
-
-                    <!-- Truy xuất sản xuất (Local): mọi vai trò xem được -->
-                    <Button Classes="tabbar"
-                            Classes.active="{Binding IsProductionOrdersVisible}"
-                            IsVisible="{Binding CanViewProduction}"
-                            Command="{Binding ShowProductionOrdersTabCommand}">
-                        <StackPanel Orientation="Horizontal" Spacing="8"
-                                    HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <Path Classes="icon" Width="16" Height="16" Stretch="Uniform"
-                                  Data="{StaticResource Icon.Clipboard}" />
-                            <TextBlock Text="Truy xuất SX" />
-                        </StackPanel>
-                    </Button>
-
-                    <!-- Tra cứu mã: mọi vai trò đều xem được -->
-                    <Button Classes="tabbar"
-                            Classes.active="{Binding IsCodeLookupVisible}"
-                            Command="{Binding ShowCodeLookupTabCommand}">
-                        <StackPanel Orientation="Horizontal" Spacing="8"
-                                    HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <Path Classes="icon" Width="16" Height="16" Stretch="Uniform"
-                                  Data="{StaticResource Icon.Search}" />
-                            <TextBlock Text="Tra cứu mã" />
-                        </StackPanel>
-                    </Button>
-
-                    <Button Classes="tabbar"
-                            Classes.active="{Binding IsAccountsVisible}"
-                            IsVisible="{Binding CanManageUsers}"
-                            Command="{Binding ShowAccountsTabCommand}">
-                        <StackPanel Orientation="Horizontal" Spacing="8"
-                                    HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <Path Classes="icon" Width="16" Height="16" Stretch="Uniform"
-                                  Data="{StaticResource Icon.User}" />
-                            <TextBlock Text="Tài khoản" />
-                        </StackPanel>
-                    </Button>
-
-                    <!-- Dev: chỉ Lập trình viên -->
-                    <Button Classes="tabbar"
-                            Classes.active="{Binding IsDevVisible}"
-                            IsVisible="{Binding CanViewDev}"
-                            Command="{Binding ShowDevTabCommand}">
-                        <StackPanel Orientation="Horizontal" Spacing="8"
-                                    HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <Path Classes="icon" Width="16" Height="16" Stretch="Uniform"
-                                  Data="{StaticResource Icon.File}" />
-                            <TextBlock Text="Dev" />
+                                  Data="{StaticResource Icon.Menu}" />
+                            <TextBlock Text="Thêm" />
+                            <TextBlock Text="▾" FontSize="11" />
                         </StackPanel>
                     </Button>
                 </StackPanel>
@@ -395,6 +336,107 @@
                                         <TextBlock Text="Tắt ứng dụng" FontSize="13" FontWeight="SemiBold" />
                                         <TextBlock Text="Đóng và dừng worker" FontSize="10" Foreground="{StaticResource TextMuted}" />
                                     </StackPanel>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+                </Popup>
+
+                <!-- Menu "Thêm" (overlay): các tab ít dùng -->
+                <Popup x:Name="MoreMenuPopup"
+                       PlacementTarget="{Binding #MoreMenuButton}"
+                       Placement="BottomEdgeAlignedLeft"
+                       IsLightDismissEnabled="True"
+                       Topmost="True">
+                    <Border Width="220"
+                            Padding="8"
+                            CornerRadius="14"
+                            Background="{StaticResource BgPanel}"
+                            BorderBrush="{StaticResource LineColor}"
+                            BorderThickness="1"
+                            BoxShadow="0 12 32 0 #33000000">
+                        <StackPanel Spacing="2">
+                            <Button Classes="menubtn"
+                                    Classes.active="{Binding IsConfigVisible}"
+                            IsVisible="{Binding CanEditConfig}"
+                                    Command="{Binding ShowConfigTabCommand}"
+                                    Click="OnMoreItemClick">
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <Path Width="16" Height="16" Stretch="Uniform"
+                                          Stroke="{StaticResource TextMuted}" StrokeThickness="1.9"
+                                          StrokeLineCap="Round" StrokeJoin="Round"
+                                          VerticalAlignment="Center"
+                                          Data="{StaticResource Icon.Sliders}" />
+                                    <TextBlock Text="Cấu hình" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                            <Button Classes="menubtn"
+                                    Classes.active="{Binding IsHistoryVisible}"
+                            IsVisible="{Binding CanViewHistory}"
+                                    Command="{Binding ShowHistoryTabCommand}"
+                                    Click="OnMoreItemClick">
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <Path Width="16" Height="16" Stretch="Uniform"
+                                          Stroke="{StaticResource TextMuted}" StrokeThickness="1.9"
+                                          StrokeLineCap="Round" StrokeJoin="Round"
+                                          VerticalAlignment="Center"
+                                          Data="{StaticResource Icon.Bars}" />
+                                    <TextBlock Text="Lịch sử" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                            <Button Classes="menubtn"
+                                    Classes.active="{Binding IsProductionOrdersVisible}"
+                            IsVisible="{Binding CanViewProduction}"
+                                    Command="{Binding ShowProductionOrdersTabCommand}"
+                                    Click="OnMoreItemClick">
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <Path Width="16" Height="16" Stretch="Uniform"
+                                          Stroke="{StaticResource TextMuted}" StrokeThickness="1.9"
+                                          StrokeLineCap="Round" StrokeJoin="Round"
+                                          VerticalAlignment="Center"
+                                          Data="{StaticResource Icon.Clipboard}" />
+                                    <TextBlock Text="Truy xuất SX" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                            <Button Classes="menubtn"
+                                    Classes.active="{Binding IsCodeLookupVisible}"
+                                    Command="{Binding ShowCodeLookupTabCommand}"
+                                    Click="OnMoreItemClick">
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <Path Width="16" Height="16" Stretch="Uniform"
+                                          Stroke="{StaticResource TextMuted}" StrokeThickness="1.9"
+                                          StrokeLineCap="Round" StrokeJoin="Round"
+                                          VerticalAlignment="Center"
+                                          Data="{StaticResource Icon.Search}" />
+                                    <TextBlock Text="Tra cứu mã" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                            <Button Classes="menubtn"
+                                    Classes.active="{Binding IsAccountsVisible}"
+                            IsVisible="{Binding CanManageUsers}"
+                                    Command="{Binding ShowAccountsTabCommand}"
+                                    Click="OnMoreItemClick">
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <Path Width="16" Height="16" Stretch="Uniform"
+                                          Stroke="{StaticResource TextMuted}" StrokeThickness="1.9"
+                                          StrokeLineCap="Round" StrokeJoin="Round"
+                                          VerticalAlignment="Center"
+                                          Data="{StaticResource Icon.User}" />
+                                    <TextBlock Text="Tài khoản" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                            <Button Classes="menubtn"
+                                    Classes.active="{Binding IsDevVisible}"
+                            IsVisible="{Binding CanViewDev}"
+                                    Command="{Binding ShowDevTabCommand}"
+                                    Click="OnMoreItemClick">
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <Path Width="16" Height="16" Stretch="Uniform"
+                                          Stroke="{StaticResource TextMuted}" StrokeThickness="1.9"
+                                          StrokeLineCap="Round" StrokeJoin="Round"
+                                          VerticalAlignment="Center"
+                                          Data="{StaticResource Icon.File}" />
+                                    <TextBlock Text="Dev" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
                         </StackPanel>

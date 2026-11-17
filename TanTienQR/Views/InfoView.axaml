@@ -320,6 +320,7 @@
 
                     <!-- Trạng thái thao tác -->
                     <TextBlock Classes="label" FontSize="12"
+                               Classes.statusError="{Binding ProductionInfo.IsStatusError}"
                                TextWrapping="Wrap"
                                Text="{Binding ProductionInfo.StatusMessage}" />
 

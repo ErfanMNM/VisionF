@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -47,6 +47,20 @@ public partial class MainWindow : Window
         }
 
         BeginMoveDrag(e);
+    }
+
+    // Bật/tắt menu "Thêm" (các tab ít dùng).
+    private void OnMoreMenuClick(object? sender, RoutedEventArgs e)
+    {
+        if (this.FindControl<Avalonia.Controls.Primitives.Popup>("MoreMenuPopup") is { } popup)
+            popup.IsOpen = !popup.IsOpen;
+    }
+
+    // Chọn 1 mục trong menu "Thêm": lệnh chuyển tab chạy qua Command, ở đây chỉ đóng menu.
+    private void OnMoreItemClick(object? sender, RoutedEventArgs e)
+    {
+        if (this.FindControl<Avalonia.Controls.Primitives.Popup>("MoreMenuPopup") is { } popup)
+            popup.IsOpen = false;
     }
 
     // Bật/tắt menu cửa sổ (popup hamburger).

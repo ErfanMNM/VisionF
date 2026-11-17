@@ -61,6 +61,7 @@
                                    Text="{Binding ProductionOrders.RunningProgressText, StringFormat='Đã quét: {0}'}" />
                     </StackPanel>
                     <TextBlock Classes="label" FontSize="12"
+                               Classes.statusError="{Binding ProductionOrders.IsStatusError}"
                                TextWrapping="Wrap"
                                Text="{Binding ProductionOrders.StatusMessage}" />
                 </StackPanel>
