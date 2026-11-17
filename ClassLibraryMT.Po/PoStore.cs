@@ -110,6 +110,267 @@ public sealed class PoStore
     }
 
     /// <summary>
+    /// Tìm các mã đã tồn tại trong PO KHÁC trên máy.
+    ///
+    /// <para>
+    /// So khớp theo <b>khoá chuẩn</b> <c>"{Gtin}|{Serial}"</c> — đúng cách
+    /// dùng khi quét mã (<see cref="BuildCodeKey"/>) — nên một mã gửi bằng
+    /// Digital Link hay bằng mã trần vẫn được coi là trùng nếu cùng
+    /// GTIN/serial.
+    /// </para>
+    ///
+    /// <para>
+    /// <b>Hiệu năng:</b> không nạp toàn bộ mã vào RAM. Mỗi file DB PO được
+    /// <c>ATTACH</c> vào một connection và so khớp theo từng lô khoá (mặc định
+    /// 400 khoá/lô) qua index <c>IX_PoCodes_Serial</c> + biểu thức
+    /// <c>Gtin || '|' || Serial</c>. Chỉ giữ lại tối đa vài mã ví dụ trong RAM.
+    /// </para>
+    /// </summary>
+    /// <param name="codeKeys">
+    /// Danh sách khoá chuẩn <c>"{Gtin}|{Serial}"</c> của PO mới cần kiểm tra.
+    /// </param>
+    /// <param name="excludeOrderNo">Tên PO cần loại trừ (PO đang kiểm tra).</param>
+    /// <param name="maxSamples">Số mã ví dụ tối đa trả về.</param>
+    /// <param name="ct">Token hủy.</param>
+    /// <returns>Kết quả trùng mã.</returns>
+    public async Task<DuplicateCodeResult> FindDuplicateCodesAsync(
+        IReadOnlyList<string> codeKeys,
+        string? excludeOrderNo = null,
+        int maxSamples = 5,
+        CancellationToken ct = default)
+    {
+        if (codeKeys is null || codeKeys.Count == 0 || !Directory.Exists(_dbRoot))
+        {
+            return new DuplicateCodeResult();
+        }
+
+        // Loại bỏ mã trùng ngay trong chính payload (đã de-dup ở tầng trên).
+        var unique = new HashSet<string>(codeKeys.Count, StringComparer.Ordinal);
+        foreach (var key in codeKeys)
+        {
+            if (!string.IsNullOrEmpty(key))
+            {
+                unique.Add(key);
+            }
+        }
+
+        if (unique.Count == 0)
+        {
+            return new DuplicateCodeResult();
+        }
+
+        var exclude = excludeOrderNo?.Trim() ?? string.Empty;
+        var samples = new List<string>();
+        var total = 0;
+        var firstOwner = string.Empty;
+
+        // Danh sách file DB PO cần so khớp (bỏ qua file của chính PO đang kiểm tra).
+        var files = new List<string>();
+        foreach (var file in ListDbFiles())
+        {
+            if (!string.IsNullOrEmpty(exclude)
+                && string.Equals(
+                    Path.GetFileNameWithoutExtension(file),
+                    exclude,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            files.Add(file);
+        }
+
+        if (files.Count == 0)
+        {
+            return new DuplicateCodeResult();
+        }
+
+        // Connection chính: dùng để tạo bảng tạm chứa khoá cần kiểm tra.
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync(ct).ConfigureAwait(false);
+
+        await using (var pragma = connection.CreateCommand())
+        {
+            pragma.CommandText = """
+                PRAGMA busy_timeout=5000;
+                PRAGMA synchronous=NORMAL;
+                PRAGMA temp_store=MEMORY;
+                """;
+            await pragma.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+
+        await using (var schema = connection.CreateCommand())
+        {
+            schema.CommandText = """
+                CREATE TEMP TABLE ProbeKeys (Key TEXT NOT NULL PRIMARY KEY);
+                """;
+            await schema.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+
+        var keys = unique.ToList();
+        const int batchSize = 400;
+
+        // Nạp khoá cần kiểm tra vào bảng tạm MỘT LẦN (dùng chung cho mọi
+        // file DB PO). Dùng multi-row VALUES để mỗi câu lệnh nạp được cả lô
+        // khoá (SQLite chỉ cho tối đa 999 biến -> lô 400 khoá an toàn).
+        foreach (var batch in Chunk(keys, batchSize))
+        {
+            await using var fill = connection.CreateCommand();
+
+            var fillSql = new StringBuilder("INSERT OR IGNORE INTO ProbeKeys (Key) VALUES ");
+
+            for (var i = 0; i < batch.Count; i++)
+            {
+                if (i > 0)
+                {
+                    fillSql.Append(',');
+                }
+
+                fillSql.Append("($k").Append(i).Append(')');
+            }
+
+            fillSql.Append(';');
+
+            fill.CommandText = fillSql.ToString();
+
+            for (var i = 0; i < batch.Count; i++)
+            {
+                fill.Parameters.AddWithValue("$k" + i, batch[i]);
+            }
+
+            await fill.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+
+        for (var fileIndex = 0; fileIndex < files.Count; fileIndex++)
+        {
+            var file = files[fileIndex];
+            ct.ThrowIfCancellationRequested();
+
+            // Tên file DB đã được chuẩn hoá (sanitize) — dùng làm tên alias.
+            var alias = "po_" + fileIndex.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+            try
+            {
+                await using (var attach = connection.CreateCommand())
+                {
+                    attach.CommandText = $"ATTACH DATABASE $path AS {alias};";
+                    attach.Parameters.AddWithValue("$path", file);
+                    await attach.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+                }
+            }
+            catch (Exception)
+            {
+                // File hỏng / không mở được -> bỏ qua, không làm hỏng cả lượt kiểm tra.
+                continue;
+            }
+
+            try
+            {
+                // Đếm số mã trùng + lấy PO đang chứa chúng.
+                await using (var query = connection.CreateCommand())
+                {
+                    query.CommandText = $"""
+                        SELECT COUNT(*)
+                        FROM {alias}.PoCodes AS c
+                        INNER JOIN ProbeKeys AS p
+                            ON p.Key = c.Gtin || '|' || c.Serial;
+                        """;
+                    var count = Convert.ToInt32(
+                        await query.ExecuteScalarAsync(ct).ConfigureAwait(false),
+                        System.Globalization.CultureInfo.InvariantCulture);
+                    total += count;
+                }
+
+                if (total > 0 && samples.Count < maxSamples)
+                {
+                    await using (var query = connection.CreateCommand())
+                    {
+                        query.CommandText = $"""
+                            SELECT c.Gtin || '|' || c.Serial, c.Serial
+                            FROM {alias}.PoCodes AS c
+                            INNER JOIN ProbeKeys AS p
+                                ON p.Key = c.Gtin || '|' || c.Serial
+                            LIMIT $limit;
+                            """;
+                        query.Parameters.AddWithValue("$limit", maxSamples);
+
+                        await using var reader = await query.ExecuteReaderAsync(ct).ConfigureAwait(false);
+                        while (await reader.ReadAsync(ct).ConfigureAwait(false))
+                        {
+                            if (samples.Count >= maxSamples)
+                            {
+                                break;
+                            }
+
+                            samples.Add(reader.GetString(0));
+                        }
+                    }
+                }
+
+                // Tên PO chứa mã trùng (lấy từ PoMeta của file đó).
+                if (total > 0 && string.IsNullOrEmpty(firstOwner))
+                {
+                    await using (var query = connection.CreateCommand())
+                    {
+                        query.CommandText = $"""
+                            SELECT Value FROM {alias}.PoMeta WHERE Key = $key LIMIT 1;
+                            """;
+                        query.Parameters.AddWithValue("$key", MetaOrderNo);
+                        var value = await query.ExecuteScalarAsync(ct).ConfigureAwait(false);
+                        firstOwner = value as string ?? string.Empty;
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                // Bảng PoCodes không tồn tại (file rác) -> bỏ qua.
+            }
+            finally
+            {
+                try
+                {
+                    await using var detach = connection.CreateCommand();
+                    detach.CommandText = $"DETACH DATABASE {alias};";
+                    await detach.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    // Bỏ qua lỗi DETACH.
+                }
+            }
+
+            // Đã tìm thấy mã trùng -> dừng sớm, không cần quét hết các PO.
+            if (total > 0)
+            {
+                break;
+            }
+        }
+
+        return new DuplicateCodeResult
+        {
+            TotalDuplicates = total,
+            SampleCodes = samples,
+            ExistingOrderNo = firstOwner,
+        };
+    }
+
+    /// <summary>Chia danh sách thành các lô có kích thước tối đa cho trước.</summary>
+    private static IEnumerable<List<T>> Chunk<T>(IReadOnlyList<T> source, int size)
+    {
+        for (var offset = 0; offset < source.Count; offset += size)
+        {
+            var take = Math.Min(size, source.Count - offset);
+            var chunk = new List<T>(take);
+            for (var i = 0; i < take; i++)
+            {
+                chunk.Add(source[offset + i]);
+            }
+
+            yield return chunk;
+        }
+    }
+
+    /// <summary>
     /// Tạo (nếu chưa có) file DB của PO và nạp tập mã lần đầu.
     /// </summary>
     /// <param name="order">Thông tin PO.</param>
@@ -813,4 +1074,25 @@ public sealed class LocalPoInfo
 
     /// <summary>True khi PO đã bị huỷ (không được chạy lại).</summary>
     public bool IsCancelled => Status == ProductionOrderStatus.Cancelled;
+}
+
+/// <summary>
+/// Kết quả tìm mã trùng giữa PO mới và các PO đã có trên máy.
+/// </summary>
+public sealed class DuplicateCodeResult
+{
+    /// <summary>Tổng số mã đã tồn tại trong PO khác.</summary>
+    public int TotalDuplicates { get; set; }
+
+    /// <summary>
+    /// Vài mã trùng ví dụ (khoá chuẩn <c>"{Gtin}|{Serial}"</c>) để hiển thị
+    /// trong thông báo lỗi.
+    /// </summary>
+    public IReadOnlyList<string> SampleCodes { get; set; } = [];
+
+    /// <summary>Tên PO đang chứa các mã trùng (rỗng nếu chưa xác định).</summary>
+    public string ExistingOrderNo { get; set; } = string.Empty;
+
+    /// <summary>True nếu có ít nhất một mã trùng.</summary>
+    public bool HasDuplicates => TotalDuplicates > 0;
 }

@@ -117,6 +117,11 @@ public sealed class PoHttpServer : IDisposable
     /// <summary>Số ký tự tối đa cho mã PO (chống mã quá dài / rác).</summary>
     private const int MaxPoNameLength = 200;
 
+    /// <summary>
+    /// Số mã trùng tối đa liệt kê trong thông báo lỗi (ví dụ cho người dùng).
+    /// </summary>
+    private const int MaxDuplicateSamples = 5;
+
     private readonly PoServerOptions _opt;
     private readonly PoStore _store;
     private readonly ILogger<PoHttpServer> _logger;
@@ -1002,6 +1007,61 @@ public sealed class PoHttpServer : IDisposable
                     Message = $"PO '{poName}' đã tồn tại trên máy — không thể nhận lại.",
                     PoName = poName,
                 });
+        }
+
+        // ---- Mã trùng với PO KHÁC đã có trên máy ----
+        // So khớp theo khoá chuẩn "Gtin|Serial" — đúng cách dùng khi quét mã,
+        // nên Digital Link và mã trần cùng GTIN/serial vẫn bị coi là trùng.
+        try
+        {
+            var keys = new List<string>(codes.Count);
+            foreach (var code in codes)
+            {
+                keys.Add(PoStore.BuildCodeKey(code.Gtin, code.Serial));
+            }
+
+            var duplicates = await _store
+                .FindDuplicateCodesAsync(keys, poName, MaxDuplicateSamples, ct)
+                .ConfigureAwait(false);
+
+            if (duplicates.HasDuplicates)
+            {
+                var owner = string.IsNullOrEmpty(duplicates.ExistingOrderNo)
+                    ? "một PO khác trên máy"
+                    : $"PO '{duplicates.ExistingOrderNo}'";
+
+                var sampleText = duplicates.SampleCodes.Count > 0
+                    ? string.Join(", ", duplicates.SampleCodes.Take(MaxDuplicateSamples))
+                    : "(không lấy được ví dụ)";
+
+                return new PoPushOutcome(
+                    409,
+                    new PoPushResponse
+                    {
+                        Success = false,
+                        Message =
+                            $"PO bị từ chối: {duplicates.TotalDuplicates} mã đã tồn tại trong {owner} "
+                            + $"(ví dụ: {sampleText}). Không thể nhận PO có mã trùng.",
+                        PoName = poName,
+                        Accepted = 0,
+                    });
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            return new PoPushOutcome(
+                408,
+                new PoPushResponse
+                {
+                    Success = false,
+                    Message = "Yêu cầu bị hủy khi kiểm tra mã trùng.",
+                    PoName = poName,
+                });
+        }
+        catch (Exception ex)
+        {
+            // Lỗi kiểm tra mã trùng KHÔNG được chặn PO — chỉ ghi log.
+            _logger.LogError(ex, "Lỗi khi kiểm tra mã trùng cho PO {PoName}.", poName);
         }
 
         // ---- Trường mở rộng ----

@@ -517,9 +517,214 @@ Check("Server van phan hoi sau khi nhan PO lon",
     healthAfter.StatusCode.ToString());
 
 // =====================================================================
-// [18] Endpoint khong ton tai -> 404
+// [18] Trùng PO ở THÁNG KHÁC (logs/po/yyyy-MM) -> phải bị từ chối 409
 // =====================================================================
-Console.WriteLine("\n[18] Tong ket danh sach PO trong DB local");
+Console.WriteLine("\n[18] Trùng PO ở tháng khác -> 409");
+
+// Tạo thủ công một file DB PO nằm ở tháng KHÁC (không phải tháng hiện tại)
+// để mô phỏng PO đã tồn tại từ lâu / tải từ PO server vào tháng trước.
+var otherMonth = DateTime.UtcNow.AddMonths(-3);
+var otherMonthDir = Path.Combine(workDir, "po", otherMonth.ToString("yyyy-MM"));
+Directory.CreateDirectory(otherMonthDir);
+var oldPoFile = Path.Combine(otherMonthDir, "PO-OLD-MONTH-001.db");
+await using (var oldConn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={oldPoFile}"))
+{
+    await oldConn.OpenAsync();
+    await using var cmd = oldConn.CreateCommand();
+    cmd.CommandText = """
+        CREATE TABLE IF NOT EXISTS PoCodes (
+            Code        TEXT NOT NULL PRIMARY KEY,
+            Gtin        TEXT NOT NULL DEFAULT '',
+            Serial      TEXT NOT NULL DEFAULT '',
+            ScannedUtc  TEXT NULL,
+            Status      TEXT NOT NULL DEFAULT 'Pending',
+            ActivatedUtc TEXT NULL
+        );
+        CREATE TABLE IF NOT EXISTS PoMeta (
+            Key   TEXT NOT NULL PRIMARY KEY,
+            Value TEXT NOT NULL
+        );
+        INSERT OR IGNORE INTO PoMeta (Key, Value) VALUES ('orderNo', 'PO-OLD-MONTH-001');
+        INSERT OR IGNORE INTO PoMeta (Key, Value) VALUES ('orderQty', '1');
+        INSERT OR IGNORE INTO PoCodes (Code, Gtin, Serial, ScannedUtc, Status, ActivatedUtc)
+            VALUES ('https://digital-link.txng.vn/01/08934567890123/21/OLDSER001',
+                    '08934567890123', 'OLDSER001', NULL, 'Pending', NULL);
+        """;
+    await cmd.ExecuteNonQueryAsync();
+}
+
+Check("File DB PO tháng khac da duoc tao",
+    File.Exists(oldPoFile), oldPoFile);
+
+var oldMonthPost = await http.PostAsJsonAsync("/api/po", new
+{
+    poName = "PO-OLD-MONTH-001",
+    orderQty = 1,
+    codes = new[] { "https://digital-link.txng.vn/01/08934567890123/21/OLDSER002" },
+});
+var oldMonthBody = await oldMonthPost.Content.ReadAsStringAsync();
+
+Check("POST trung PO o thang khac tra HTTP 409",
+    oldMonthPost.StatusCode == System.Net.HttpStatusCode.Conflict, oldMonthBody);
+Console.WriteLine($"      -> {oldMonthBody}");
+
+// PO cũ KHÔNG bị ghi đè / thêm mã mới
+var oldMonthInfo = (await store.ListLocalOrdersAsync())
+    .FirstOrDefault(p => p.OrderNo == "PO-OLD-MONTH-001");
+Check("PO thang khac van giu nguyen so ma cu",
+    oldMonthInfo?.TotalCodes == 1, oldMonthInfo?.TotalCodes.ToString() ?? "null");
+
+// =====================================================================
+// [19] Mã trùng với PO KHÁC -> phải bị từ chối 409
+// =====================================================================
+Console.WriteLine("\n[19] Ma trung voi PO khac -> 409");
+
+// PO mới dùng lại mã đã có trong PO-MES-001 (SER001) nhưng khác tên PO.
+var dupCodePost = await http.PostAsJsonAsync("/api/po", new
+{
+    poName = "PO-DUP-CODE-001",
+    orderQty = 2,
+    codes = new[]
+    {
+        // Trùng với PO-MES-001 (SER001) — gửi dạng Digital Link.
+        "https://digital-link.txng.vn/01/08934567890123/21/SER001",
+        // Mã mới, không trùng.
+        "https://digital-link.txng.vn/01/08934567890123/21/NEWSER999",
+    },
+});
+var dupCodeBody = await dupCodePost.Content.ReadAsStringAsync();
+
+Check("POST co ma trung voi PO khac tra HTTP 409",
+    dupCodePost.StatusCode == System.Net.HttpStatusCode.Conflict, dupCodeBody);
+Console.WriteLine($"      -> {dupCodeBody}");
+
+Check("Thong bao loi la tieng Viet",
+    MsgOf(dupCodeBody).Contains("trùng", StringComparison.OrdinalIgnoreCase), dupCodeBody);
+Check("Thong bao loi nen so ma trung",
+    dupCodeBody.Contains("1", StringComparison.Ordinal), dupCodeBody);
+Check("Thong bao loi nen ten PO chua ma trung",
+    dupCodeBody.Contains("PO-MES-001", StringComparison.Ordinal), dupCodeBody);
+Check("Thong bao loi nen co ma vi du",
+    dupCodeBody.Contains("SER001", StringComparison.Ordinal), dupCodeBody);
+Check("Thong bao loi nen so ma trung chinh xac",
+    MsgOf(dupCodeBody).Contains("1 mã", StringComparison.Ordinal), dupCodeBody);
+
+// PO bị từ chối -> KHÔNG được tạo trong DB local
+var dupLocals = await store.ListLocalOrdersAsync();
+Check("PO bi tu choi khong duoc tao trong DB",
+    !dupLocals.Any(p => p.OrderNo == "PO-DUP-CODE-001"),
+    dupLocals.Count(p => p.OrderNo == "PO-DUP-CODE-001").ToString());
+
+// =====================================================================
+// [20] Mã trùng ở DẠNG KHÁC (mã trần vs Digital Link) vẫn bị phát hiện
+// =====================================================================
+Console.WriteLine("\n[20] Ma trung o dang khac (ma tran vs Digital Link) -> 409");
+
+// PO-MES-001 chứa SER002 (dạng Digital Link). Gửi lại SER002 dạng mã trần
+// cùng GTIN -> phải bị coi là trùng (cùng cách chuẩn hoá khi quét).
+var dupFormatPost = await http.PostAsJsonAsync("/api/po", new
+{
+    poName = "PO-DUP-FORMAT-001",
+    orderQty = 1,
+    gtin = "08934567890123",
+    codes = new[] { "SER002" },
+});
+var dupFormatBody = await dupFormatPost.Content.ReadAsStringAsync();
+
+Check("Ma trung o dang khac van tra HTTP 409",
+    dupFormatPost.StatusCode == System.Net.HttpStatusCode.Conflict, dupFormatBody);
+Console.WriteLine($"      -> {dupFormatBody}");
+
+// =====================================================================
+// [21] Mã trùng với PO ở THÁNG KHÁC -> phải bị từ chối 409
+// =====================================================================
+Console.WriteLine("\n[21] Ma trung voi PO o thang khac -> 409");
+
+var dupOldMonthPost = await http.PostAsJsonAsync("/api/po", new
+{
+    poName = "PO-DUP-OLD-MONTH-001",
+    orderQty = 1,
+    codes = new[] { "https://digital-link.txng.vn/01/08934567890123/21/OLDSER001" },
+});
+var dupOldMonthBody = await dupOldMonthPost.Content.ReadAsStringAsync();
+
+Check("Ma trung voi PO thang khac tra HTTP 409",
+    dupOldMonthPost.StatusCode == System.Net.HttpStatusCode.Conflict, dupOldMonthBody);
+Console.WriteLine($"      -> {dupOldMonthBody}");
+Check("Thong bao nen ten PO thang khac chua ma trung",
+    dupOldMonthBody.Contains("PO-OLD-MONTH-001", StringComparison.Ordinal), dupOldMonthBody);
+
+// =====================================================================
+// [22] PO không trùng mã nào -> vẫn nhận bình thường (200)
+// =====================================================================
+Console.WriteLine("\n[22] PO khong trung ma -> van nhan binh thuong");
+
+var noDupPost = await http.PostAsJsonAsync("/api/po", new
+{
+    poName = "PO-NODUP-001",
+    orderQty = 2,
+    codes = new[]
+    {
+        "https://digital-link.txng.vn/01/08934567890123/21/FRESH001",
+        "https://digital-link.txng.vn/01/08934567890123/21/FRESH002",
+    },
+});
+var noDupBody = await noDupPost.Content.ReadAsStringAsync();
+
+Check("POST khong trung ma tra HTTP 200",
+    noDupPost.StatusCode == System.Net.HttpStatusCode.OK, noDupBody);
+Console.WriteLine($"      -> {noDupBody}");
+
+// =====================================================================
+// [23] PO lớn (100.000 mã) vẫn nhận nhanh khi có kiểm tra mã trùng
+// =====================================================================
+Console.WriteLine("\n[23] PO lon 100.000 ma + kiem tra ma trung (van nhan duoc)");
+
+var bigCodes2 = Enumerable.Range(0, 100_000)
+    .Select(i => $"https://digital-link.txng.vn/01/08934567890123/21/BIG2{i:D6}")
+    .ToArray();
+
+var bigSw2 = System.Diagnostics.Stopwatch.StartNew();
+var bigPost2 = await http.PostAsJsonAsync("/api/po", new
+{
+    poName = "PO-BIG-002",
+    orderQty = 100_000,
+    codes = bigCodes2,
+});
+bigSw2.Stop();
+var bigBody2 = await bigPost2.Content.ReadAsStringAsync();
+
+Check("POST 100.000 ma (co kiem tra trung) tra HTTP 200",
+    bigPost2.StatusCode == System.Net.HttpStatusCode.OK, bigBody2);
+Console.WriteLine($"      Thoi gian: {bigSw2.ElapsedMilliseconds} ms -> {bigBody2}");
+
+var bigLocals2 = await store.ListLocalOrdersAsync();
+var bigStored2 = bigLocals2.FirstOrDefault(p => p.OrderNo == "PO-BIG-002");
+Check("PO lon 2 luu du 100.000 ma", bigStored2?.TotalCodes == 100_000,
+    bigStored2?.TotalCodes.ToString() ?? "null");
+
+// PO lớn có mã trùng với PO lớn trước -> phải 409 (kiểm tra hiệu năng khi
+// đã có sẵn 100k mã trong DB).
+var bigDupSw = System.Diagnostics.Stopwatch.StartNew();
+var bigDupPost = await http.PostAsJsonAsync("/api/po", new
+{
+    poName = "PO-BIG-003",
+    orderQty = 100_000,
+    codes = bigCodes2,
+});
+bigDupSw.Stop();
+var bigDupBody = await bigDupPost.Content.ReadAsStringAsync();
+
+Check("POST 100.000 ma trung voi PO lon truoc tra HTTP 409",
+    bigDupPost.StatusCode == System.Net.HttpStatusCode.Conflict, bigDupBody);
+Check("So ma trung cua PO lon dung bang 100.000",
+    MsgOf(bigDupBody).Contains("100000 mã", StringComparison.Ordinal), bigDupBody);
+Console.WriteLine($"      Thoi gian: {bigDupSw.ElapsedMilliseconds} ms -> {bigDupBody}");
+
+// =====================================================================
+// [24] Tong ket danh sach PO trong DB local
+// =====================================================================
+Console.WriteLine("\n[24] Tong ket danh sach PO trong DB local");
 
 foreach (var p in locals2(store).OrderBy(p => p.OrderNo))
 {
@@ -533,6 +738,24 @@ return failures == 0 ? 0 : 1;
 // Helper
 // ---------------------------------------------------------------------
 static IReadOnlyList<LocalPoInfo> locals2(PoStore store) => store.ListLocalOrdersAsync().GetAwaiter().GetResult();
+
+/// <summary>
+/// Lấy nội dung trường "message" từ response JSON (giải mã escape tiếng Việt).
+/// </summary>
+static string MsgOf(string json)
+{
+    try
+    {
+        using var doc = JsonDocument.Parse(json);
+        return doc.RootElement.TryGetProperty("message", out var el)
+            ? el.GetString() ?? string.Empty
+            : string.Empty;
+    }
+    catch (Exception)
+    {
+        return string.Empty;
+    }
+}
 
 static int FindFreePort()
 {
