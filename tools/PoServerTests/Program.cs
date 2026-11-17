@@ -50,6 +50,8 @@ var options = Microsoft.Extensions.Options.Options.Create(new PoServerOptions
     // 64 MB: du cho PO 100.000 ma (test [10] dung server rieng voi gioi han
     // 1 MB de kiem tra HTTP 413).
     MaxBodyMB = 64,
+    MaxFileMB = 64,
+    UploadTempDirectory = workDir,
     RequestTimeoutSeconds = 60,
     MaxConcurrentRequests = 4,
 });
@@ -722,9 +724,450 @@ Check("So ma trung cua PO lon dung bang 100.000",
 Console.WriteLine($"      Thoi gian: {bigDupSw.ElapsedMilliseconds} ms -> {bigDupBody}");
 
 // =====================================================================
-// [24] Tong ket danh sach PO trong DB local
+// [24] Upload file CSV THẬT (Content-Disposition filename + text/csv)
 // =====================================================================
-Console.WriteLine("\n[24] Tong ket danh sach PO trong DB local");
+Console.WriteLine("\n[24] Upload file CSV that (filename trong header)");
+
+var csvRealPath = Path.Combine(workDir, "codes-real.csv");
+await File.WriteAllTextAsync(
+    csvRealPath,
+    "serial\nSER-REAL-1\nSER-REAL-2\nSER-REAL-3\nSER-REAL-4\n",
+    new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+
+var csvRealContent = new ByteArrayContent(await File.ReadAllBytesAsync(csvRealPath));
+csvRealContent.Headers.ContentType =
+    new System.Net.Http.Headers.MediaTypeHeaderValue("text/csv");
+csvRealContent.Headers.ContentDisposition =
+    new System.Net.Http.Headers.ContentDispositionHeaderValue("attachment")
+    {
+        FileName = "codes-real.csv",
+    };
+
+var csvRealPost = await http.PostAsync(
+    "/api/po?poName=PO-CSV-REAL&orderQty=4&gtin=08934567890123",
+    csvRealContent);
+var csvRealBody = await csvRealPost.Content.ReadAsStringAsync();
+
+Check("Upload file CSV that (co ten file) tra HTTP 200",
+    csvRealPost.StatusCode == System.Net.HttpStatusCode.OK, csvRealBody);
+Console.WriteLine($"      -> {csvRealBody}");
+Check("Phan hoi CSV that accepted = 4",
+    csvRealBody.Contains("\"accepted\":4", StringComparison.Ordinal), csvRealBody);
+
+var csvRealStored = (await store.ListLocalOrdersAsync())
+    .FirstOrDefault(p => p.OrderNo == "PO-CSV-REAL");
+Check("PO CSV that co 4 ma (bo qua dong tieu de + BOM)",
+    csvRealStored?.TotalCodes == 4,
+    csvRealStored?.TotalCodes.ToString() ?? "null");
+
+// =====================================================================
+// [25] Upload file JSON thật (mảng chuỗi) — application/json + filename
+// =====================================================================
+Console.WriteLine("\n[25] Upload file JSON that (mang chuoi)");
+
+var jsonRealContent = new ByteArrayContent(
+    Encoding.UTF8.GetBytes("[\"SER-J1\",\"SER-J2\",\"SER-J3\"]"));
+jsonRealContent.Headers.ContentType =
+    new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+jsonRealContent.Headers.ContentDisposition =
+    new System.Net.Http.Headers.ContentDispositionHeaderValue("attachment")
+    {
+        FileName = "codes.json",
+    };
+
+var jsonRealPost = await http.PostAsync(
+    "/api/po?poName=PO-JSON-REAL&orderQty=3&gtin=08934567890123",
+    jsonRealContent);
+var jsonRealBody = await jsonRealPost.Content.ReadAsStringAsync();
+
+Check("Upload file JSON that tra HTTP 200",
+    jsonRealPost.StatusCode == System.Net.HttpStatusCode.OK, jsonRealBody);
+Console.WriteLine($"      -> {jsonRealBody}");
+
+var jsonRealStored = (await store.ListLocalOrdersAsync())
+    .FirstOrDefault(p => p.OrderNo == "PO-JSON-REAL");
+Check("PO JSON that co 3 ma", jsonRealStored?.TotalCodes == 3,
+    jsonRealStored?.TotalCodes.ToString() ?? "null");
+
+// =====================================================================
+// [26] Upload file JSON dang mang doi tuong {code/serial}
+// =====================================================================
+Console.WriteLine("\n[26] Upload file JSON mang doi tuong {code|serial}");
+
+var jsonObjContent = new ByteArrayContent(
+    Encoding.UTF8.GetBytes(
+        "[{\"code\":\"SER-OC-1\"},{\"serial\":\"SER-OC-2\"},{\"Code\":\"SER-OC-3\"}]"));
+jsonObjContent.Headers.ContentType =
+    new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+jsonObjContent.Headers.ContentDisposition =
+    new System.Net.Http.Headers.ContentDispositionHeaderValue("attachment")
+    {
+        FileName = "codes-objects.json",
+    };
+
+var jsonObjPost = await http.PostAsync(
+    "/api/po?poName=PO-JSON-OBJ&orderQty=3&gtin=08934567890123",
+    jsonObjContent);
+var jsonObjBody = await jsonObjPost.Content.ReadAsStringAsync();
+
+Check("Upload file JSON doi tuong tra HTTP 200",
+    jsonObjPost.StatusCode == System.Net.HttpStatusCode.OK, jsonObjBody);
+Console.WriteLine($"      -> {jsonObjBody}");
+
+var jsonObjStored = (await store.ListLocalOrdersAsync())
+    .FirstOrDefault(p => p.OrderNo == "PO-JSON-OBJ");
+Check("PO JSON doi tuong co 3 ma", jsonObjStored?.TotalCodes == 3,
+    jsonObjStored?.TotalCodes.ToString() ?? "null");
+
+// =====================================================================
+// [27] Upload file EXCEL .xlsx that (sinh file OOXML that)
+// =====================================================================
+Console.WriteLine("\n[27] Upload file Excel .xlsx that");
+
+var xlsxPath = Path.Combine(workDir, "codes.xlsx");
+await WriteTestXlsxAsync(
+    xlsxPath,
+    new[] { "serial", "SER-XLSX-1", "SER-XLSX-2", "SER-XLSX-3", "SER-XLSX-4" },
+    secondColumnValues: new[] { "note-1", "note-2", "note-3", "note-4", "note-5" });
+
+Check("File .xlsx test da duoc tao", File.Exists(xlsxPath), xlsxPath);
+
+var xlsxContent = new ByteArrayContent(await File.ReadAllBytesAsync(xlsxPath));
+xlsxContent.Headers.ContentType =
+    new System.Net.Http.Headers.MediaTypeHeaderValue(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+xlsxContent.Headers.ContentDisposition =
+    new System.Net.Http.Headers.ContentDispositionHeaderValue("attachment")
+    {
+        FileName = "codes.xlsx",
+    };
+
+var xlsxPost = await http.PostAsync(
+    "/api/po?poName=PO-XLSX-REAL&orderQty=4&gtin=08934567890123",
+    xlsxContent);
+var xlsxBody = await xlsxPost.Content.ReadAsStringAsync();
+
+Check("Upload file .xlsx that tra HTTP 200",
+    xlsxPost.StatusCode == System.Net.HttpStatusCode.OK, xlsxBody);
+Console.WriteLine($"      -> {xlsxBody}");
+Check("Phan hoi .xlsx accepted = 4",
+    xlsxBody.Contains("\"accepted\":4", StringComparison.Ordinal), xlsxBody);
+
+var xlsxStored = (await store.ListLocalOrdersAsync())
+    .FirstOrDefault(p => p.OrderNo == "PO-XLSX-REAL");
+Check("PO .xlsx co 4 ma (sheet dau tien, cot dau tien, bo dong tieu de)",
+    xlsxStored?.TotalCodes == 4,
+    xlsxStored?.TotalCodes.ToString() ?? "null");
+
+// ---- Uu tien sheet dau tien: them sheet thu 2 voi du lieu khac ----
+var xlsx2Path = Path.Combine(workDir, "codes-2sheets.xlsx");
+await WriteTestXlsxAsync(
+    xlsx2Path,
+    new[] { "A-S1", "A-S2" },
+    secondSheetValues: new[] { "B-S1", "B-S2", "B-S3" });
+
+var xlsx2Content = new ByteArrayContent(await File.ReadAllBytesAsync(xlsx2Path));
+xlsx2Content.Headers.ContentType =
+    new System.Net.Http.Headers.MediaTypeHeaderValue(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+xlsx2Content.Headers.ContentDisposition =
+    new System.Net.Http.Headers.ContentDispositionHeaderValue("attachment")
+    {
+        FileName = "codes-2sheets.xlsx",
+    };
+
+var xlsx2Post = await http.PostAsync(
+    "/api/po?poName=PO-XLSX-2SHEET&orderQty=2&gtin=08934567890123",
+    xlsx2Content);
+var xlsx2Body = await xlsx2Post.Content.ReadAsStringAsync();
+
+Check("Upload .xlsx 2 sheet tra HTTP 200",
+    xlsx2Post.StatusCode == System.Net.HttpStatusCode.OK, xlsx2Body);
+Console.WriteLine($"      -> {xlsx2Body}");
+
+var xlsx2Stored = (await store.ListLocalOrdersAsync())
+    .FirstOrDefault(p => p.OrderNo == "PO-XLSX-2SHEET");
+Check("PO .xlsx lay SHEET DAU TIEN (2 ma, khong phai 3 ma sheet 2)",
+    xlsx2Stored?.TotalCodes == 2,
+    xlsx2Stored?.TotalCodes.ToString() ?? "null");
+
+// =====================================================================
+// [27b] .xlsx dang Excel that sinh ra: inline string + o so (khong dung sharedStrings)
+// =====================================================================
+Console.WriteLine("\n[27b] .xlsx voi inline string + o so (dung cach Excel that luu)");
+
+var xlsxInlinePath = Path.Combine(workDir, "codes-inline.xlsx");
+await WriteTestXlsxInlineAsync(
+    xlsxInlinePath,
+    new[] { "SER-INL-1", "SER-INL-2", "SER-INL-3" });
+
+var xlsxInlineContent = new ByteArrayContent(
+    await File.ReadAllBytesAsync(xlsxInlinePath));
+xlsxInlineContent.Headers.ContentType =
+    new System.Net.Http.Headers.MediaTypeHeaderValue(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+xlsxInlineContent.Headers.ContentDisposition =
+    new System.Net.Http.Headers.ContentDispositionHeaderValue("attachment")
+    {
+        FileName = "codes-inline.xlsx",
+    };
+
+var xlsxInlinePost = await http.PostAsync(
+    "/api/po?poName=PO-XLSX-INLINE&orderQty=3&gtin=08934567890123",
+    xlsxInlineContent);
+var xlsxInlineBody = await xlsxInlinePost.Content.ReadAsStringAsync();
+
+Check("Upload .xlsx inline string tra HTTP 200",
+    xlsxInlinePost.StatusCode == System.Net.HttpStatusCode.OK, xlsxInlineBody);
+Console.WriteLine($"      -> {xlsxInlineBody}");
+
+var xlsxInlineStored = (await store.ListLocalOrdersAsync())
+    .FirstOrDefault(p => p.OrderNo == "PO-XLSX-INLINE");
+Check("PO .xlsx inline string co 3 ma", xlsxInlineStored?.TotalCodes == 3,
+    xlsxInlineStored?.TotalCodes.ToString() ?? "null");
+
+// ---- .xlsx voi o so (Excel luu serial duoi dang number) ----
+var xlsxNumPath = Path.Combine(workDir, "codes-number.xlsx");
+await WriteTestXlsxNumericAsync(
+    xlsxNumPath,
+    new[] { "SER-NUM-1", "SER-NUM-2", "SER-NUM-3" });
+
+var xlsxNumContent = new ByteArrayContent(
+    await File.ReadAllBytesAsync(xlsxNumPath));
+xlsxNumContent.Headers.ContentType =
+    new System.Net.Http.Headers.MediaTypeHeaderValue(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+xlsxNumContent.Headers.ContentDisposition =
+    new System.Net.Http.Headers.ContentDispositionHeaderValue("attachment")
+    {
+        FileName = "codes-number.xlsx",
+    };
+
+var xlsxNumPost = await http.PostAsync(
+    "/api/po?poName=PO-XLSX-NUM&orderQty=3&gtin=08934567890123",
+    xlsxNumContent);
+var xlsxNumBody = await xlsxNumPost.Content.ReadAsStringAsync();
+
+Check("Upload .xlsx o so tra HTTP 200",
+    xlsxNumPost.StatusCode == System.Net.HttpStatusCode.OK, xlsxNumBody);
+Console.WriteLine($"      -> {xlsxNumBody}");
+
+var xlsxNumStored = (await store.ListLocalOrdersAsync())
+    .FirstOrDefault(p => p.OrderNo == "PO-XLSX-NUM");
+Check("PO .xlsx o so co 3 ma", xlsxNumStored?.TotalCodes == 3,
+    xlsxNumStored?.TotalCodes.ToString() ?? "null");
+
+// =====================================================================
+// [28] Upload .xlsx qua multipart/form-data
+// =====================================================================
+Console.WriteLine("\n[28] Upload .xlsx qua multipart/form-data");
+var xlsxMultipart = new MultipartFormDataContent();
+xlsxMultipart.Add(new StringContent("PO-XLSX-MULTI"), "poName");
+xlsxMultipart.Add(new StringContent("3"), "orderQty");
+xlsxMultipart.Add(new StringContent("08934567890123"), "gtin");
+
+// File riêng voi ma rieng (khong trung voi PO-XLSX-REAL).
+var xlsxMultiPath = Path.Combine(workDir, "codes-multi.xlsx");
+await WriteTestXlsxAsync(
+    xlsxMultiPath,
+    new[] { "SER-XM-1", "SER-XM-2", "SER-XM-3" });
+
+xlsxMultipart.Add(
+    new ByteArrayContent(await File.ReadAllBytesAsync(xlsxMultiPath)),
+    "file",
+    "codes-multi.xlsx");
+
+var xlsxMultiPost = await http.PostAsync("/api/po", xlsxMultipart);
+var xlsxMultiBody = await xlsxMultiPost.Content.ReadAsStringAsync();
+
+Check("Upload .xlsx multipart tra HTTP 200",
+    xlsxMultiPost.StatusCode == System.Net.HttpStatusCode.OK, xlsxMultiBody);
+Console.WriteLine($"      -> {xlsxMultiBody}");
+
+var xlsxMultiStored = (await store.ListLocalOrdersAsync())
+    .FirstOrDefault(p => p.OrderNo == "PO-XLSX-MULTI");
+Check("PO .xlsx multipart co 3 ma", xlsxMultiStored?.TotalCodes == 3,
+    xlsxMultiStored?.TotalCodes.ToString() ?? "null");
+
+// =====================================================================
+// [29] File khong ho tro -> 400
+// =====================================================================
+Console.WriteLine("\n[29] File khong ho tro (.txt) -> 400");
+
+var txtContent = new ByteArrayContent(Encoding.UTF8.GetBytes("SER-1\nSER-2\n"));
+txtContent.Headers.ContentType =
+    new System.Net.Http.Headers.MediaTypeHeaderValue("text/plain");
+txtContent.Headers.ContentDisposition =
+    new System.Net.Http.Headers.ContentDispositionHeaderValue("attachment")
+    {
+        FileName = "codes.txt",
+    };
+
+var txtPost = await http.PostAsync(
+    "/api/po?poName=PO-TXT&orderQty=2", txtContent);
+var txtBody = await txtPost.Content.ReadAsStringAsync();
+
+Check("File .txt tra HTTP 400",
+    txtPost.StatusCode == System.Net.HttpStatusCode.BadRequest, txtBody);
+Console.WriteLine($"      -> {txtBody}");
+Check("Thong bao nhac dinh dang ho tro",
+    MsgOf(txtBody).Contains(".csv", StringComparison.Ordinal), txtBody);
+
+// =====================================================================
+// [30] Ten file khong hop le -> 400
+// =====================================================================
+Console.WriteLine("\n[30] Ten file khong hop le -> 400");
+
+var badNameContent = new ByteArrayContent(Encoding.UTF8.GetBytes("SER-1\n"));
+badNameContent.Headers.ContentType =
+    new System.Net.Http.Headers.MediaTypeHeaderValue("text/csv");
+
+// Gửi header thô để né việc client tự làm sạch tên file.
+badNameContent.Headers.TryAddWithoutValidation(
+    "Content-Disposition", "attachment; filename=\"..\\..\\evil.csv\"");
+
+var badNamePost = await http.PostAsync(
+    "/api/po?poName=PO-BADNAME&orderQty=1", badNameContent);
+var badNameBody = await badNamePost.Content.ReadAsStringAsync();
+
+Check("Ten file chua duong dan -> HTTP 400",
+    badNamePost.StatusCode == System.Net.HttpStatusCode.BadRequest, badNameBody);
+Console.WriteLine($"      -> {badNameBody}");
+
+// =====================================================================
+// [31] File vuot gioi han kich thuoc -> 413
+// =====================================================================
+Console.WriteLine("\n[31] File vuot gioi han MaxFileMB -> 413");
+
+var tinyFileOptions = Microsoft.Extensions.Options.Options.Create(new PoServerOptions
+{
+    Enabled = true,
+    Port = FindFreePort(),
+    BindAddress = "127.0.0.1",
+    MaxBodyMB = 64,
+    MaxFileMB = 1,
+});
+
+using var tinyFileServer = new PoHttpServer(tinyFileOptions, store, logger);
+tinyFileServer.Start();
+
+using var tinyFileHttp = new HttpClient
+{
+    BaseAddress = new Uri($"http://127.0.0.1:{tinyFileOptions.Value.Port}/"),
+    Timeout = TimeSpan.FromSeconds(60),
+};
+
+// File CSV ~3 MB -> vuot gioi han 1 MB.
+var bigCsv = new StringBuilder();
+while (bigCsv.Length < 3 * 1024 * 1024)
+{
+    bigCsv.Append("SER-BIGFILE-").Append(bigCsv.Length).Append('\n');
+}
+
+var bigFileContent = new ByteArrayContent(Encoding.UTF8.GetBytes(bigCsv.ToString()));
+bigFileContent.Headers.ContentType =
+    new System.Net.Http.Headers.MediaTypeHeaderValue("text/csv");
+bigFileContent.Headers.ContentDisposition =
+    new System.Net.Http.Headers.ContentDispositionHeaderValue("attachment")
+    {
+        FileName = "big.csv",
+    };
+
+var bigFilePost = await tinyFileHttp.PostAsync(
+    "/api/po?poName=PO-BIGFILE&orderQty=1", bigFileContent);
+var bigFileBody = await bigFilePost.Content.ReadAsStringAsync();
+
+Check("File vuot MaxFileMB tra HTTP 413",
+    bigFilePost.StatusCode == System.Net.HttpStatusCode.RequestEntityTooLarge,
+    $"{bigFilePost.StatusCode} {bigFileBody}");
+Console.WriteLine($"      -> {bigFileBody}");
+
+// =====================================================================
+// [32] File tam da duoc xoa sau khi xu ly (khong con file sot)
+// =====================================================================
+Console.WriteLine("\n[32] File tam duoc don sau khi xu ly");
+
+var uploadTempRoot = Path.Combine(workDir, "visionf-po-uploads");
+var leftover = Directory.Exists(uploadTempRoot)
+    ? Directory.GetFiles(uploadTempRoot, "po-upload-*").Length
+    : 0;
+
+Check("Khong con file tam nao con lai sau khi xu ly",
+    leftover == 0, leftover.ToString());
+
+// =====================================================================
+// [33] File CSV rong / khong co ma -> 400
+// =====================================================================
+Console.WriteLine("\n[33] File CSV rong -> 400");
+
+var emptyFileContent = new ByteArrayContent(Array.Empty<byte>());
+emptyFileContent.Headers.ContentType =
+    new System.Net.Http.Headers.MediaTypeHeaderValue("text/csv");
+emptyFileContent.Headers.ContentDisposition =
+    new System.Net.Http.Headers.ContentDispositionHeaderValue("attachment")
+    {
+        FileName = "empty.csv",
+    };
+
+var emptyFilePost = await http.PostAsync(
+    "/api/po?poName=PO-EMPTY&orderQty=1", emptyFileContent);
+var emptyFileBody = await emptyFilePost.Content.ReadAsStringAsync();
+
+Check("File rong tra HTTP 400",
+    emptyFilePost.StatusCode == System.Net.HttpStatusCode.BadRequest, emptyFileBody);
+Console.WriteLine($"      -> {emptyFileBody}");
+
+// =====================================================================
+// [34] Upload file CSV ma trung voi PO khac -> 409
+// =====================================================================
+Console.WriteLine("\n[34] Upload file CSV co ma trung voi PO khac -> 409");
+
+var dupFileContent = new ByteArrayContent(
+    Encoding.UTF8.GetBytes("SER001\nSER-NEW-999\n"));
+dupFileContent.Headers.ContentType =
+    new System.Net.Http.Headers.MediaTypeHeaderValue("text/csv");
+dupFileContent.Headers.ContentDisposition =
+    new System.Net.Http.Headers.ContentDispositionHeaderValue("attachment")
+    {
+        FileName = "dup.csv",
+    };
+
+var dupFilePost = await http.PostAsync(
+    "/api/po?poName=PO-DUP-FILE&orderQty=2&gtin=08934567890123",
+    dupFileContent);
+var dupFileBody = await dupFilePost.Content.ReadAsStringAsync();
+
+Check("Upload file co ma trung tra HTTP 409",
+    dupFilePost.StatusCode == System.Net.HttpStatusCode.Conflict, dupFileBody);
+Console.WriteLine($"      -> {dupFileBody}");
+
+// =====================================================================
+// [35] Upload file CSV trung TEN PO -> 409
+// =====================================================================
+Console.WriteLine("\n[35] Upload file CSV trung ten PO -> 409");
+
+var dupNameContent = new ByteArrayContent(
+    Encoding.UTF8.GetBytes("SER-ANOTHER-1\n"));
+dupNameContent.Headers.ContentType =
+    new System.Net.Http.Headers.MediaTypeHeaderValue("text/csv");
+dupNameContent.Headers.ContentDisposition =
+    new System.Net.Http.Headers.ContentDispositionHeaderValue("attachment")
+    {
+        FileName = "dup-name.csv",
+    };
+
+var dupNamePost = await http.PostAsync(
+    "/api/po?poName=PO-CSV-REAL&orderQty=1", dupNameContent);
+var dupNameBody = await dupNamePost.Content.ReadAsStringAsync();
+
+Check("Upload file trung ten PO tra HTTP 409",
+    dupNamePost.StatusCode == System.Net.HttpStatusCode.Conflict, dupNameBody);
+Console.WriteLine($"      -> {dupNameBody}");
+
+// =====================================================================
+// [36] Tong ket danh sach PO trong DB local
+// =====================================================================
+Console.WriteLine("\n[36] Tong ket danh sach PO trong DB local");
 
 foreach (var p in locals2(store).OrderBy(p => p.OrderNo))
 {
@@ -764,4 +1207,290 @@ static int FindFreePort()
     var port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
     listener.Stop();
     return port;
+}
+
+/// <summary>
+/// Sinh file Excel .xlsx (OOXML) THẬT để kiểm thử việc upload.
+///
+/// <para>
+/// File được tạo theo đúng cấu trúc OOXML: ZIP chứa
+/// <c>xl/workbook.xml</c>, <c>xl/worksheets/sheetN.xml</c> và
+/// <c>xl/sharedStrings.xml</c> — cùng định dạng Excel thật sinh ra, nên bộ
+/// đọc Excel của server được kiểm thử trên dữ liệu thực tế.
+/// </para>
+/// </summary>
+/// <param name="path">Đường dẫn file .xlsx đầu ra.</param>
+/// <param name="firstColumnValues">Giá trị cột đầu tiên của sheet 1 (mỗi phần tử 1 dòng).</param>
+/// <param name="secondColumnValues">Giá trị cột thứ hai của sheet 1 (tuỳ chọn).</param>
+/// <param name="secondSheetValues">Giá trị cột đầu tiên của sheet 2 (tuỳ chọn).</param>
+static async Task WriteTestXlsxAsync(
+    string path,
+    string[] firstColumnValues,
+    string[]? secondColumnValues = null,
+    string[]? secondSheetValues = null)
+{
+    var shared = new List<string>();
+    var sharedIndex = new Dictionary<string, int>(StringComparer.Ordinal);
+
+    int SharedId(string value)
+    {
+        if (!sharedIndex.TryGetValue(value, out var idx))
+        {
+            idx = shared.Count;
+            shared.Add(value);
+            sharedIndex[value] = idx;
+        }
+
+        return idx;
+    }
+
+    static string Escape(string s) =>
+        s.Replace("&", "&amp;", StringComparison.Ordinal)
+         .Replace("<", "&lt;", StringComparison.Ordinal)
+         .Replace(">", "&gt;", StringComparison.Ordinal);
+
+    string BuildSheetXml(string[] colA, string[]? colB)
+    {
+        var sb = new StringBuilder();
+        sb.Append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>");
+        sb.Append("<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">");
+        sb.Append("<sheetData>");
+
+        var maxRows = colA.Length;
+        if (colB is not null && colB.Length > maxRows)
+        {
+            maxRows = colB.Length;
+        }
+
+        for (var r = 0; r < maxRows; r++)
+        {
+            var rowNum = r + 1;
+            sb.Append("<row r=\"").Append(rowNum).Append("\">");
+
+            if (r < colA.Length)
+            {
+                sb.Append("<c r=\"A").Append(rowNum)
+                  .Append("\" t=\"s\"><v>").Append(SharedId(colA[r])).Append("</v></c>");
+            }
+
+            if (colB is not null && r < colB.Length)
+            {
+                sb.Append("<c r=\"B").Append(rowNum)
+                  .Append("\" t=\"s\"><v>").Append(SharedId(colB[r])).Append("</v></c>");
+            }
+
+            sb.Append("</row>");
+        }
+
+        sb.Append("</sheetData></worksheet>");
+        return sb.ToString();
+    }
+
+    var sheet1Xml = BuildSheetXml(firstColumnValues, secondColumnValues);
+    var sheet2Xml = secondSheetValues is not null
+        ? BuildSheetXml(secondSheetValues, null)
+        : null;
+
+    // File tam trong thu muc canh bao (khong ghi de file dang mo).
+    var tmp = path + ".tmp";
+    if (File.Exists(tmp))
+    {
+        File.Delete(tmp);
+    }
+
+    using (var fs = File.Create(tmp))
+    using (var zip = new System.IO.Compression.ZipArchive(
+        fs, System.IO.Compression.ZipArchiveMode.Create))
+    {
+        void AddEntry(string name, string content)
+        {
+            var entry = zip.CreateEntry(name);
+            using var w = new StreamWriter(entry.Open(), new UTF8Encoding(false));
+            w.Write(content);
+        }
+
+        // [Content_Types].xml
+        var contentTypes = new StringBuilder();
+        contentTypes.Append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>");
+        contentTypes.Append("<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">");
+        contentTypes.Append("<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>");
+        contentTypes.Append("<Default Extension=\"xml\" ContentType=\"application/xml\"/>");
+        contentTypes.Append("<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>");
+        contentTypes.Append("<Override PartName=\"/xl/sharedStrings.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml\"/>");
+        contentTypes.Append("<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>");
+        if (sheet2Xml is not null)
+        {
+            contentTypes.Append("<Override PartName=\"/xl/worksheets/sheet2.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>");
+        }
+
+        contentTypes.Append("</Types>");
+        AddEntry("[Content_Types].xml", contentTypes.ToString());
+
+        // _rels/.rels
+        AddEntry("_rels/.rels",
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+            + "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+            + "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>"
+            + "</Relationships>");
+
+        // xl/workbook.xml
+        var workbook = new StringBuilder();
+        workbook.Append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>");
+        workbook.Append("<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" ");
+        workbook.Append("xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">");
+        workbook.Append("<sheets>");
+        workbook.Append("<sheet name=\"Sheet1\" sheetId=\"1\" r:id=\"rId1\"/>");
+        if (sheet2Xml is not null)
+        {
+            workbook.Append("<sheet name=\"Sheet2\" sheetId=\"2\" r:id=\"rId2\"/>");
+        }
+
+        workbook.Append("</sheets></workbook>");
+        AddEntry("xl/workbook.xml", workbook.ToString());
+
+        // xl/_rels/workbook.xml.rels
+        var wbRels = new StringBuilder();
+        wbRels.Append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>");
+        wbRels.Append("<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">");
+        wbRels.Append("<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>");
+        if (sheet2Xml is not null)
+        {
+            wbRels.Append("<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet2.xml\"/>");
+        }
+
+        wbRels.Append("<Relationship Id=\"rIdSst\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings\" Target=\"sharedStrings.xml\"/>");
+        wbRels.Append("</Relationships>");
+        AddEntry("xl/_rels/workbook.xml.rels", wbRels.ToString());
+
+        // xl/sharedStrings.xml
+        var sst = new StringBuilder();
+        sst.Append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>");
+        sst.Append("<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" count=\"")
+           .Append(shared.Count).Append("\" uniqueCount=\"").Append(shared.Count).Append("\">");
+        foreach (var s in shared)
+        {
+            sst.Append("<si><t>").Append(Escape(s)).Append("</t></si>");
+        }
+
+        sst.Append("</sst>");
+        AddEntry("xl/sharedStrings.xml", sst.ToString());
+
+        // xl/worksheets/sheetN.xml
+        AddEntry("xl/worksheets/sheet1.xml", sheet1Xml);
+        if (sheet2Xml is not null)
+        {
+            AddEntry("xl/worksheets/sheet2.xml", sheet2Xml);
+        }
+    }
+
+    File.Move(tmp, path, overwrite: true);
+    await Task.CompletedTask;
+}
+
+/// <summary>
+/// Sinh file .xlsx dùng <b>inline string</b> (cách một số ứng dụng lưu, không
+/// dùng sharedStrings) — kiểm thử bộ đọc xử lý đúng.
+/// </summary>
+static async Task WriteTestXlsxInlineAsync(string path, string[] values)
+{
+    var sheet = new StringBuilder();
+    sheet.Append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>");
+    sheet.Append("<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>");
+    for (var r = 0; r < values.Length; r++)
+    {
+        sheet.Append($"<row r=\"{r + 1}\">");
+        sheet.Append($"<c r=\"A{r + 1}\" t=\"inlineStr\"><is><t>{values[r]}</t></is></c>");
+        sheet.Append("</row>");
+    }
+
+    sheet.Append("</sheetData></worksheet>");
+
+    await WriteZipAsync(path, sheet.ToString(), includeSharedStrings: false);
+}
+
+/// <summary>
+/// Sinh file .xlsx với ô cột A ở dạng <b>số</b> (Excel hay lưu serial dạng
+/// number) — kiểm thử bộ đọc ép kiểu về chuỗi.
+/// </summary>
+static async Task WriteTestXlsxNumericAsync(string path, string[] values)
+{
+    var sheet = new StringBuilder();
+    sheet.Append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>");
+    sheet.Append("<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>");
+    for (var r = 0; r < values.Length; r++)
+    {
+        // Ghi serial dạng so (bo "SER-NUM-" de o so thuan).
+        var numeric = values[r].Replace("SER-NUM-", string.Empty, StringComparison.Ordinal);
+        sheet.Append($"<row r=\"{r + 1}\">");
+        sheet.Append($"<c r=\"A{r + 1}\"><v>{numeric}</v></c>");
+        sheet.Append("</row>");
+    }
+
+    sheet.Append("</sheetData></worksheet>");
+
+    await WriteZipAsync(path, sheet.ToString(), includeSharedStrings: false);
+}
+
+/// <summary>Gói một sheet XML thành file .xlsx hợp lệ.</summary>
+static async Task WriteZipAsync(
+    string path,
+    string sheetXml,
+    bool includeSharedStrings)
+{
+    var tmp = path + ".tmp";
+    if (File.Exists(tmp))
+    {
+        File.Delete(tmp);
+    }
+
+    using (var fs = File.Create(tmp))
+    using (var zip = new System.IO.Compression.ZipArchive(
+        fs, System.IO.Compression.ZipArchiveMode.Create))
+    {
+        void AddEntry(string name, string content)
+        {
+            var entry = zip.CreateEntry(name);
+            using var w = new StreamWriter(entry.Open(), new UTF8Encoding(false));
+            w.Write(content);
+        }
+
+        var contentTypes = new StringBuilder();
+        contentTypes.Append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>");
+        contentTypes.Append("<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">");
+        contentTypes.Append("<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>");
+        contentTypes.Append("<Default Extension=\"xml\" ContentType=\"application/xml\"/>");
+        contentTypes.Append("<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>");
+        contentTypes.Append("<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>");
+        if (includeSharedStrings)
+        {
+            contentTypes.Append("<Override PartName=\"/xl/sharedStrings.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml\"/>");
+        }
+
+        contentTypes.Append("</Types>");
+        AddEntry("[Content_Types].xml", contentTypes.ToString());
+
+        AddEntry("_rels/.rels",
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+            + "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+            + "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>"
+            + "</Relationships>");
+
+        AddEntry("xl/workbook.xml",
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
+            + "<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" "
+            + "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
+            + "<sheets><sheet name=\"Sheet1\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>");
+
+        var rels = new StringBuilder();
+        rels.Append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>");
+        rels.Append("<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">");
+        rels.Append("<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>");
+        rels.Append("</Relationships>");
+        AddEntry("xl/_rels/workbook.xml.rels", rels.ToString());
+
+        AddEntry("xl/worksheets/sheet1.xml", sheetXml);
+    }
+
+    File.Move(tmp, path, overwrite: true);
+    await Task.CompletedTask;
 }

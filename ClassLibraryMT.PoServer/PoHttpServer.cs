@@ -127,6 +127,9 @@ public sealed class PoHttpServer : IDisposable
     private readonly ILogger<PoHttpServer> _logger;
     private readonly PoServerState _state = new();
 
+    /// <summary>Handler đọc nội dung request (JSON thuần / upload file).</summary>
+    private readonly PoUploadHandler _uploadHandler;
+
     private readonly CancellationTokenSource _cts = new();
     private readonly SemaphoreSlim _throttle;
     private readonly HttpListener? _listener = new();
@@ -159,6 +162,15 @@ public sealed class PoHttpServer : IDisposable
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
         _throttle = new SemaphoreSlim(_opt.ResolveMaxConcurrentRequests());
+
+        // Handler upload: stream file xuống đĩa tạm, không nạp trọn vào RAM.
+        var uploadRoot = Path.Combine(
+            _opt.ResolveUploadTempDirectory(),
+            "visionf-po-uploads");
+        _uploadHandler = new PoUploadHandler(
+            _opt,
+            new PoUploadStore(uploadRoot, logger),
+            logger);
     }
 
     /// <summary>
@@ -237,6 +249,16 @@ public sealed class PoHttpServer : IDisposable
         var startedUtc = DateTime.UtcNow;
         _state.MarkStarted(startedUtc);
         _state.SetStatus($"Đang lắng nghe {prefix}", isError: false);
+
+        // Dọn file tạm còn sót từ lần chạy trước (app bị tắt đột ngột).
+        try
+        {
+            _uploadHandler.CleanupStaleFiles();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Không dọn được file tạm upload cũ.");
+        }
 
         _logger.LogInformation(
             "HTTP server nhận PO đang lắng nghe {Prefix} (POST {PoPath}, GET {HealthPath}).",
@@ -463,427 +485,38 @@ public sealed class PoHttpServer : IDisposable
 
     /// <summary>
     /// Xử lý body của <c>POST /api/po</c>: đọc, kiểm tra và lưu PO.
+    ///
+    /// <para>
+    /// Việc đọc nội dung (JSON thuần / upload file CSV-JSON-Excel) do
+    /// <see cref="PoUploadHandler"/> đảm nhiệm — file được stream xuống đĩa
+    /// tạm, không nạp trọn vào RAM.
+    /// </para>
     /// </summary>
     private async Task<PoPushOutcome> HandlePushAsync(
         HttpListenerRequest request,
         CancellationToken ct)
     {
-        // ---- Kiểm tra dung lượng body ----
-        var maxBytes = _opt.MaxBodyBytes;
-        if (request.ContentLength64 > maxBytes)
+        var content = await _uploadHandler
+            .ReadContentAsync(request, ct)
+            .ConfigureAwait(false);
+
+        if (!content.IsSuccess || content.Content is null)
         {
             return new PoPushOutcome(
-                413,
+                content.StatusCode,
                 new PoPushResponse
                 {
                     Success = false,
-                    Message = $"Body vượt quá dung lượng cho phép ({_opt.MaxBodyMB} MB).",
+                    Message = content.Message,
                 });
         }
 
-        // ---- Đọc body (bỏ qua giới hạn Content-Length vì có thể không có) ----
-        byte[] body;
-        try
-        {
-            body = await ReadBodyAsync(request, maxBytes, ct).ConfigureAwait(false);
-        }
-        catch (BodyTooLargeException)
-        {
-            return new PoPushOutcome(
-                413,
-                new PoPushResponse
-                {
-                    Success = false,
-                    Message = $"Body vượt quá dung lượng cho phép ({_opt.MaxBodyMB} MB).",
-                });
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            return new PoPushOutcome(
-                408,
-                new PoPushResponse
-                {
-                    Success = false,
-                    Message = "Yêu cầu bị hủy do quá thời gian chờ.",
-                });
-        }
-
-        if (body.Length == 0)
-        {
-            return new PoPushOutcome(
-                400,
-                new PoPushResponse
-                {
-                    Success = false,
-                    Message = "Body rỗng — cần gửi JSON gồm poName, orderQty và codes/csv.",
-                });
-        }
-
-        // ---- Phân biệt JSON / CSV / multipart ----
-        var contentType = request.ContentType ?? string.Empty;
-        var isMultipart = contentType.Contains("multipart/form-data", StringComparison.OrdinalIgnoreCase);
-        var isCsvUpload = contentType.Contains("text/csv", StringComparison.OrdinalIgnoreCase)
-            || contentType.Contains("application/csv", StringComparison.OrdinalIgnoreCase)
-            || contentType.Contains("application/vnd.ms-excel", StringComparison.OrdinalIgnoreCase);
-
-        PoPushRequest? payload;
-
-        if (isMultipart)
-        {
-            payload = await ParseMultipartAsync(request, body, ct).ConfigureAwait(false);
-        }
-        else if (isCsvUpload)
-        {
-            // Upload file CSV thuần: metadata đi kèm qua query string.
-            payload = BuildCsvOnlyRequest(request, body);
-        }
-        else
-        {
-            try
-            {
-                payload = JsonSerializer.Deserialize(
-                    body, PoServerJsonContext.Default.PoPushRequest);
-            }
-            catch (JsonException ex)
-            {
-                return new PoPushOutcome(
-                    400,
-                    new PoPushResponse
-                    {
-                        Success = false,
-                        Message = "Body JSON không hợp lệ: " + ex.Message,
-                    });
-            }
-        }
-
-        if (payload is null)
-        {
-            return new PoPushOutcome(
-                400,
-                new PoPushResponse
-                {
-                    Success = false,
-                    Message = "Không đọc được nội dung yêu cầu.",
-                });
-        }
+        var payload = content.Content.Metadata;
+        payload.Codes = content.Content.RawCodes;
 
         return await SavePoAsync(payload, ct).ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Đọc body của request, dừng nếu vượt quá <paramref name="maxBytes"/>.
-    /// </summary>
-    private static async Task<byte[]> ReadBodyAsync(
-        HttpListenerRequest request,
-        int maxBytes,
-        CancellationToken ct)
-    {
-        var input = request.InputStream;
-
-        using var buffer = new MemoryStream();
-        var readBuffer = new byte[81920];
-
-        while (true)
-        {
-            int read;
-            try
-            {
-                read = await input
-                    .ReadAsync(readBuffer, ct)
-                    .ConfigureAwait(false);
-            }
-            catch (IOException)
-            {
-                // Client ngắt kết nối giữa chừng -> coi như body đọc được
-                // đến lúc đó.
-                break;
-            }
-
-            if (read <= 0)
-            {
-                break;
-            }
-
-            if (buffer.Length + read > maxBytes)
-            {
-                throw new BodyTooLargeException();
-            }
-
-            buffer.Write(readBuffer, 0, read);
-        }
-
-        return buffer.ToArray();
-    }
-
-    /// <summary>
-    /// Dựng request từ file CSV thuần (text/csv) + query string.
-    ///
-    /// <para>
-    /// Metadata đi kèm dạng query string:
-    /// <c>?poName=PO-001&amp;orderQty=100&amp;gtin=089...</c>
-    /// </para>
-    /// </summary>
-    private static PoPushRequest BuildCsvOnlyRequest(
-        HttpListenerRequest request,
-        byte[] body)
-    {
-        var query = request.QueryString;
-
-        var poName = query["poName"] ?? query["po"] ?? string.Empty;
-        var gtin = query["gtin"] ?? string.Empty;
-
-        var orderQty = 0;
-        var qtyRaw = query["orderQty"] ?? query["qty"] ?? string.Empty;
-        if (int.TryParse(qtyRaw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var qty))
-        {
-            orderQty = qty;
-        }
-
-        return new PoPushRequest
-        {
-            PoName = poName,
-            OrderQty = orderQty,
-            Gtin = gtin,
-            Csv = Encoding.UTF8.GetString(body),
-        };
-    }
-
-    /// <summary>
-    /// Đọc multipart/form-data: lấy phần file CSV + các field metadata.
-    /// </summary>
-    private static async Task<PoPushRequest?> ParseMultipartAsync(
-        HttpListenerRequest request,
-        byte[] body,
-        CancellationToken ct)
-    {
-        var boundary = GetBoundary(request.ContentType);
-        if (string.IsNullOrEmpty(boundary))
-        {
-            return null;
-        }
-
-        var separator = Encoding.UTF8.GetBytes("--" + boundary);
-        var parts = SplitParts(body, separator);
-
-        var payload = new PoPushRequest();
-        string? csv = null;
-
-        foreach (var part in parts)
-        {
-            ct.ThrowIfCancellationRequested();
-
-            // Bỏ qua phần đầu / cuối.
-            if (part.Length == 0)
-            {
-                continue;
-            }
-
-            var headerEnd = IndexOfSequence(part, Encoding.UTF8.GetBytes("\r\n\r\n"));
-            if (headerEnd < 0)
-            {
-                continue;
-            }
-
-            var headerText = Encoding.UTF8.GetString(part, 0, headerEnd);
-            var contentStart = headerEnd + 4;
-
-            // Cắt phần CRLF cuối (trước boundary kế tiếp).
-            var contentLength = part.Length - contentStart;
-            if (contentLength >= 2)
-            {
-                contentLength -= 2;
-            }
-
-            if (contentLength <= 0)
-            {
-                continue;
-            }
-
-            var name = GetDispositionParameter(headerText, "name");
-            var fileName = GetDispositionParameter(headerText, "filename");
-            var content = Encoding.UTF8.GetString(part, contentStart, contentLength);
-
-            if (!string.IsNullOrEmpty(fileName))
-            {
-                // Phần file -> nội dung CSV.
-                csv = content;
-                continue;
-            }
-
-            switch ((name ?? string.Empty).ToLowerInvariant())
-            {
-                case "poname":
-                case "po":
-                    payload.PoName = content;
-                    break;
-                case "orderqty":
-                case "qty":
-                    if (int.TryParse(
-                        content.Trim(), NumberStyles.Integer,
-                        CultureInfo.InvariantCulture, out var qty))
-                    {
-                        payload.OrderQty = qty;
-                    }
-
-                    break;
-                case "gtin":
-                    payload.Gtin = content;
-                    break;
-                case "batchcode":
-                    payload.BatchCode = content;
-                    break;
-                case "productname":
-                    payload.ProductName = content;
-                    break;
-                case "customer":
-                    payload.Customer = content;
-                    break;
-            }
-        }
-
-        payload.Csv = csv;
-        return payload;
-    }
-
-    /// <summary>
-    /// Tách body multipart thành các phần (theo boundary).
-    /// </summary>
-    private static List<byte[]> SplitParts(byte[] body, byte[] separator)
-    {
-        var parts = new List<byte[]>();
-        var index = 0;
-
-        while (index < body.Length)
-        {
-            var next = IndexOfSequence(body, separator, index);
-            if (next < 0)
-            {
-                break;
-            }
-
-            var start = next + separator.Length;
-
-            // Bỏ CRLF ngay sau boundary.
-            if (start + 1 < body.Length && body[start] == '\r' && body[start + 1] == '\n')
-            {
-                start += 2;
-            }
-
-            var nextSep = IndexOfSequence(body, separator, start);
-            var end = nextSep < 0 ? body.Length : nextSep;
-
-            if (end > start)
-            {
-                parts.Add(body[start..end]);
-            }
-
-            index = nextSep < 0 ? body.Length : nextSep;
-        }
-
-        return parts;
-    }
-
-    /// <summary>Tìm vị trí đầu tiên của một mảng byte con trong mảng byte.</summary>
-    private static int IndexOfSequence(byte[] haystack, byte[] needle, int start = 0)
-    {
-        if (needle.Length == 0 || haystack.Length < needle.Length)
-        {
-            return -1;
-        }
-
-        var last = haystack.Length - needle.Length;
-        for (var i = Math.Max(0, start); i <= last; i++)
-        {
-            var found = true;
-            for (var j = 0; j < needle.Length; j++)
-            {
-                if (haystack[i + j] != needle[j])
-                {
-                    found = false;
-                    break;
-                }
-            }
-
-            if (found)
-            {
-                return i;
-            }
-        }
-
-        return -1;
-    }
-
-    /// <summary>
-    /// Lấy giá trị một tham số trong header <c>Content-Disposition</c> của phần
-    /// multipart (VD <c>name="poName"</c>, <c>filename="codes.csv"</c>).
-    /// </summary>
-    private static string? GetDispositionParameter(string headerText, string parameterName)
-    {
-        foreach (var line in headerText.Split('\n'))
-        {
-            var trimmed = line.Trim();
-            if (!trimmed.StartsWith("Content-Disposition", StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            // Tìm "name=" / "filename=" trong chuỗi tham số.
-            var index = trimmed.IndexOf(parameterName + "=", StringComparison.OrdinalIgnoreCase);
-            if (index < 0)
-            {
-                continue;
-            }
-
-            // Bỏ qua ký tự trước "=" nếu là dấu phân cách (VD "filename" khi
-            // đang tìm "name" -> "e=" khớp -> phải bỏ qua).
-            if (index > 0 && !char.IsWhiteSpace(trimmed[index - 1]) && trimmed[index - 1] != ';')
-            {
-                continue;
-            }
-
-            var valueStart = index + parameterName.Length + 1;
-            if (valueStart >= trimmed.Length)
-            {
-                continue;
-            }
-
-            var raw = trimmed[valueStart..];
-
-            // Giá trị có thể được bọc trong dấu nháy kép.
-            if (raw.StartsWith('"'))
-            {
-                var closing = raw.IndexOf('"', 1);
-                return closing > 0 ? raw[1..closing] : raw[1..].TrimEnd();
-            }
-
-            var end = raw.IndexOf(';');
-            return (end >= 0 ? raw[..end] : raw).Trim();
-        }
-
-        return null;
-    }
-
-    /// <summary>Lấy boundary từ header Content-Type.</summary>
-    private static string? GetBoundary(string? contentType)
-    {
-        if (string.IsNullOrEmpty(contentType))
-        {
-            return null;
-        }
-
-        foreach (var part in contentType.Split(';'))
-        {
-            var trimmed = part.Trim();
-            if (!trimmed.StartsWith("boundary=", StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            return trimmed["boundary=".Length..].Trim().Trim('"');
-        }
-
-        return null;
-    }
 
     /// <summary>
     /// Kiểm tra + lưu PO nhận từ MES.
@@ -937,7 +570,8 @@ public sealed class PoHttpServer : IDisposable
                 new PoPushResponse
                 {
                     Success = false,
-                    Message = "Thiếu tập mã: cần gửi \"codes\" (mảng JSON) hoặc \"csv\" (nội dung CSV).",
+                    Message = "Thiếu tập mã: cần gửi \"codes\" (mảng JSON), \"csv\" "
+                        + "(nội dung CSV), hoặc tải file .csv/.json/.xlsx/.xls lên.",
                     PoName = poName,
                 });
         }

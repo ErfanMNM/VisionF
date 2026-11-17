@@ -74,6 +74,28 @@ public sealed class PoServerOptions
     public int MaxConcurrentRequests { get; set; } = 4;
 
     /// <summary>
+    /// Dung lượng tối đa cho MỘT FILE tải lên (MB). Mặc định 64 (khớp
+    /// <see cref="MaxBodyMB"/>).
+    ///
+    /// <para>
+    /// Áp dụng cho file CSV / JSON / Excel mà MES gửi lên. Vượt quá ->
+    /// HTTP 413.
+    /// </para>
+    /// </summary>
+    public int MaxFileMB { get; set; } = 64;
+
+    /// <summary>
+    /// Thư mục lưu file tạm khi MES tải file lên.
+    ///
+    /// <para>
+    /// Rỗng (mặc định) -> dùng thư mục tạm của hệ điều hành. File được ghi
+    /// tăng dần (streaming) xuống đĩa, KHÔNG nạp toàn bộ vào RAM, và bị xoá
+    /// ngay sau khi xử lý xong.
+    /// </para>
+    /// </summary>
+    public string UploadTempDirectory { get; set; } = string.Empty;
+
+    /// <summary>
     /// True nếu <see cref="BindAddress"/> là mọi interface (0.0.0.0 hoặc +).
     /// </summary>
     public bool IsAllInterfaces
@@ -89,6 +111,20 @@ public sealed class PoServerOptions
     /// Dung lượng body tối đa (byte) — đã chuyển sang byte.
     /// </summary>
     public int MaxBodyBytes => (int)Math.Clamp(MaxBodyMB, 1, 1024) * 1024 * 1024;
+
+    /// <summary>
+    /// Dung lượng tối đa cho một file tải lên (byte) — đã chuyển sang byte.
+    /// </summary>
+    public int MaxFileBytes => (int)Math.Clamp(MaxFileMB, 1, 1024) * 1024 * 1024;
+
+    /// <summary>
+    /// Thư mục lưu file tạm khi tải file lên (đã chuẩn hoá, không rỗng).
+    /// </summary>
+    public string ResolveUploadTempDirectory()
+    {
+        var configured = (UploadTempDirectory ?? string.Empty).Trim();
+        return configured.Length > 0 ? configured : Path.GetTempPath();
+    }
 
     /// <summary>
     /// Thời gian chờ tối đa cho một request.

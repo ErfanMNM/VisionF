@@ -11,6 +11,8 @@
   <Project Path="tools/PoServer/PoServer.csproj" />
   <Project Path="tools/PoTests/PoTests.csproj" />
   <Project Path="tools/PoServerTests/PoServerTests.csproj" />
+  <Project Path="tools/PoServerTests/e2e/PoServerE2E.csproj" />
+  <Project Path="tools/PoFlowTests/PoFlowTests.csproj" />
   <Project Path="tools/ConfigTests/ConfigTests.csproj" />
   <Project Path="tools/ConfigUiTests/ConfigUiTests.csproj" />
   <Project Path="tools/FullscreenNumpadTests/FullscreenNumpadTests.csproj" />

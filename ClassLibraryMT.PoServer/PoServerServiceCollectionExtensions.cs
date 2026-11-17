@@ -50,9 +50,14 @@ public static class PoServerServiceCollectionExtensions
                     cfg, $"{PoServerOptions.SectionName}:RequestTimeoutSeconds", o.RequestTimeoutSeconds);
                 o.MaxConcurrentRequests = PoServerConfigReader.GetInt(
                     cfg, $"{PoServerOptions.SectionName}:MaxConcurrentRequests", o.MaxConcurrentRequests);
+                o.MaxFileMB = PoServerConfigReader.GetInt(
+                    cfg, $"{PoServerOptions.SectionName}:MaxFileMB", o.MaxFileMB);
+                o.UploadTempDirectory = PoServerConfigReader.GetString(
+                    cfg, $"{PoServerOptions.SectionName}:UploadTempDirectory", o.UploadTempDirectory);
             })
             .Validate(o => o.Port is > 0 and <= 65535, "PoServer:Port phai tu 1 den 65535.")
             .Validate(o => o.MaxBodyMB > 0, "PoServer:MaxBodyMB phai lon hon 0.")
+            .Validate(o => o.MaxFileMB > 0, "PoServer:MaxFileMB phai lon hon 0.")
             .Validate(o => o.RequestTimeoutSeconds > 0, "PoServer:RequestTimeoutSeconds phai lon hon 0.")
             .Validate(o => o.MaxConcurrentRequests > 0, "PoServer:MaxConcurrentRequests phai lon hon 0.")
             .ValidateOnStart();
