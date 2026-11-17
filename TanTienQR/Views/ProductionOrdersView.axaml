@@ -12,8 +12,8 @@
          Việc chạy PO nằm ở tab "Thông tin sản xuất". -->
     <Grid RowDefinitions="Auto,Auto,*" Margin="18,6,18,18" RowSpacing="12">
 
-        <!-- Tiêu đề -->
-        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="12">
+        <!-- Tiêu đề + trạng thái server nhận PO từ MES -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
             <StackPanel Spacing="3">
                 <TextBlock Text="Truy xuất Sản xuất (Local)"
                            Classes="pageTitle" />
@@ -22,7 +22,21 @@
                            Text="Tra cứu toàn bộ lệnh sản xuất đã tải về máy, gồm cả PO đang chạy, hoàn tất hoặc đã huỷ." />
             </StackPanel>
 
-            <Button Grid.Column="1"
+            <!-- Trạng thái HTTP server nhận PO: xanh khi đang chạy,
+                 đỏ khi lỗi (port đã dùng / thiếu quyền). -->
+            <Border Grid.Column="1"
+                    Classes="badge"
+                    VerticalAlignment="Center"
+                    Classes.running="{Binding ProductionOrders.IsPoServerRunning}"
+                    Classes.fault="{Binding ProductionOrders.IsPoServerStatusError}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="NHẬN PO · MES" />
+                    <TextBlock Text="•" />
+                    <TextBlock Text="{Binding ProductionOrders.PoServerStatusText}" />
+                </StackPanel>
+            </Border>
+
+            <Button Grid.Column="2"
                     Classes="primary"
                     Height="44" MinWidth="150" Padding="18,0"
                     HorizontalAlignment="Right"

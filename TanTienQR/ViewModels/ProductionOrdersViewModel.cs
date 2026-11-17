@@ -3,6 +3,7 @@ using System.Globalization;
 using Avalonia.Threading;
 using ClassLibraryMT.Logging;
 using ClassLibraryMT.Po;
+using ClassLibraryMT.PoServer;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -23,11 +24,18 @@ namespace TanTienQR.ViewModels;
 /// server xuống local — có thể bấm nhiều lần, PO mới và mã mới được thêm vào,
 /// còn mã cũ và lịch sử đã quét giữ nguyên.
 /// </para>
+///
+/// <para>
+/// Ngoài ra PO có thể được <b>MES đẩy xuống trực tiếp</b> qua HTTP
+/// (<c>POST /api/po</c>) — khi đó danh sách tự động làm mới, không cần bấm
+/// "Tải PO từ server".
+/// </para>
 /// </summary>
 internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDisposable
 {
     private readonly ProductionOrderService _po;
     private readonly IUserActionLogger _actionLog;
+    private readonly PoHttpServer _poServer;
 
     /// <summary>Cờ chống dispose 2 lần.</summary>
     private bool _disposed;
@@ -40,12 +48,20 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
 
     public ProductionOrdersViewModel(
         ProductionOrderService po,
-        IUserActionLogger actionLog)
+        IUserActionLogger actionLog,
+        PoHttpServer poServer)
     {
         _po = po;
         _actionLog = actionLog;
+        _poServer = poServer;
+
         _po.Changed += OnPoChanged;
         _po.HistoryConflict += OnHistoryConflict;
+
+        // PO nhận từ MES -> tự động làm mới danh sách.
+        _poServer.PoReceived += OnPoReceivedFromServer;
+
+        RefreshServerStatus();
     }
 
     // ---------- Danh sách PO ----------
@@ -140,6 +156,49 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
     /// True khi PO đang chạy đã quét đủ 100% (sẽ tự hoàn tất).
     /// </summary>
     public bool IsComplete => _po.ProgressPercent >= 100.0;
+
+    // ---------- Trạng thái HTTP server nhận PO từ MES ----------
+
+    /// <summary>
+    /// Trạng thái HTTP server nhận PO (tiếng Việt) — ví dụ
+    /// "Đang lắng nghe http://127.0.0.1:8085/".
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsPoServerRunning))]
+    [NotifyPropertyChangedFor(nameof(PoServerBadgeClass))]
+    public partial string PoServerStatusText { get; set; } = "Chưa chạy.";
+
+    /// <summary>True khi trạng thái server là lỗi (hiện màu đỏ).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsPoServerRunning))]
+    [NotifyPropertyChangedFor(nameof(PoServerBadgeClass))]
+    public partial bool IsPoServerStatusError { get; set; }
+
+    /// <summary>
+    /// True khi HTTP server nhận PO đang chạy.
+    /// </summary>
+    public bool IsPoServerRunning =>
+        !IsPoServerStatusError
+        && !PoServerStatusText.StartsWith("Đã tắt", StringComparison.Ordinal)
+        && !PoServerStatusText.StartsWith("Chưa chạy", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Class style cho badge trạng thái server (xanh khi chạy, đỏ khi lỗi).
+    /// </summary>
+    public string PoServerBadgeClass => IsPoServerStatusError ? "fault"
+        : IsPoServerRunning ? "running"
+        : "";
+
+    /// <summary>
+    /// Cập nhật lại trạng thái HTTP server nhận PO từ MES.
+    /// </summary>
+    public void RefreshServerStatus()
+    {
+        var state = _poServer.State;
+
+        PoServerStatusText = state.Status;
+        IsPoServerStatusError = state.IsError;
+    }
 
     // ---------- Lệnh ----------
 
@@ -497,6 +556,45 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
         });
     }
 
+    /// <summary>
+    /// MES đẩy PO xuống máy (HTTP POST /api/po) -> làm mới danh sách và
+    /// hiện thông báo cho người dùng.
+    ///
+    /// <para>
+    /// Event phát từ luồng listener (nền) -> dispatch về luồng UI trước khi
+    /// đụng tới ObservableCollection.
+    /// </para>
+    /// </summary>
+    private void OnPoReceivedFromServer(object? sender, string poName)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            _ = ReloadAfterRemotePoAsync(poName);
+        });
+    }
+
+    /// <summary>
+    /// Tải lại danh sách PO sau khi nhận PO từ MES.
+    /// </summary>
+    private async Task ReloadAfterRemotePoAsync(string poName)
+    {
+        try
+        {
+            await ReloadLocalAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = "Nhận PO từ MES xong nhưng không tải lại được danh sách: " + ex.Message;
+            IsStatusError = true;
+            return;
+        }
+
+        StatusMessage = $"Đã nhận PO {poName} từ MES.";
+        IsStatusError = false;
+
+        ListChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     /// <inheritdoc/>
     public void Dispose()
     {
@@ -504,6 +602,7 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
         _disposed = true;
         _po.Changed -= OnPoChanged;
         _po.HistoryConflict -= OnHistoryConflict;
+        _poServer.PoReceived -= OnPoReceivedFromServer;
     }
 }
 

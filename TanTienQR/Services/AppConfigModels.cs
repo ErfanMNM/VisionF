@@ -194,6 +194,42 @@ public sealed class CheckeeConfig
     [JsonPropertyName("SerialType")] public string SerialType { get; set; } = "DECLARE";
 }
 
+/// <summary>
+/// Cấu hình HTTP server nhận Production Order từ MES (mục "PoServer").
+///
+/// Khớp với <c>ClassLibraryMT.PoServer.PoServerOptions</c> — bật/tắt, cổng,
+/// địa chỉ lắng nghe, API key và dung lượng body tối đa.
+/// </summary>
+[ConfigSection(
+    Key = "PoServer",
+    Title = "NHẬN PO TỪ MES · HTTP SERVER",
+    Order = 42,
+    Icon = "Download",
+    Description = "Cho phép MES đẩy lệnh sản xuất xuống máy qua HTTP POST /api/po. Được nạp một lần khi app khởi động.")]
+public sealed class PoServerConfig
+{
+    [ConfigField("Bật server nhận PO", Order = 1, RequiresRestart = true, HelpText = "Bật để MES gửi PO trực tiếp xuống máy (POST /api/po).")]
+    [JsonPropertyName("Enabled")] public bool Enabled { get; set; }
+
+    [ConfigField("Cổng HTTP", Order = 2, Min = 1, Max = 65535, RequiresRestart = true, SkipWhenDisabledBy = "PoServer:Enabled", HelpText = "Cổng mà MES sẽ gọi, ví dụ 8085.")]
+    [JsonPropertyName("Port")] public int Port { get; set; } = 8085;
+
+    [ConfigField("Địa chỉ lắng nghe", Order = 3, Placeholder = "VD: 127.0.0.1 hoặc 0.0.0.0", RequiresRestart = true, SkipWhenDisabledBy = "PoServer:Enabled", HelpText = "127.0.0.1 = chỉ máy cục bộ. 0.0.0.0 = mọi máy trong mạng (cần quyền quản trị + mở firewall).")]
+    [JsonPropertyName("BindAddress")] public string BindAddress { get; set; } = "127.0.0.1";
+
+    [ConfigField("API key", Order = 4, Control = ConfigControlKind.Password, RequiresRestart = true, SkipWhenDisabledBy = "PoServer:Enabled", HelpText = "MES gửi kèm header x-api-key. Để trống = không kiểm tra.")]
+    [JsonPropertyName("ApiKey")] public string ApiKey { get; set; } = string.Empty;
+
+    [ConfigField("Body tối đa (MB)", Order = 5, Min = 1, Max = 1024, RequiresRestart = true, SkipWhenDisabledBy = "PoServer:Enabled", HelpText = "Giới hạn dung lượng body của một lần gửi PO.")]
+    [JsonPropertyName("MaxBodyMB")] public int MaxBodyMB { get; set; } = 64;
+
+    [ConfigField("Timeout (giây)", Order = 6, Min = 5, Max = 3600, RequiresRestart = true, SkipWhenDisabledBy = "PoServer:Enabled", HelpText = "Thời gian chờ tối đa cho một lần gửi PO.")]
+    [JsonPropertyName("RequestTimeoutSeconds")] public int RequestTimeoutSeconds { get; set; } = 120;
+
+    [ConfigField("Số request đồng thời", Order = 7, Min = 1, Max = 64, RequiresRestart = true, SkipWhenDisabledBy = "PoServer:Enabled")]
+    [JsonPropertyName("MaxConcurrentRequests")] public int MaxConcurrentRequests { get; set; } = 4;
+}
+
 /// <summary>Cấu hình ghi log SQLite (mục "Logging:Sqlite").</summary>
 [ConfigSection(
     Key = "Sqlite",
@@ -361,6 +397,7 @@ public sealed class AppConfigSnapshot
     [JsonPropertyName("Web")] public WebConfig Web { get; set; } = new();
     [JsonPropertyName("Scanner")] public ScannerConfig Scanner { get; set; } = new();
     [JsonPropertyName("Po")] public PoConfig Po { get; set; } = new();
+    [JsonPropertyName("PoServer")] public PoServerConfig PoServer { get; set; } = new();
     [JsonPropertyName("Checkee")] public CheckeeConfig Checkee { get; set; } = new();
     [JsonPropertyName("Logging")] public LoggingConfig Logging { get; set; } = new();
     [JsonPropertyName("Auth")] public AuthConfig Auth { get; set; } = new();
@@ -383,6 +420,7 @@ public sealed class AppConfigSnapshot
 [JsonSerializable(typeof(ScanConfig))]
 [JsonSerializable(typeof(ScannerConfig))]
 [JsonSerializable(typeof(PoConfig))]
+[JsonSerializable(typeof(PoServerConfig))]
 [JsonSerializable(typeof(CheckeeConfig))]
 [JsonSerializable(typeof(CameraConfig))]
 [JsonSerializable(typeof(PlcConfig))]

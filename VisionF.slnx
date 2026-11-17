@@ -5,10 +5,12 @@
   <Project Path="ClassLibraryMT.Plc/ClassLibraryMT.Plc.csproj" />
   <Project Path="ClassLibraryMT.Scans/ClassLibraryMT.Scans.csproj" />
   <Project Path="ClassLibraryMT.Po/ClassLibraryMT.Po.csproj" />
+  <Project Path="ClassLibraryMT.PoServer/ClassLibraryMT.PoServer.csproj" />
   <Project Path="TanTienQR/TanTienQR.csproj" />
   <Project Path="tools/LicenseTool/LicenseTool.csproj" />
   <Project Path="tools/PoServer/PoServer.csproj" />
   <Project Path="tools/PoTests/PoTests.csproj" />
+  <Project Path="tools/PoServerTests/PoServerTests.csproj" />
   <Project Path="tools/ConfigTests/ConfigTests.csproj" />
   <Project Path="tools/ConfigUiTests/ConfigUiTests.csproj" />
   <Project Path="tools/FullscreenNumpadTests/FullscreenNumpadTests.csproj" />

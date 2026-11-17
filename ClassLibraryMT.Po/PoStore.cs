@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.Data.Sqlite;
 
 namespace ClassLibraryMT.Po;
@@ -156,25 +157,59 @@ public sealed class PoStore
         }
 
         // Insert tập mã (bỏ qua mã đã tồn tại — idempotent).
+        //
+        // Ghi theo LÔ (multi-row VALUES) thay vì từng dòng một: với PO vài
+        // chục nghìn mã, cách ghi từng dòng sẽ tốn hàng trăm nghìn vòng
+        // round-trip xuống SQLite. Chia lô 300 mã / lệnh để không vượt quá
+        // giới hạn số biến của SQLite (mặc định 999 — 3 biến cho mỗi mã).
         if (codes.Count > 0)
         {
+            const int batchSize = 300;
+
             await using var tx = await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
-            await using var insert = connection.CreateCommand();
-            insert.Transaction = (SqliteTransaction)tx;
-            insert.CommandText = """
-                INSERT OR IGNORE INTO PoCodes (Code, Gtin, Serial, ScannedUtc, Status, ActivatedUtc)
-                VALUES ($code, $gtin, $serial, NULL, 'Pending', NULL);
-                """;
 
-            var pCode = insert.Parameters.Add("$code", SqliteType.Text);
-            var pGtin = insert.Parameters.Add("$gtin", SqliteType.Text);
-            var pSerial = insert.Parameters.Add("$serial", SqliteType.Text);
-
-            foreach (var code in codes)
+            for (var offset = 0; offset < codes.Count; offset += batchSize)
             {
-                pCode.Value = code.Code;
-                pGtin.Value = code.Gtin;
-                pSerial.Value = code.Serial;
+                var take = Math.Min(batchSize, codes.Count - offset);
+
+                var sql = new StringBuilder(
+                    "INSERT OR IGNORE INTO PoCodes "
+                    + "(Code, Gtin, Serial, ScannedUtc, Status, ActivatedUtc) VALUES ");
+
+                // Mỗi lô tạo một câu lệnh RIÊNG: nếu dùng chung một
+                // SqliteCommand thì tham số của các lô trước sẽ còn lại và
+                // làm lệnh chậm dần (và vượt giới hạn biến của SQLite).
+                await using var insert = connection.CreateCommand();
+                insert.Transaction = (SqliteTransaction)tx;
+
+                // Mỗi mã dùng 3 tham số riêng ($c{n}, $g{n}, $s{n}) — tên
+                // phải KHỚP với tên trong SQL.
+                for (var i = 0; i < take; i++)
+                {
+                    var n = offset + i;
+
+                    var pCode = insert.Parameters.Add("$c" + n, SqliteType.Text);
+                    var pGtin = insert.Parameters.Add("$g" + n, SqliteType.Text);
+                    var pSerial = insert.Parameters.Add("$s" + n, SqliteType.Text);
+
+                    var code = codes[n];
+
+                    pCode.Value = code.Code;
+                    pGtin.Value = code.Gtin;
+                    pSerial.Value = code.Serial;
+
+                    if (i > 0)
+                    {
+                        sql.Append(',');
+                    }
+
+                    sql.Append("($c").Append(n)
+                       .Append(", $g").Append(n)
+                       .Append(", $s").Append(n)
+                       .Append(", NULL, 'Pending', NULL)");
+                }
+
+                insert.CommandText = sql.ToString();
                 await insert.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
             }
 

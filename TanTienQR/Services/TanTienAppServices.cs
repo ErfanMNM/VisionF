@@ -6,6 +6,7 @@ using ClassLibraryMT.Configuration;
 using ClassLibraryMT.Logging;
 using ClassLibraryMT.Plc;
 using ClassLibraryMT.Po;
+using ClassLibraryMT.PoServer;
 using ClassLibraryMT.Scans;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -62,6 +63,12 @@ public static class TanTienAppServices
         // Đăng ký sau AddScanStore vì worker gửi mã đọc trạng thái gửi trong
         // cùng bảng ScanRecords (logs/scans.db).
         services.AddCheckee(configuration);
+
+        // ---- HTTP server nhận PO từ MES (POST /api/po) ----
+        // Đăng ký SAU AddProductionOrders vì PoHttpServer dùng chung PoStore
+        // (cùng thư mục DB với luồng cào PO) để PO nhận về hiện luôn trong
+        // danh sách "Truy xuất Sản xuất (Local)".
+        services.AddPoServer(configuration);
 
         // ---- Camera: bind cấu hình thủ công (tương thích Native AOT) ----
         services.AddOptions<CameraOptions>()
@@ -192,6 +199,11 @@ public static class TanTienAppServices
         // Đăng ký singleton + hosted service để UI đọc được trạng thái worker.
         services.AddSingleton<CheckeeSendWorker>();
         services.AddHostedService(sp => sp.GetRequiredService<CheckeeSendWorker>());
+
+        // Worker bật HTTP server nhận PO từ MES (PoServer:Enabled / Port).
+        // Đăng ký singleton + hosted service để UI đọc được trạng thái listener.
+        services.AddSingleton<PoServerWorker>();
+        services.AddHostedService(sp => sp.GetRequiredService<PoServerWorker>());
 
         // ---- Bộ đếm runtime (tab Dev) ----
         // Singleton: gom số liệu từ nhiều service, dùng Interlocked.
