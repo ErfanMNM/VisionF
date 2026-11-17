@@ -148,6 +148,52 @@ public sealed class PoConfig
     [JsonPropertyName("CodeSampleSize")] public int CodeSampleSize { get; set; } = 100;
 }
 
+/// <summary>
+/// Cấu hình kết nối Checkee Middleware API (mục "Checkee").
+///
+/// Khớp với <c>ClassLibraryMT.Checkee.CheckeeOptions</c> — địa chỉ host,
+/// API key / client id, chu kỳ gửi mã (phút), số mã mỗi batch và các thông số
+/// phụ (GTIN / loại mã / mã lô).
+/// </summary>
+[ConfigSection(
+    Key = "Checkee",
+    Title = "CHECKEE · GỬI MÃ KÍCH HOẠT",
+    Order = 45,
+    Icon = "Upload",
+    Description = "Kết nối Checkee Middleware API để gửi mã đã quét. Được nạp một lần khi app khởi động.")]
+public sealed class CheckeeConfig
+{
+    [ConfigField("Địa chỉ host", Order = 1, Placeholder = "VD: https://beta-api-eco.checkee.vn", RequiresRestart = true, Validation = "Url")]
+    [JsonPropertyName("BaseUrl")] public string BaseUrl { get; set; } = "https://beta-api-eco.checkee.vn";
+
+    [ConfigField("API key", Order = 2, Control = ConfigControlKind.Password, RequiresRestart = true, HelpText = "API Key do Checkee cấp cho doanh nghiệp (header x-api-key).")]
+    [JsonPropertyName("ApiKey")] public string ApiKey { get; set; } = string.Empty;
+
+    [ConfigField("Client ID", Order = 3, Control = ConfigControlKind.Password, RequiresRestart = true, HelpText = "Client Key / Client ID do Checkee cấp (header x-client-id).")]
+    [JsonPropertyName("ClientId")] public string ClientId { get; set; } = string.Empty;
+
+    [ConfigField("Bật gửi mã", Order = 4, RequiresRestart = true, HelpText = "Bật worker gửi mã đã quét lên Checkee theo chu kỳ.")]
+    [JsonPropertyName("Enabled")] public bool Enabled { get; set; } = true;
+
+    [ConfigField("Chu kỳ gửi (phút)", Order = 5, Min = 1, Max = 1440, RequiresRestart = true, HelpText = "Số phút giữa hai lần gửi mã lên Checkee.")]
+    [JsonPropertyName("SendIntervalMinutes")] public int SendIntervalMinutes { get; set; } = 15;
+
+    [ConfigField("Số mã / lần gửi", Order = 6, Min = 1, Max = 500, RequiresRestart = true, HelpText = "Số mã tối đa gửi trong một chu kỳ.")]
+    [JsonPropertyName("BatchSize")] public int BatchSize { get; set; } = 100;
+
+    [ConfigField("Timeout (giây)", Order = 7, Min = 5, Max = 600, RequiresRestart = true)]
+    [JsonPropertyName("TimeoutSeconds")] public int TimeoutSeconds { get; set; } = 30;
+
+    [ConfigField("Chỉ gửi mã Pass", Order = 8, RequiresRestart = true, HelpText = "Chỉ gửi những mã quét có kết quả hợp lệ.")]
+    [JsonPropertyName("OnlyPassCodes")] public bool OnlyPassCodes { get; set; } = true;
+
+    [ConfigField("Mã lô (batch code)", Order = 9, Placeholder = "VD: LOT-2026-01", RequiresRestart = true, HelpText = "Mã lô gửi kèm khi kích hoạt mã (bắt buộc theo API Checkee).")]
+    [JsonPropertyName("BatchCode")] public string BatchCode { get; set; } = string.Empty;
+
+    [ConfigField("Loại mã TXNG", Order = 10, Options = new[] { "DECLARE", "RANDOM", "INCREASING" }, RequiresRestart = true)]
+    [JsonPropertyName("SerialType")] public string SerialType { get; set; } = "DECLARE";
+}
+
 /// <summary>Cấu hình ghi log SQLite (mục "Logging:Sqlite").</summary>
 [ConfigSection(
     Key = "Sqlite",
@@ -315,6 +361,7 @@ public sealed class AppConfigSnapshot
     [JsonPropertyName("Web")] public WebConfig Web { get; set; } = new();
     [JsonPropertyName("Scanner")] public ScannerConfig Scanner { get; set; } = new();
     [JsonPropertyName("Po")] public PoConfig Po { get; set; } = new();
+    [JsonPropertyName("Checkee")] public CheckeeConfig Checkee { get; set; } = new();
     [JsonPropertyName("Logging")] public LoggingConfig Logging { get; set; } = new();
     [JsonPropertyName("Auth")] public AuthConfig Auth { get; set; } = new();
     [JsonPropertyName("PlcSettings")] public PlcSettingsConfig PlcSettings { get; set; } = new();
@@ -336,6 +383,7 @@ public sealed class AppConfigSnapshot
 [JsonSerializable(typeof(ScanConfig))]
 [JsonSerializable(typeof(ScannerConfig))]
 [JsonSerializable(typeof(PoConfig))]
+[JsonSerializable(typeof(CheckeeConfig))]
 [JsonSerializable(typeof(CameraConfig))]
 [JsonSerializable(typeof(PlcConfig))]
 [JsonSerializable(typeof(WebConfig))]

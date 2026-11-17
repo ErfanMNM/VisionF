@@ -50,6 +50,37 @@ public sealed class ScanRecordEntity
     /// </para>
     /// </summary>
     public string OrderNo { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Trạng thái gửi mã lên Checkee: <c>Pending</c> / <c>Sent</c> / <c>Failed</c>.
+    /// Mã cũ (trước khi có tính năng này) có giá trị rỗng -> coi như chưa gửi.
+    /// </summary>
+    public string SendStatus { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Mã HTTP Checkee trả về khi gửi thất bại (0 nếu không có phản hồi).
+    /// </summary>
+    public int SendStatusCode { get; set; }
+
+    /// <summary>
+    /// Thông điệp lỗi / kết quả của lần gửi gần nhất (tiếng Việt).
+    /// </summary>
+    public string SendMessage { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Số lần đã thử gửi mã này lên Checkee.
+    /// </summary>
+    public int SendAttempts { get; set; }
+
+    /// <summary>
+    /// Thời điểm gửi thành công gần nhất (UTC) — null nếu chưa gửi thành công.
+    /// </summary>
+    public DateTime? SendTimeUtc { get; set; }
+
+    /// <summary>
+    /// Thời điểm thử gửi gần nhất (UTC) — null nếu chưa thử gửi.
+    /// </summary>
+    public DateTime? SendAttemptUtc { get; set; }
 }
 
 /// <summary>

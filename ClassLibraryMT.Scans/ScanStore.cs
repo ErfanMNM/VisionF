@@ -17,7 +17,7 @@ namespace ClassLibraryMT.Scans;
 internal sealed class ScanStore
 {
     /// <summary>Phiên bản schema hiện tại.</summary>
-    public const int CurrentSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 4;
 
     private readonly string _dbPath;
 
@@ -81,7 +81,13 @@ internal sealed class ScanStore
                 PlcResult        TEXT    NOT NULL DEFAULT 'Skipped',
                 BatchNo          TEXT    NOT NULL DEFAULT 'NoBatch',
                 Raw              TEXT    NOT NULL DEFAULT '',
-                OrderNo          TEXT    NOT NULL DEFAULT ''
+                OrderNo          TEXT    NOT NULL DEFAULT '',
+                SendStatus       TEXT    NOT NULL DEFAULT '',
+                SendStatusCode   INTEGER NOT NULL DEFAULT 0,
+                SendMessage      TEXT    NOT NULL DEFAULT '',
+                SendAttempts     INTEGER NOT NULL DEFAULT 0,
+                SendTimeUtc      TEXT    NULL,
+                SendAttemptUtc   TEXT    NULL
             );
 
             CREATE INDEX IF NOT EXISTS IX_ScanRecords_ReceivedUtc ON ScanRecords (ReceivedUtc DESC);
@@ -112,6 +118,21 @@ internal sealed class ScanStore
         await EnsureColumnAsync(connection, "ScanRecords", "OrderNo", "TEXT NOT NULL DEFAULT ''", ct)
             .ConfigureAwait(false);
 
+        // Migration v4: các cột trạng thái gửi mã lên Checkee. Dữ liệu cũ
+        // được giữ nguyên — cột mới có giá trị mặc định (chưa gửi).
+        await EnsureColumnAsync(connection, "ScanRecords", "SendStatus", "TEXT NOT NULL DEFAULT ''", ct)
+            .ConfigureAwait(false);
+        await EnsureColumnAsync(connection, "ScanRecords", "SendStatusCode", "INTEGER NOT NULL DEFAULT 0", ct)
+            .ConfigureAwait(false);
+        await EnsureColumnAsync(connection, "ScanRecords", "SendMessage", "TEXT NOT NULL DEFAULT ''", ct)
+            .ConfigureAwait(false);
+        await EnsureColumnAsync(connection, "ScanRecords", "SendAttempts", "INTEGER NOT NULL DEFAULT 0", ct)
+            .ConfigureAwait(false);
+        await EnsureColumnAsync(connection, "ScanRecords", "SendTimeUtc", "TEXT NULL", ct)
+            .ConfigureAwait(false);
+        await EnsureColumnAsync(connection, "ScanRecords", "SendAttemptUtc", "TEXT NULL", ct)
+            .ConfigureAwait(false);
+
         // Migration v2: cột ProcessingTimeMs đổi từ INTEGER sang REAL để giữ
         // được phần thập phân (ví dụ 0.333 ms). SQLite là kiểu động nên dữ
         // liệu cũ vẫn đọc được, nhưng khai báo kiểu trong schema cho đúng.
@@ -122,8 +143,10 @@ internal sealed class ScanStore
         // ("no such column") với các DB đã tồn tại từ phiên bản cũ.
         await using (var indexCmd = connection.CreateCommand())
         {
-            indexCmd.CommandText =
-                "CREATE INDEX IF NOT EXISTS IX_ScanRecords_OrderNo ON ScanRecords (OrderNo);";
+            indexCmd.CommandText = """
+                CREATE INDEX IF NOT EXISTS IX_ScanRecords_OrderNo ON ScanRecords (OrderNo);
+                CREATE INDEX IF NOT EXISTS IX_ScanRecords_SendStatus ON ScanRecords (SendStatus);
+                """;
             await indexCmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
 
@@ -449,7 +472,9 @@ internal sealed class ScanStore
         {
             cmd.CommandText = $"""
                 SELECT Id, ReceivedUtc, Code, Gtin, Serial, Status,
-                       ProcessingTimeMs, PlcResult, BatchNo, Raw, OrderNo
+                       ProcessingTimeMs, PlcResult, BatchNo, Raw, OrderNo,
+                       SendStatus, SendStatusCode, SendMessage, SendAttempts,
+                       SendTimeUtc, SendAttemptUtc
                 FROM ScanRecords
                 {where}
                 ORDER BY ReceivedUtc DESC, Id DESC
@@ -554,6 +579,12 @@ internal sealed class ScanStore
         BatchNo = record.GetString(8),
         Raw = record.GetString(9),
         OrderNo = record.IsDBNull(10) ? string.Empty : record.GetString(10),
+        SendStatus = record.IsDBNull(11) ? string.Empty : record.GetString(11),
+        SendStatusCode = record.IsDBNull(12) ? 0 : record.GetInt32(12),
+        SendMessage = record.IsDBNull(13) ? string.Empty : record.GetString(13),
+        SendAttempts = record.IsDBNull(14) ? 0 : record.GetInt32(14),
+        SendTimeUtc = record.IsDBNull(15) ? null : ParseUtc(record.GetString(15)),
+        SendAttemptUtc = record.IsDBNull(16) ? null : ParseUtc(record.GetString(16)),
     };
 
     /// <summary>

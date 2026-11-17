@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Globalization;
 using Avalonia.Threading;
 using ClassLibraryMT.Logging;
@@ -22,14 +23,25 @@ namespace TanTienQR.ViewModels;
 /// Mã có thể được nhập tay (ô nhập + bàn phím ảo) hoặc quét bằng handheld
 /// cầm tay — khi handheld bắn mã, tab tự động tra cứu luôn.
 /// </para>
+///
+/// <para>
+/// Mỗi mã hiển thị trạng thái gửi lên Checkee (Chưa gửi / Đã gửi / Lỗi) đọc
+/// từ cột <c>SendStatus</c> của cùng bảng. Bảng "Mã gửi lỗi" liệt kê các mã
+/// bị Checkee từ chối (HTTP != 200) kèm chi tiết lỗi và nút "Gửi lại".
+/// </para>
 /// </summary>
 internal sealed partial class CodeLookupViewModel : ViewModelBase, IDisposable
 {
     /// <summary>Số bản ghi tối đa tải về một lần tra cứu.</summary>
     private const int MaxRows = 200;
 
+    /// <summary>Số mã lỗi tối đa liệt kê trong bảng "Mã gửi lỗi".</summary>
+    private const int MaxErrorRows = 300;
+
     private readonly IScanRecordQuery _query;
     private readonly IScanRecordWriter _writer;
+    private readonly IScanSendStatusStore _sendStore;
+    private readonly CheckeeSendWorker _sendWorker;
     private readonly HandheldScannerService _scanner;
     private readonly IUserActionLogger _actionLog;
 
@@ -39,11 +51,15 @@ internal sealed partial class CodeLookupViewModel : ViewModelBase, IDisposable
     public CodeLookupViewModel(
         IScanRecordQuery query,
         IScanRecordWriter writer,
+        IScanSendStatusStore sendStore,
+        CheckeeSendWorker sendWorker,
         HandheldScannerService scanner,
         IUserActionLogger actionLog)
     {
         _query = query;
         _writer = writer;
+        _sendStore = sendStore;
+        _sendWorker = sendWorker;
         _scanner = scanner;
         _actionLog = actionLog;
 
@@ -61,6 +77,7 @@ internal sealed partial class CodeLookupViewModel : ViewModelBase, IDisposable
         _scannerTimer.Start();
 
         ScannerStatusText = _scanner.StatusText;
+        CheckeeStatusText = _sendWorker.State.Status;
     }
 
     // ---------- Ô nhập ----------
@@ -75,6 +92,7 @@ internal sealed partial class CodeLookupViewModel : ViewModelBase, IDisposable
 
     /// <summary>Thông báo trạng thái (kết quả / lỗi).</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasStatus))]
     public partial string StatusMessage { get; set; } = string.Empty;
 
     /// <summary>True khi có thông báo để hiển thị.</summary>
@@ -157,6 +175,38 @@ internal sealed partial class CodeLookupViewModel : ViewModelBase, IDisposable
         string.IsNullOrWhiteSpace(CodeInput)
             ? "Chưa nhập mã"
             : $"Mã: {CodeInput.Trim()}";
+
+    // ---------- Trạng thái gửi Checkee ----------
+
+    /// <summary>
+    /// Thông điệp trạng thái worker gửi Checkee (hiển thị trên thanh công cụ).
+    /// </summary>
+    [ObservableProperty]
+    public partial string CheckeeStatusText { get; set; } = string.Empty;
+
+    /// <summary>True khi trạng thái Checkee hiện tại là lỗi (badge đỏ).</summary>
+    public bool HasCheckeeError => _sendWorker.State.IsError;
+
+    /// <summary>
+    /// Danh sách mã bị gửi lỗi lên Checkee (bảng "Mã gửi lỗi").
+    /// </summary>
+    public ObservableCollection<CodeSendErrorRowViewModel> ErrorRows { get; } = [];
+
+    /// <summary>True khi bảng "Mã gửi lỗi" có dữ liệu.</summary>
+    public bool HasErrorRows => ErrorRows.Count > 0;
+
+    /// <summary>True khi đang trong lúc tải / xử lý bảng mã gửi lỗi.</summary>
+    [ObservableProperty]
+    public partial bool IsErrorTableBusy { get; set; }
+
+    /// <summary>True khi đang gửi lại các mã lỗi.</summary>
+    [ObservableProperty]
+    public partial bool IsResending { get; set; }
+
+    /// <summary>Số mã lỗi đang hiển thị (dùng cho tiêu đề bảng).</summary>
+    public string ErrorCountText => ErrorRows.Count > 0
+        ? $"{ErrorRows.Count} mã lỗi"
+        : "Không có mã lỗi";
 
     // ---------- Lệnh ----------
 
@@ -262,6 +312,109 @@ internal sealed partial class CodeLookupViewModel : ViewModelBase, IDisposable
         {
             StatusMessage = "Không đồng bộ được dữ liệu quét mã: " + ex.Message;
         }
+
+        CheckeeStatusText = _sendWorker.State.Status;
+        OnPropertyChanged(nameof(HasCheckeeError));
+
+        // Nạp bảng mã gửi lỗi (nếu có) để người dùng thấy ngay.
+        await LoadErrorRowsAsync().ConfigureAwait(true);
+    }
+
+    // ---------- Bảng "Mã gửi lỗi" ----------
+
+    /// <summary>
+    /// Nạp danh sách mã bị Checkee từ chối (HTTP != 200) kèm chi tiết lỗi.
+    /// </summary>
+    [RelayCommand]
+    public async Task LoadErrorRowsAsync()
+    {
+        IsErrorTableBusy = true;
+
+        try
+        {
+            var items = await _sendStore
+                .GetBySendStatusAsync(new ScanSendFilter
+                {
+                    SendStatus = ScanSendStatuses.Failed,
+                    Limit = MaxErrorRows,
+                })
+                .ConfigureAwait(true);
+
+            ErrorRows.Clear();
+            foreach (var item in items)
+            {
+                ErrorRows.Add(new CodeSendErrorRowViewModel(item));
+            }
+
+            OnPropertyChanged(nameof(HasErrorRows));
+            OnPropertyChanged(nameof(ErrorCountText));
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = "Không tải được danh sách mã gửi lỗi: " + ex.Message;
+        }
+        finally
+        {
+            IsErrorTableBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Gửi lại toàn bộ mã đang bị lỗi: đưa chúng về trạng thái chờ gửi rồi
+    /// chạy một chu kỳ gửi ngay (không cần chờ hết chu kỳ định kỳ).
+    /// </summary>
+    [RelayCommand]
+    public async Task ResendFailedAsync()
+    {
+        if (ErrorRows.Count == 0)
+        {
+            StatusMessage = "Không có mã lỗi nào để gửi lại.";
+            return;
+        }
+
+        IsResending = true;
+
+        try
+        {
+            var ids = ErrorRows.Select(r => r.RecordId).ToList();
+
+            var reset = await _sendStore
+                .ResetToPendingAsync(ids)
+                .ConfigureAwait(true);
+
+            StatusMessage = $"Đã đưa {reset} mã về trạng thái chờ gửi. Đang gửi lại...";
+
+            var sent = await _sendWorker.SendPendingAsync().ConfigureAwait(true);
+
+            StatusMessage = sent > 0
+                ? $"Đã gửi lại thành công {sent} mã."
+                : "Không gửi lại được mã nào. Xem chi tiết lỗi trong bảng bên dưới.";
+
+            _actionLog.Log(
+                "CodeLookup.ResendFailed",
+                "ScanRecords",
+                $"reset={reset}; sent={sent}",
+                sent > 0 ? UserActionResults.Success : UserActionResults.Failed);
+
+            CheckeeStatusText = _sendWorker.State.Status;
+            OnPropertyChanged(nameof(HasCheckeeError));
+
+            await LoadErrorRowsAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = "Không gửi lại được: " + ex.Message;
+
+            _actionLog.Log(
+                "CodeLookup.ResendFailed",
+                "ScanRecords",
+                $"error={ex.Message}",
+                UserActionResults.Failed);
+        }
+        finally
+        {
+            IsResending = false;
+        }
     }
 
     // ---------- Handheld ----------
@@ -318,8 +471,10 @@ internal sealed partial class CodeLookupViewModel : ViewModelBase, IDisposable
 /// <summary>
 /// Một dòng kết quả tra cứu mã.
 ///
+/// <para>
 /// Bọc <see cref="ScanRecordEntity"/> lại để có thuộc tính hiển thị sẵn (chuỗi
 /// đã format, class style cho màu) — giúp XAML không phải dùng converter.
+/// </para>
 /// </summary>
 public sealed class CodeLookupRowViewModel
 {
@@ -364,6 +519,21 @@ public sealed class CodeLookupRowViewModel
         };
 
         ProcessingTimeText = $"{entity.ProcessingTimeMs:F3} ms";
+
+        // ---- Trạng thái gửi lên Checkee ----
+        SendStatus = ScanSendStatuses.Normalize(entity.SendStatus);
+        SendStatusText = SendStatus switch
+        {
+            ScanSendStatuses.Sent => "Đã gửi",
+            ScanSendStatuses.Failed => "Lỗi",
+            _ => "Chưa gửi",
+        };
+        SendMessage = entity.SendMessage ?? string.Empty;
+        SendStatusCode = entity.SendStatusCode;
+        SendAttempts = entity.SendAttempts;
+        SendTimeText = entity.SendTimeUtc is null
+            ? "—"
+            : entity.SendTimeUtc.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss", ViCulture);
     }
 
     /// <summary>Thời điểm nhận mã (UTC) — dùng để sắp xếp / tính toán.</summary>
@@ -432,6 +602,148 @@ public sealed class CodeLookupRowViewModel
 
     /// <summary>True khi ghi PLC thất bại (badge đỏ).</summary>
     public bool IsPlcFailed => PlcText == "Lỗi";
+
+    // ---------- Trạng thái gửi Checkee ----------
+
+    /// <summary>Trạng thái gửi lên Checkee (Pending / Sent / Failed).</summary>
+    public string SendStatus { get; }
+
+    /// <summary>Nhãn trạng thái gửi (Chưa gửi / Đã gửi / Lỗi).</summary>
+    public string SendStatusText { get; }
+
+    /// <summary>Thông điệp chi tiết lỗi (nếu có).</summary>
+    public string SendMessage { get; }
+
+    /// <summary>Mã HTTP Checkee trả về (0 nếu không có phản hồi).</summary>
+    public int SendStatusCode { get; }
+
+    /// <summary>Số lần đã thử gửi.</summary>
+    public int SendAttempts { get; }
+
+    /// <summary>Thời điểm gửi thành công gần nhất ("—" nếu chưa gửi).</summary>
+    public string SendTimeText { get; }
+
+    /// <summary>True khi mã đã gửi thành công lên Checkee.</summary>
+    public bool IsSendSent => SendStatus == ScanSendStatuses.Sent;
+
+    /// <summary>True khi mã gửi lên Checkee bị lỗi.</summary>
+    public bool IsSendFailed => SendStatus == ScanSendStatuses.Failed;
+
+    /// <summary>True khi mã chưa được gửi lên Checkee.</summary>
+    public bool IsSendPending => SendStatus == ScanSendStatuses.Pending;
+
+    /// <summary>Class style cho badge trạng thái gửi.</summary>
+    public string SendBadgeClass => SendStatus switch
+    {
+        ScanSendStatuses.Sent => "running",
+        ScanSendStatuses.Failed => "fault",
+        _ => "warning",
+    };
+
+    /// <summary>Chi tiết lỗi đầy đủ để hiển thị (rỗng nếu không lỗi).</summary>
+    public string SendDetailText => IsSendFailed
+        ? BuildSendDetail()
+        : string.Empty;
+
+    /// <summary>
+    /// Dựng nội dung chi tiết lỗi (mã HTTP + thông điệp + số lần thử).
+    /// </summary>
+    private string BuildSendDetail()
+    {
+        var parts = new List<string>();
+
+        if (SendStatusCode > 0)
+        {
+            parts.Add($"HTTP {SendStatusCode}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(SendMessage))
+        {
+            parts.Add(SendMessage);
+        }
+
+        parts.Add($"Số lần thử: {SendAttempts}");
+
+        return string.Join(" · ", parts);
+    }
+
+    private static CultureInfo CreateViCulture()
+    {
+        try
+        {
+            return new CultureInfo("vi-VN");
+        }
+        catch (CultureNotFoundException)
+        {
+            return CultureInfo.InvariantCulture;
+        }
+    }
+}
+
+/// <summary>
+/// Một dòng trong bảng "Mã gửi lỗi" — mã bị Checkee từ chối kèm chi tiết lỗi.
+/// </summary>
+public sealed class CodeSendErrorRowViewModel
+{
+    private static readonly CultureInfo ViCulture = CreateViCulture();
+
+    /// <summary>
+    /// Bọc một bản ghi bị gửi lỗi.
+    /// </summary>
+    /// <param name="entity">Bản ghi gốc.</param>
+    public CodeSendErrorRowViewModel(ScanRecordEntity entity)
+    {
+        RecordId = entity.Id;
+        CodeText = string.IsNullOrWhiteSpace(entity.Serial)
+            ? (string.IsNullOrWhiteSpace(entity.Code) ? entity.Raw : entity.Code)
+            : entity.Serial;
+        GtinText = string.IsNullOrWhiteSpace(entity.Gtin) ? "—" : entity.Gtin;
+        BatchText = string.IsNullOrWhiteSpace(entity.BatchNo)
+            || string.Equals(entity.BatchNo, ScanBatchDefaults.NoBatch, StringComparison.Ordinal)
+                ? "—"
+                : entity.BatchNo;
+        TimeText = entity.ReceivedUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss", ViCulture);
+
+        StatusCode = entity.SendStatusCode;
+        Message = string.IsNullOrWhiteSpace(entity.SendMessage)
+            ? "Không rõ nguyên nhân (không có thông điệp từ máy chủ)."
+            : entity.SendMessage;
+        Attempts = entity.SendAttempts;
+
+        LastAttemptText = entity.SendAttemptUtc is null
+            ? "—"
+            : entity.SendAttemptUtc.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss", ViCulture);
+    }
+
+    /// <summary>Khoá bản ghi (dùng khi đặt lại trạng thái để gửi lại).</summary>
+    public long RecordId { get; }
+
+    /// <summary>Mã / serial bị lỗi.</summary>
+    public string CodeText { get; }
+
+    /// <summary>GTIN ("—" nếu không có).</summary>
+    public string GtinText { get; }
+
+    /// <summary>Mã lô ("—" nếu không có).</summary>
+    public string BatchText { get; }
+
+    /// <summary>Thời điểm quét.</summary>
+    public string TimeText { get; }
+
+    /// <summary>Mã HTTP Checkee trả về (0 nếu không có phản hồi).</summary>
+    public int StatusCode { get; }
+
+    /// <summary>Thông điệp lỗi (tiếng Việt).</summary>
+    public string Message { get; }
+
+    /// <summary>Số lần đã thử gửi.</summary>
+    public int Attempts { get; }
+
+    /// <summary>Thời điểm thử gửi gần nhất.</summary>
+    public string LastAttemptText { get; }
+
+    /// <summary>Nhãn mã HTTP ("—" nếu không có phản hồi).</summary>
+    public string StatusCodeText => StatusCode > 0 ? $"HTTP {StatusCode}" : "Không phản hồi";
 
     private static CultureInfo CreateViCulture()
     {

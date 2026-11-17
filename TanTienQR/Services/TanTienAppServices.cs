@@ -1,4 +1,5 @@
 using ClassLibraryMT.Auth;
+using ClassLibraryMT.Checkee;
 using ClassLibraryMT.Communications.CodeReaderProtocol;
 using ClassLibraryMT.Communications.Plc;
 using ClassLibraryMT.Configuration;
@@ -17,7 +18,8 @@ namespace TanTienQR.Services;
 /// <summary>
 /// Đăng ký toàn bộ dịch vụ của TanTienQR vào DI container.
 ///
-/// KHÔNG đăng ký Checkee — dự án này không gọi API Checkee.
+/// KHÔNG đăng ký Checkee middleware API từ trước; từ phiên bản này đã có
+/// luồng gửi mã kích hoạt lên Checkee (xem <c>CheckeeSendWorker</c>).
 /// </summary>
 public static class TanTienAppServices
 {
@@ -55,6 +57,11 @@ public static class TanTienAppServices
         // toàn cục). Đăng ký sau AddProductionOrders vì ProductionOrderService
         // phụ thuộc IPoScanHistoryReader này.
         services.AddSingleton<IPoScanHistoryReader, PoScanHistoryReader>();
+
+        // ---- Checkee Middleware API: gửi mã kích hoạt định kỳ ----
+        // Đăng ký sau AddScanStore vì worker gửi mã đọc trạng thái gửi trong
+        // cùng bảng ScanRecords (logs/scans.db).
+        services.AddCheckee(configuration);
 
         // ---- Camera: bind cấu hình thủ công (tương thích Native AOT) ----
         services.AddOptions<CameraOptions>()
@@ -180,6 +187,11 @@ public static class TanTienAppServices
 
         // Worker gửi mã kích hoạt PO định kỳ (>2s/lần).
         services.AddHostedService<PoActivationWorker>();
+
+        // Worker gửi mã đã quét lên Checkee định kỳ (Checkee:SendIntervalMinutes).
+        // Đăng ký singleton + hosted service để UI đọc được trạng thái worker.
+        services.AddSingleton<CheckeeSendWorker>();
+        services.AddHostedService(sp => sp.GetRequiredService<CheckeeSendWorker>());
 
         // ---- Bộ đếm runtime (tab Dev) ----
         // Singleton: gom số liệu từ nhiều service, dùng Interlocked.

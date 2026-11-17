@@ -53,12 +53,19 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
     /// <summary>Tất cả PO đã có trong DB local (mới nhất trước).</summary>
     public ObservableCollection<ProductionOrderRowViewModel> Orders { get; } = [];
 
+    /// <summary>Danh sách PO sau khi áp dụng từ khoá tìm kiếm.</summary>
+    public ObservableCollection<ProductionOrderRowViewModel> FilteredOrders { get; } = [];
+
+    /// <summary>Từ khoá lọc danh sách PO (không phân biệt hoa thường).</summary>
+    [ObservableProperty]
+    public partial string SearchText { get; set; } = string.Empty;
+
     /// <summary>
-    /// Các PO có thể chọn để chạy (loại bỏ PO đã bị huỷ).
+    /// Các PO có thể chọn để chạy.
     ///
     /// <para>
-    /// PO đã huỷ vẫn hiện trong bảng quản lý <see cref="Orders"/> để người
-    /// dùng tra cứu, nhưng không được chọn để chạy lại.
+    /// PO đã huỷ hoặc đã hoàn tất vẫn hiện trong bảng quản lý
+    /// <see cref="Orders"/> để người dùng tra cứu, nhưng không được chọn để chạy lại.
     /// </para>
     /// </summary>
     public ObservableCollection<ProductionOrderRowViewModel> SelectableOrders { get; } = [];
@@ -67,6 +74,14 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
     /// True khi bảng danh sách PO đang trống (dùng cho trạng thái rỗng UI-016).
     /// </summary>
     public bool IsEmpty => Orders.Count == 0;
+
+    /// <summary>True khi có PO nhưng từ khoá tìm kiếm không khớp PO nào.</summary>
+    public bool HasNoSearchResults => Orders.Count > 0 && FilteredOrders.Count == 0;
+
+    /// <summary>Tóm tắt số PO đang hiển thị.</summary>
+    public string OrderCountText => SearchText?.Trim() is { Length: > 0 } keyword
+        ? $"{FilteredOrders.Count} / {Orders.Count} lệnh sản xuất (tìm “{keyword}”)"
+        : $"{Orders.Count} lệnh sản xuất";
 
     /// <summary>PO được chọn trong dropdown.</summary>
     [ObservableProperty]
@@ -107,16 +122,19 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
     [ObservableProperty]
     public partial bool IsHalted { get; set; }
 
-    /// <summary>True khi có thể bắt đầu sản xuất (có PO được chọn và chưa có PO chạy).</summary>
-    public bool CanStart => !IsBusy && !HasRunningOrder && !IsHalted && SelectedOrder is not null;
+    /// <summary>True khi có thể gửi kích hoạt thủ công (đang có PO chạy).</summary>
+    public bool CanActivate => !IsBusy && HasRunningOrder && !IsHalted;
+
+    /// <summary>
+    /// True khi có thể bắt đầu sản xuất (có PO hợp lệ được chọn và chưa có PO chạy).
+    /// </summary>
+    public bool CanStart =>
+        !IsBusy && !HasRunningOrder && !IsHalted && SelectedOrder?.CanRun == true;
 
     /// <summary>
     /// True khi có thể huỷ PO (đang có PO chạy, chưa chạy xong 100%).
     /// </summary>
     public bool CanCancel => !IsBusy && HasRunningOrder && !IsHalted;
-
-    /// <summary>True khi có thể gửi kích hoạt thủ công (đang có PO chạy).</summary>
-    public bool CanActivate => !IsBusy && HasRunningOrder && !IsHalted;
 
     /// <summary>
     /// True khi PO đang chạy đã quét đủ 100% (sẽ tự hoàn tất).
@@ -196,6 +214,15 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
         var order = SelectedOrder;
         if (order is null || IsBusy) return;
 
+        // Chặn ở ViewModel để PO đã huỷ/hoàn tất không thể chạy lại,
+        // kể cả khi trạng thái được chọn từ nguồn khác ngoài ComboBox.
+        if (!order.CanRun)
+        {
+            StatusMessage = $"PO {order.OrderNo} đã {order.StatusText.ToLowerInvariant()}, không thể chạy lại.";
+            IsStatusError = true;
+            return;
+        }
+
         IsBusy = true;
         StatusMessage = $"Đang bắt đầu sản xuất PO {order.OrderNo}...";
 
@@ -205,7 +232,7 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
             StatusMessage = ok
                 ? $"Đã bắt đầu sản xuất PO {order.OrderNo}."
                 : $"Không thể bắt đầu PO {order.OrderNo} " +
-                  "(đã có PO đang chạy, PO đã bị huỷ, hoặc PO chưa được cào về máy).";
+                  "(đã có PO đang chạy, PO đã kết thúc, hoặc PO chưa được cào về máy).";
 
             _actionLog.Log(
                 "Po.Start",
@@ -368,13 +395,14 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
 
             Orders.Clear();
             SelectableOrders.Clear();
+            FilteredOrders.Clear();
 
             foreach (var summary in summaries)
             {
                 var row = new ProductionOrderRowViewModel(summary);
                 Orders.Add(row);
 
-                if (!row.IsCancelled)
+                if (row.CanRun)
                 {
                     SelectableOrders.Add(row);
                 }
@@ -385,8 +413,40 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
                 p => string.Equals(p.OrderNo, previous, StringComparison.OrdinalIgnoreCase))
                 ?? SelectableOrders.FirstOrDefault();
 
+            ApplyFilter();
             OnPropertyChanged(nameof(IsEmpty));
+            OnPropertyChanged(nameof(HasNoSearchResults));
+            OnPropertyChanged(nameof(OrderCountText));
         });
+    }
+
+    /// <summary>
+    /// Lọc danh sách PO theo mã PO, trạng thái và các trường mở rộng
+    /// (tên sản phẩm, khách hàng...) nếu server có cung cấp.
+    /// </summary>
+    partial void OnSearchTextChanged(string value)
+    {
+        ApplyFilter();
+        OnPropertyChanged(nameof(OrderCountText));
+    }
+
+    /// <summary>Áp dụng từ khoá tìm kiếm cho danh sách tra cứu.</summary>
+    private void ApplyFilter()
+    {
+        var keyword = SearchText?.Trim() ?? string.Empty;
+
+        FilteredOrders.Clear();
+        foreach (var row in Orders)
+        {
+            if (keyword.Length == 0 || row.Matches(keyword))
+            {
+                FilteredOrders.Add(row);
+            }
+        }
+
+        OnPropertyChanged(nameof(IsEmpty));
+        OnPropertyChanged(nameof(HasNoSearchResults));
+        OnPropertyChanged(nameof(OrderCountText));
     }
 
     /// <summary>Cập nhật trạng thái PO đang chạy lên UI.</summary>
@@ -503,6 +563,36 @@ internal sealed class ProductionOrderRowViewModel : ViewModelBase
 
     /// <summary>True khi PO đã bị huỷ (badge đỏ — không được chạy lại).</summary>
     public bool IsCancelled => _summary.Status == ProductionOrderStatus.Cancelled;
+
+    /// <summary>
+    /// True khi PO còn được phép bắt đầu sản xuất.
+    /// PO đã huỷ hoặc đã hoàn tất chỉ dùng để tra cứu.
+    /// </summary>
+    public bool CanRun => !IsCancelled && !IsCompleted;
+
+    /// <summary>
+    /// Kiểm tra PO có khớp từ khoá tìm kiếm hay không.
+    /// Tìm trong mã PO, trạng thái và các trường mở rộng do server gửi.
+    /// </summary>
+    public bool Matches(string keyword)
+    {
+        if (string.IsNullOrWhiteSpace(keyword)) return true;
+
+        if (OrderNo.Contains(keyword, StringComparison.OrdinalIgnoreCase)
+            || StatusText.Contains(keyword, StringComparison.OrdinalIgnoreCase)
+            || ProgressText.Contains(keyword, StringComparison.OrdinalIgnoreCase)
+            || CreatedText.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return AdditionalValues.Any(value =>
+            value.Contains(keyword, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Các giá trị trường mở rộng của PO (tên sản phẩm, khách hàng...).</summary>
+    public IEnumerable<string> AdditionalValues =>
+        _summary.Order.Additional?.Values ?? Enumerable.Empty<string>();
 
     /// <summary>Nạp lại thông tin từ service (khi PO đổi trạng thái).</summary>
     public void Refresh()

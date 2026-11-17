@@ -66,6 +66,9 @@ public static class ScanServiceCollectionExtensions
         services.TryAddSingleton<IScanRecordWriter, ScanRecordWriter>();
         services.TryAddSingleton<IScanRecordQuery, ScanRecordQuery>();
 
+        // Trạng thái gửi mã lên Checkee (dùng chung bảng ScanRecords).
+        services.TryAddSingleton<IScanSendStatusStore, ScanSendStatusStore>();
+
         return services;
     }
 }

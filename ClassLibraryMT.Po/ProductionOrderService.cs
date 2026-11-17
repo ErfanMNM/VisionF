@@ -143,6 +143,22 @@ public sealed class ProductionOrderService
     /// </summary>
     public bool IsHalted => _halted;
 
+    /// <summary>
+    /// PO vừa kết thúc (đã hoàn tất hoặc đã huỷ) — giữ lại để UI hiển thị
+    /// thông tin lần chạy vừa rồi thay vì trống trơn.
+    /// </summary>
+    public ProductionOrder? LastFinishedOrder { get; private set; }
+
+    /// <summary>Trạng thái của <see cref="LastFinishedOrder"/>.</summary>
+    public ProductionOrderStatus LastFinishedStatus { get; private set; } =
+        ProductionOrderStatus.Available;
+
+    /// <summary>Số mã đã quét của PO vừa kết thúc.</summary>
+    public int LastFinishedScannedCount { get; private set; }
+
+    /// <summary>Tổng số mã của PO vừa kết thúc.</summary>
+    public int LastFinishedTotalCount { get; private set; }
+
     /// <summary>Số mã đã quét của PO đang chạy.</summary>
     public int ScannedCount => _cache.ScannedCount;
 
@@ -225,9 +241,13 @@ public sealed class ProductionOrderService
                     OrderNo = local.OrderNo,
                     OrderQty = local.OrderQty,
                     CreatedUtc = local.CreatedUtc,
+                    Additional = local.Additional,
                 },
                 local.ScannedCodes,
-                local.Status));
+                local.Status,
+                local.StartedUtc,
+                local.CompletedUtc,
+                local.CancelledUtc));
         }
 
         return result;
@@ -273,11 +293,11 @@ public sealed class ProductionOrderService
             return false;
         }
 
-        // PO đã bị huỷ → không được chạy lại.
-        if (local.IsCancelled)
+        // PO đã kết thúc vòng sản xuất (đã huỷ hoặc đã hoàn tất) → không được chạy lại.
+        if (local.Status is ProductionOrderStatus.Cancelled or ProductionOrderStatus.Completed)
         {
             _logger?.LogWarning(
-                "PO {OrderNo} đã bị huỷ, không được chạy lại.", orderNo);
+                "PO {OrderNo} đã {Status}, không được chạy lại.", orderNo, local.Status);
             return false;
         }
 
@@ -353,6 +373,12 @@ public sealed class ProductionOrderService
 
         await _history.CompleteRunAsync(order.OrderNo, ct).ConfigureAwait(false);
 
+        // Ghi nhớ PO vừa hoàn tất để UI vẫn hiện thông tin lần chạy cuối.
+        LastFinishedOrder = order;
+        LastFinishedStatus = ProductionOrderStatus.Completed;
+        LastFinishedScannedCount = _cache.ScannedCount;
+        LastFinishedTotalCount = _cache.ValidCount;
+
         lock (_gate)
         {
             _current = null;
@@ -426,6 +452,12 @@ public sealed class ProductionOrderService
             .ConfigureAwait(false);
         await _history.CancelRunAsync(target.OrderNo, ct).ConfigureAwait(false);
 
+        // Ghi nhớ PO vừa huỷ để UI vẫn hiện thông tin lần chạy cuối.
+        LastFinishedOrder = target;
+        LastFinishedStatus = ProductionOrderStatus.Cancelled;
+        LastFinishedScannedCount = _cache.ScannedCount;
+        LastFinishedTotalCount = _cache.ValidCount;
+
         lock (_gate)
         {
             if (_current is not null
@@ -472,10 +504,10 @@ public sealed class ProductionOrderService
             return false;
         }
 
-        if (local.IsCancelled)
+        if (local.Status is ProductionOrderStatus.Cancelled or ProductionOrderStatus.Completed)
         {
             _logger?.LogInformation(
-                "PO {OrderNo} đã bị huỷ, không khôi phục.", run.OrderNo);
+                "PO {OrderNo} đã {Status}, không khôi phục.", run.OrderNo, local.Status);
             return false;
         }
 
@@ -814,10 +846,16 @@ public sealed class ProductionOrderService
 /// <param name="Order">Thông tin PO gốc.</param>
 /// <param name="ScannedCount">Số mã đã quét.</param>
 /// <param name="Status">Trạng thái PO.</param>
+/// <param name="StartedUtc">Thời điểm bắt đầu (null nếu chưa bắt đầu).</param>
+/// <param name="CompletedUtc">Thời điểm hoàn tất (null nếu chưa hoàn tất).</param>
+/// <param name="CancelledUtc">Thời điểm huỷ (null nếu chưa huỷ).</param>
 public sealed record ProductionOrderSummary(
     ProductionOrder Order,
     int ScannedCount,
-    ProductionOrderStatus Status)
+    ProductionOrderStatus Status,
+    DateTime? StartedUtc = null,
+    DateTime? CompletedUtc = null,
+    DateTime? CancelledUtc = null)
 {
     /// <summary>Mã PO.</summary>
     public string OrderNo => Order.OrderNo;

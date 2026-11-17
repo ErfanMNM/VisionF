@@ -15,6 +15,7 @@ namespace ClassLibraryMT.Po;
 [JsonSerializable(typeof(PoActivateResult))]
 [JsonSerializable(typeof(ProductionOrder))]
 [JsonSerializable(typeof(PoCode))]
+[JsonSerializable(typeof(Dictionary<string, string>))]
 public sealed partial class PoJsonContext : JsonSerializerContext
 {
 }

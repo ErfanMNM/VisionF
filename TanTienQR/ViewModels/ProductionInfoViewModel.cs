@@ -77,6 +77,7 @@ internal sealed partial class ProductionInfoViewModel : ViewModelBase, IDisposab
     {
         "Đang chạy" => "running",
         "Hoàn tất" => "warning",
+        "Đã huỷ" => "fault",
         _ => "",
     };
 
@@ -110,6 +111,10 @@ internal sealed partial class ProductionInfoViewModel : ViewModelBase, IDisposab
     /// <summary>True khi chưa tải được PO nào từ server.</summary>
     public bool HasNoOrders => Orders.Orders.Count == 0;
 
+    /// <summary>True khi có PO nhưng tất cả đều đã huỷ hoặc hoàn tất.</summary>
+    public bool HasNoRunnableOrders =>
+        Orders.Orders.Count > 0 && Orders.SelectableOrders.Count == 0;
+
     /// <summary>Chuỗi mô tả trạng thái thao tác (đồng bộ với tab PO).</summary>
     public string StatusMessage => Orders.StatusMessage;
 
@@ -141,6 +146,12 @@ internal sealed partial class ProductionInfoViewModel : ViewModelBase, IDisposab
     /// <summary>True khi sản xuất đã hoàn tất (dùng cho timeline).</summary>
     public bool HasCompleted => CompletedText != "—";
 
+    /// <summary>True khi PO vừa kết thúc đã bị huỷ (badge đỏ).</summary>
+    public bool IsCancelled => StatusText == "Đã huỷ";
+
+    /// <summary>True khi PO vừa kết thúc đã hoàn tất (badge vàng).</summary>
+    public bool IsCompleted => StatusText == "Hoàn tất";
+
     /// <summary>
     /// Trạng thái từng ô trong thanh tiến trình 24 ô (mẫu Dashboard 4).
     /// Mỗi phần tử là <c>true</c> nếu ô đó đã "chạy" (đã quét), ngược lại <c>false</c>.
@@ -171,34 +182,44 @@ internal sealed partial class ProductionInfoViewModel : ViewModelBase, IDisposab
     /// </summary>
     public void Refresh()
     {
-        var order = _po.CurrentOrder;
+        var running = _po.CurrentOrder;
 
-        if (order is null)
+        // Không có PO đang chạy -> hiện PO vừa kết thúc (hoàn tất / huỷ)
+        // để người dùng vẫn thấy kết quả lần chạy vừa rồi.
+        if (running is null)
         {
-            OrderNoText = "—";
-            OrderQtyText = "0";
-            ScannedText = "0";
-            ProgressPercent = 0;
-            StatusText = "Chưa bắt đầu";
-            StartedText = "—";
-            CompletedText = "—";
-            CreatedText = "—";
-            IsRunning = false;
-            SegmentStates = CreateSegments(0);
-            OnPropertyChanged(nameof(ProgressText));
-            OnPropertyChanged(nameof(ProgressPercentText));
-            OnPropertyChanged(nameof(StatusBadgeClass));
-            OnPropertyChanged(nameof(IsEmpty));
-            OnPropertyChanged(nameof(SegmentStates));
-            OnPropertyChanged(nameof(FilledSegmentCount));
+            var finished = _po.LastFinishedOrder;
+            if (finished is null)
+            {
+                OrderNoText = "—";
+                OrderQtyText = "0";
+                ScannedText = "0";
+                ProgressPercent = 0;
+                StatusText = "Chưa bắt đầu";
+                StartedText = "—";
+                CompletedText = "—";
+                CreatedText = "—";
+                IsRunning = false;
+                SegmentStates = CreateSegments(0);
+                OnPropertyChanged(nameof(ProgressText));
+                OnPropertyChanged(nameof(ProgressPercentText));
+                OnPropertyChanged(nameof(StatusBadgeClass));
+                OnPropertyChanged(nameof(IsEmpty));
+                OnPropertyChanged(nameof(SegmentStates));
+                OnPropertyChanged(nameof(FilledSegmentCount));
+                RaiseSelectionStateChanged();
+                return;
+            }
+
+            ApplyFinishedOrder(finished);
             RaiseSelectionStateChanged();
             return;
         }
 
-        OrderNoText = order.OrderNo;
+        OrderNoText = running.OrderNo;
         OrderQtyText = _po.TotalCount > 0
             ? _po.TotalCount.ToString(CultureInfo.InvariantCulture)
-            : order.OrderQty.ToString(CultureInfo.InvariantCulture);
+            : running.OrderQty.ToString(CultureInfo.InvariantCulture);
         ScannedText = _po.ScannedCount.ToString(CultureInfo.InvariantCulture);
         ProgressPercent = _po.TotalCount > 0
             ? Math.Round(_po.ScannedCount * 100.0 / _po.TotalCount, 1)
@@ -213,13 +234,11 @@ internal sealed partial class ProductionInfoViewModel : ViewModelBase, IDisposab
         };
 
         IsRunning = _po.IsProductionRunning;
-        CreatedText = order.CreatedUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm", ViCulture);
+        CreatedText = running.CreatedUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm", ViCulture);
         StartedText = IsRunning
             ? DateTime.UtcNow.ToLocalTime().ToString("dd/MM/yyyy HH:mm", ViCulture)
             : "—";
-        CompletedText = _po.CurrentStatus == ProductionOrderStatus.Completed
-            ? DateTime.UtcNow.ToLocalTime().ToString("dd/MM/yyyy HH:mm", ViCulture)
-            : "—";
+        CompletedText = "—";
 
         OnPropertyChanged(nameof(ProgressText));
         OnPropertyChanged(nameof(ProgressPercentText));
@@ -232,12 +251,48 @@ internal sealed partial class ProductionInfoViewModel : ViewModelBase, IDisposab
     }
 
     /// <summary>
+    /// Hiển thị thông tin PO vừa kết thúc (hoàn tất hoặc đã huỷ).
+    /// </summary>
+    private void ApplyFinishedOrder(ClassLibraryMT.Po.ProductionOrder finished)
+    {
+        OrderNoText = finished.OrderNo;
+        OrderQtyText = (_po.LastFinishedTotalCount > 0
+            ? _po.LastFinishedTotalCount
+            : finished.OrderQty).ToString(CultureInfo.InvariantCulture);
+        ScannedText = _po.LastFinishedScannedCount.ToString(CultureInfo.InvariantCulture);
+        ProgressPercent = _po.LastFinishedTotalCount > 0
+            ? Math.Round(_po.LastFinishedScannedCount * 100.0 / _po.LastFinishedTotalCount, 1)
+            : 0;
+
+        StatusText = _po.LastFinishedStatus switch
+        {
+            ProductionOrderStatus.Completed => "Hoàn tất",
+            ProductionOrderStatus.Cancelled => "Đã huỷ",
+            _ => "Chưa bắt đầu",
+        };
+
+        IsRunning = false;
+        CreatedText = finished.CreatedUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm", ViCulture);
+        StartedText = "—";
+        CompletedText = DateTime.UtcNow.ToLocalTime().ToString("dd/MM/yyyy HH:mm", ViCulture);
+
+        OnPropertyChanged(nameof(ProgressText));
+        OnPropertyChanged(nameof(ProgressPercentText));
+        OnPropertyChanged(nameof(StatusBadgeClass));
+        OnPropertyChanged(nameof(IsEmpty));
+        SegmentStates = CreateSegments(FilledSegmentCount);
+        OnPropertyChanged(nameof(SegmentStates));
+        OnPropertyChanged(nameof(FilledSegmentCount));
+    }
+
+    /// <summary>
     /// Báo UI cập nhật các thuộc tính phụ thuộc vào ViewModel PO dùng chung
     /// (danh sách PO, PO đang chọn, trạng thái nút bấm).
     /// </summary>
     private void RaiseSelectionStateChanged()
     {
         OnPropertyChanged(nameof(HasNoOrders));
+        OnPropertyChanged(nameof(HasNoRunnableOrders));
         OnPropertyChanged(nameof(StatusMessage));
         OnPropertyChanged(nameof(IsStatusError));
         OnPropertyChanged(nameof(CanStart));
@@ -247,6 +302,8 @@ internal sealed partial class ProductionInfoViewModel : ViewModelBase, IDisposab
         OnPropertyChanged(nameof(SelectedOrderNoText));
         OnPropertyChanged(nameof(HasStarted));
         OnPropertyChanged(nameof(HasCompleted));
+        OnPropertyChanged(nameof(IsCancelled));
+        OnPropertyChanged(nameof(IsCompleted));
     }
 
     /// <summary>

@@ -45,6 +45,9 @@ public sealed class PoStore
     /// <summary>Key lưu tổng số mã của PO.</summary>
     public const string MetaOrderQty = "orderQty";
 
+    /// <summary>Key lưu các trường mở rộng của PO dưới dạng JSON.</summary>
+    public const string MetaAdditional = "additional";
+
     private readonly string _dbRoot;
 
     /// <summary>
@@ -130,8 +133,8 @@ public sealed class PoStore
             await meta.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
 
-        await SetMetaAsync(connection, MetaStatus, ProductionOrderStatus.Downloaded.ToString(), ct)
-            .ConfigureAwait(false);
+        // Giữ nguyên trạng thái local đã có (Running/Completed/Cancelled).
+        // Tải lại PO từ server không được làm mất trạng thái huỷ hoặc hoàn tất.
         await SetMetaAsync(connection, MetaCreatedUtc, order.CreatedUtc.ToString("O"), ct)
             .ConfigureAwait(false);
 
@@ -139,6 +142,18 @@ public sealed class PoStore
         // được cập nhật lại mỗi lần cào).
         await SetMetaAsync(connection, MetaOrderQty, order.OrderQty.ToString(), ct)
             .ConfigureAwait(false);
+
+        // Lưu các trường mở rộng (tên sản phẩm, khách hàng...) để hỗ trợ tìm kiếm.
+        if (order.Additional is { Count: > 0 })
+        {
+            await SetMetaAsync(
+                connection,
+                MetaAdditional,
+                System.Text.Json.JsonSerializer.Serialize(
+                    order.Additional,
+                    PoJsonContext.Default.DictionaryStringString),
+                ct).ConfigureAwait(false);
+        }
 
         // Insert tập mã (bỏ qua mã đã tồn tại — idempotent).
         if (codes.Count > 0)
@@ -194,6 +209,7 @@ public sealed class PoStore
                 DateTime? startedUtc = null;
                 DateTime? completedUtc = null;
                 DateTime? cancelledUtc = null;
+                Dictionary<string, string> additional = [];
 
                 await using (var meta = connection.CreateCommand())
                 {
@@ -218,6 +234,8 @@ public sealed class PoStore
                             completedUtc = ParseUtc(value);
                         else if (string.Equals(key, MetaCancelledUtc, StringComparison.OrdinalIgnoreCase))
                             cancelledUtc = ParseUtc(value);
+                        else if (string.Equals(key, MetaAdditional, StringComparison.OrdinalIgnoreCase))
+                            additional = ParseAdditional(value);
                     }
                 }
 
@@ -257,6 +275,7 @@ public sealed class PoStore
                     TotalCodes = totalCodes,
                     ScannedCodes = scannedCodes,
                     DbPath = file,
+                    Additional = additional,
                 });
             }
             catch (Exception)
@@ -698,6 +717,25 @@ public sealed class PoStore
         Enum.TryParse<ProductionOrderStatus>(value, ignoreCase: true, out var status)
             ? status
             : ProductionOrderStatus.Downloaded;
+
+    /// <summary>
+    /// Parse JSON các trường mở rộng của PO; dữ liệu hỏng thì bỏ qua.
+    /// </summary>
+    private static Dictionary<string, string> ParseAdditional(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return [];
+
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize(
+                value,
+                PoJsonContext.Default.DictionaryStringString) ?? [];
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return [];
+        }
+    }
 }
 
 /// <summary>
@@ -734,6 +772,9 @@ public sealed class LocalPoInfo
 
     /// <summary>Đường dẫn file DB của PO.</summary>
     public string DbPath { get; set; } = string.Empty;
+
+    /// <summary>Các trường mở rộng của PO (tên sản phẩm, khách hàng...).</summary>
+    public Dictionary<string, string> Additional { get; set; } = [];
 
     /// <summary>True khi PO đã bị huỷ (không được chạy lại).</summary>
     public bool IsCancelled => Status == ProductionOrderStatus.Cancelled;

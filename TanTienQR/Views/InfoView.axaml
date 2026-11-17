@@ -337,6 +337,19 @@
                                    TextWrapping="Wrap"
                                    Text="Chưa có lệnh sản xuất nào. Bấm “Tải PO” để lấy danh sách từ server." />
                     </StackPanel>
+
+                    <!-- Có PO nhưng tất cả đã huỷ/hoàn tất -> không còn PO để chạy. -->
+                    <StackPanel Spacing="4"
+                                IsVisible="{Binding ProductionInfo.HasNoRunnableOrders}">
+                        <TextBlock Text="Không có PO để chạy"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextMuted}" />
+                        <TextBlock Classes="label"
+                                   FontSize="12"
+                                   TextWrapping="Wrap"
+                                   Text="Tất cả PO đã tải về đều hoàn tất hoặc đã huỷ. Hãy tải PO mới từ server." />
+                    </StackPanel>
                 </StackPanel>
             </Border>
 
@@ -379,6 +392,8 @@
                         <Border Grid.Column="1"
                                 Classes="badge"
                                 Classes.running="{Binding ProductionInfo.IsRunning}"
+                                Classes.warning="{Binding ProductionInfo.IsCompleted}"
+                                Classes.fault="{Binding ProductionInfo.IsCancelled}"
                                 VerticalAlignment="Center"
                                 Padding="12,4"
                                 CornerRadius="14">

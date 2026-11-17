@@ -1,3 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:TanTienQR.ViewModels"
@@ -7,8 +8,8 @@
              x:Class="TanTienQR.Views.ProductionOrdersView"
              x:DataType="vm:MainViewModel">
 
-    <!-- Bố cục theo mẫu Dashboard 4: tiêu đề lớn + panel bo góc 16px,
-         header bảng nền #F8F9FB với chữ overline, bo góc card nhỏ 14px. -->
+    <!-- Trang chỉ để tra cứu: tải PO từ server, tìm kiếm và xem lịch sử.
+         Việc chạy PO nằm ở tab "Thông tin sản xuất". -->
     <Grid RowDefinitions="Auto,Auto,*" Margin="18,6,18,18" RowSpacing="12">
 
         <!-- Tiêu đề -->
@@ -18,7 +19,7 @@
                            Classes="pageTitle" />
                 <TextBlock Classes="label"
                            FontSize="13"
-                           Text="Quản lý lệnh sản xuất (PO) tải từ server — bắt đầu, hoàn tất và gửi mã kích hoạt." />
+                           Text="Tra cứu toàn bộ lệnh sản xuất đã tải về máy, gồm cả PO đang chạy, hoàn tất hoặc đã huỷ." />
             </StackPanel>
 
             <Button Grid.Column="1"
@@ -43,89 +44,40 @@
             </Button>
         </Grid>
 
-        <!-- Card PO đang chạy + thanh thao tác -->
-        <Border Grid.Row="1" Classes="panel" Padding="16,14">
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+        <!-- Thanh tìm kiếm + trạng thái đồng bộ -->
+        <Border Grid.Row="1" Classes="filterBar" Padding="14,12">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12" VerticalAlignment="Center">
+                <TextBox Classes="field"
+                         MinWidth="0"
+                         Height="42"
+                         HorizontalAlignment="Stretch"
+                         VerticalContentAlignment="Center"
+                         FontSize="14"
+                         PlaceholderText="Tìm theo mã PO, trạng thái, tên sản phẩm hoặc khách hàng..."
+                         Text="{Binding ProductionOrders.SearchText}">
+                    <TextBox.InnerLeftContent>
+                        <Path Width="17" Height="17"
+                              Margin="12,0,0,0"
+                              VerticalAlignment="Center"
+                              Stroke="{StaticResource TextMuted}"
+                              Data="{StaticResource Icon.Search}" />
+                    </TextBox.InnerLeftContent>
+                </TextBox>
 
-                <StackPanel Spacing="8">
-                    <StackPanel Orientation="Horizontal" Spacing="14">
-                        <TextBlock Classes="overline"
-                                   FontSize="14"
-                                   Foreground="{StaticResource TextPrimary}"
-                                   Text="PO ĐANG CHẠY" />
-                        <TextBlock Classes="mono" FontSize="15" FontWeight="Bold"
-                                   Foreground="{StaticResource TextPrimary}"
-                                   VerticalAlignment="Center"
-                                   Text="{Binding ProductionOrders.RunningOrderNoText}" />
-                        <TextBlock Classes="label" VerticalAlignment="Center"
-                                   Text="{Binding ProductionOrders.RunningProgressText, StringFormat='Đã quét: {0}'}" />
-                    </StackPanel>
-                    <TextBlock Classes="label" FontSize="12"
-                               Classes.statusError="{Binding ProductionOrders.IsStatusError}"
-                               TextWrapping="Wrap"
-                               Text="{Binding ProductionOrders.StatusMessage}" />
-                </StackPanel>
-
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <Button Classes="primary"
-                            Height="44" MinWidth="140" Padding="16,0"
-                            HorizontalContentAlignment="Center"
-                            VerticalContentAlignment="Center"
-                            IsEnabled="{Binding ProductionOrders.CanStart}"
-                            Command="{Binding ProductionOrders.StartProductionCommand}">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Path Width="15" Height="15"
-                                  Stretch="Uniform"
-                                  Fill="White"
-                                  Data="{StaticResource Icon.Play}" />
-                            <TextBlock Text="Bắt đầu sản xuất" Foreground="White" />
-                        </StackPanel>
-                    </Button>
-
-                    <!-- PO đủ 100% thì tự hoàn tất — chỉ hiện nút Huỷ khi chưa đủ -->
-                    <Button Classes="soft"
-                            Height="44" MinWidth="130" Padding="16,0"
-                            HorizontalContentAlignment="Center"
-                            VerticalContentAlignment="Center"
-                            IsVisible="{Binding ProductionOrders.CanCancel}"
-                            IsEnabled="{Binding ProductionOrders.CanCancel}"
-                            Command="{Binding ProductionOrders.CancelProductionCommand}">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Path Width="15" Height="15"
-                                  Stretch="Uniform"
-                                  Stroke="{StaticResource Danger}"
-                                  StrokeThickness="2.4"
-                                  StrokeLineCap="Round"
-                                  StrokeJoin="Round"
-                                  Data="{StaticResource Icon.Close}" />
-                            <TextBlock Text="Huỷ PO" Foreground="{StaticResource Danger}" />
-                        </StackPanel>
-                    </Button>
-
-                    <Button Classes="soft"
-                            Height="44" MinWidth="130" Padding="14,0"
-                            HorizontalContentAlignment="Center"
-                            VerticalContentAlignment="Center"
-                            IsEnabled="{Binding ProductionOrders.CanActivate}"
-                            Command="{Binding ProductionOrders.ActivatePendingCommand}">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Path Width="15" Height="15"
-                                  Stretch="Uniform"
-                                  Stroke="{StaticResource TextPrimary}"
-                                  StrokeThickness="2"
-                                  StrokeLineCap="Round"
-                                  StrokeJoin="Round"
-                                  Data="{StaticResource Icon.Upload}" />
-                            <TextBlock Text="Gửi kích hoạt" />
-                        </StackPanel>
-                    </Button>
-                </StackPanel>
+                <TextBlock Grid.Column="1"
+                           Classes="label"
+                           FontSize="12"
+                           MaxWidth="420"
+                           VerticalAlignment="Center"
+                           TextWrapping="Wrap"
+                           Classes.statusError="{Binding ProductionOrders.IsStatusError}"
+                           Text="{Binding ProductionOrders.StatusMessage}" />
             </Grid>
         </Border>
 
         <!-- Bảng danh sách PO -->
         <Border Grid.Row="2" Classes="panel" Padding="0">
-            <Grid RowDefinitions="Auto,Auto,*">
+            <Grid RowDefinitions="Auto,*">
 
                 <!-- Header -->
                 <Grid Grid.Row="0" ColumnDefinitions="Auto,*" ColumnSpacing="10" Margin="20,12">
@@ -146,32 +98,11 @@
                                Classes="label"
                                VerticalAlignment="Center"
                                TextTrimming="CharacterEllipsis"
-                               Text="{Binding ProductionOrders.StatusMessage}" />
-                </Grid>
-
-                <!-- Chọn PO -->
-                <Grid Grid.Row="1" ColumnDefinitions="Auto,*" ColumnSpacing="10" Margin="20,0,20,10">
-                    <TextBlock Classes="overline" FontSize="11"
-                               VerticalAlignment="Center"
-                               Text="CHỌN LỆNH SẢN XUẤT" />
-                    <ComboBox Grid.Column="1"
-                              Classes="field"
-                              MinHeight="48"
-                              HorizontalAlignment="Stretch"
-                              VerticalAlignment="Center"
-                              ItemsSource="{Binding ProductionOrders.SelectableOrders}"
-                              SelectedItem="{Binding ProductionOrders.SelectedOrder}"
-                              PlaceholderText="Chọn PO để bắt đầu sản xuất...">
-                        <ComboBox.ItemTemplate>
-                            <DataTemplate x:DataType="vm:ProductionOrderRowViewModel">
-                                <TextBlock Text="{Binding OrderNo}" />
-                            </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                    </ComboBox>
+                               Text="{Binding ProductionOrders.OrderCountText}" />
                 </Grid>
 
                 <!-- Dữ liệu -->
-                <Grid Grid.Row="2" RowDefinitions="Auto,*" RowSpacing="0">
+                <Grid Grid.Row="1" RowDefinitions="Auto,*" RowSpacing="0">
                     <!-- Header cột + dữ liệu: CÙNG CHUNG BỀ RỘNG (UI-002)
                          Header dùng Margin="20,0" ở cấp Grid, dữ liệu dùng Margin
                          ở cấp từng dòng => 2 hệ toạ độ lệch nhau.
@@ -219,7 +150,7 @@
                     <ScrollViewer Grid.Row="1"
                                   HorizontalScrollBarVisibility="Disabled"
                                   VerticalScrollBarVisibility="Auto">
-                        <ItemsControl ItemsSource="{Binding ProductionOrders.Orders}">
+                        <ItemsControl ItemsSource="{Binding ProductionOrders.FilteredOrders}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:ProductionOrderRowViewModel">
                                     <Border BorderBrush="{StaticResource LineColor}"
@@ -283,6 +214,36 @@
                                    FontSize="13"
                                    HorizontalAlignment="Center"
                                    Text="Bấm “Tải PO từ server” để lấy danh sách lệnh sản xuất." />
+                    </StackPanel>
+
+                    <!-- Không có kết quả tìm kiếm -->
+                    <StackPanel Grid.Row="1"
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Center"
+                                Spacing="10"
+                                IsVisible="{Binding ProductionOrders.HasNoSearchResults}">
+                        <Border Width="52" Height="52"
+                                CornerRadius="16"
+                                Background="{StaticResource BgRaised}">
+                            <Path Width="24" Height="24"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center"
+                                  Stretch="Uniform"
+                                  Stroke="{StaticResource TextMuted}"
+                                  StrokeThickness="1.6"
+                                  StrokeLineCap="Round"
+                                  StrokeJoin="Round"
+                                  Data="{StaticResource Icon.Search}" />
+                        </Border>
+                        <TextBlock Text="Không tìm thấy lệnh sản xuất"
+                                   FontSize="15"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextMuted}"
+                                   HorizontalAlignment="Center" />
+                        <TextBlock Classes="label"
+                                   FontSize="13"
+                                   HorizontalAlignment="Center"
+                                   Text="Hãy thử mã PO, trạng thái, tên sản phẩm hoặc khách hàng khác." />
                     </StackPanel>
                 </Grid>
             </Grid>
