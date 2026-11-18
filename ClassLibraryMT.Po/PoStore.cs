@@ -50,6 +50,7 @@ public sealed class PoStore
     public const string MetaAdditional = "additional";
 
     private readonly string _dbRoot;
+    private readonly SemaphoreSlim _mutationGate = new(1, 1);
 
     /// <summary>
     /// Khởi tạo store.
@@ -62,6 +63,23 @@ public sealed class PoStore
 
     /// <summary>Thư mục gốc đang dùng.</summary>
     public string DbRoot => _dbRoot;
+
+    /// <summary>
+    /// Khóa thao tác đổi trạng thái sản xuất và nhận/merge PO. Dùng chung để
+    /// một lần nhận không thể chen vào giữa lúc bắt đầu hoặc kết thúc sản xuất.
+    /// </summary>
+    public async ValueTask<IDisposable> AcquireMutationLockAsync(CancellationToken ct = default)
+    {
+        await _mutationGate.WaitAsync(ct).ConfigureAwait(false);
+        return new MutationGateLease(_mutationGate);
+    }
+
+    private sealed class MutationGateLease(SemaphoreSlim gate) : IDisposable
+    {
+        private SemaphoreSlim? _gate = gate;
+
+        public void Dispose() => Interlocked.Exchange(ref _gate, null)?.Release();
+    }
 
     /// <summary>
     /// Tính đường dẫn file DB cho một PO (chưa tạo file).
@@ -110,7 +128,7 @@ public sealed class PoStore
     }
 
     /// <summary>
-    /// Tìm các mã đã tồn tại trong PO KHÁC trên máy.
+    /// Tìm mã đã tồn tại trong mọi PO trên máy, trừ PO được chỉ định loại trừ.
     ///
     /// <para>
     /// So khớp theo <b>khoá chuẩn</b> <c>"{Gtin}|{Serial}"</c> — đúng cách
@@ -123,7 +141,7 @@ public sealed class PoStore
     /// <b>Hiệu năng:</b> không nạp toàn bộ mã vào RAM. Mỗi file DB PO được
     /// <c>ATTACH</c> vào một connection và so khớp theo từng lô khoá (mặc định
     /// 400 khoá/lô) qua index <c>IX_PoCodes_Serial</c> + biểu thức
-    /// <c>Gtin || '|' || Serial</c>. Chỉ giữ lại tối đa vài mã ví dụ trong RAM.
+    /// <c>Gtin || '|' || Serial</c>. Chỉ giữ các khóa trùng thuộc request và vài ví dụ.
     /// </para>
     /// </summary>
     /// <param name="codeKeys">
@@ -161,7 +179,7 @@ public sealed class PoStore
 
         var exclude = excludeOrderNo?.Trim() ?? string.Empty;
         var samples = new List<string>();
-        var total = 0;
+        var duplicateKeys = new HashSet<string>(StringComparer.Ordinal);
         var firstOwner = string.Empty;
 
         // Danh sách file DB PO cần so khớp (bỏ qua file của chính PO đang kiểm tra).
@@ -258,57 +276,38 @@ public sealed class PoStore
                     await attach.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
                 }
             }
-            catch (Exception)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // File hỏng / không mở được -> bỏ qua, không làm hỏng cả lượt kiểm tra.
-                continue;
+                throw new IOException($"Không thể kiểm tra mã trùng trong file PO '{file}'.", ex);
             }
 
             try
             {
-                // Đếm số mã trùng + lấy PO đang chứa chúng.
+                // Lấy mọi khóa trùng để PO nhận lại chỉ thêm phần mã mới.
                 await using (var query = connection.CreateCommand())
                 {
                     query.CommandText = $"""
-                        SELECT COUNT(*)
+                        SELECT DISTINCT c.Gtin || '|' || c.Serial, c.Serial
                         FROM {alias}.PoCodes AS c
                         INNER JOIN ProbeKeys AS p
                             ON p.Key = c.Gtin || '|' || c.Serial;
                         """;
-                    var count = Convert.ToInt32(
-                        await query.ExecuteScalarAsync(ct).ConfigureAwait(false),
-                        System.Globalization.CultureInfo.InvariantCulture);
-                    total += count;
-                }
-
-                if (total > 0 && samples.Count < maxSamples)
-                {
-                    await using (var query = connection.CreateCommand())
+                    await using var reader = await query.ExecuteReaderAsync(ct).ConfigureAwait(false);
+                    while (await reader.ReadAsync(ct).ConfigureAwait(false))
                     {
-                        query.CommandText = $"""
-                            SELECT c.Gtin || '|' || c.Serial, c.Serial
-                            FROM {alias}.PoCodes AS c
-                            INNER JOIN ProbeKeys AS p
-                                ON p.Key = c.Gtin || '|' || c.Serial
-                            LIMIT $limit;
-                            """;
-                        query.Parameters.AddWithValue("$limit", maxSamples);
+                        var key = reader.GetString(0);
+                        if (!duplicateKeys.Add(key))
+                            continue;
 
-                        await using var reader = await query.ExecuteReaderAsync(ct).ConfigureAwait(false);
-                        while (await reader.ReadAsync(ct).ConfigureAwait(false))
+                        if (samples.Count < maxSamples)
                         {
-                            if (samples.Count >= maxSamples)
-                            {
-                                break;
-                            }
-
-                            samples.Add(reader.GetString(0));
+                            samples.Add(key);
                         }
                     }
                 }
 
                 // Tên PO chứa mã trùng (lấy từ PoMeta của file đó).
-                if (total > 0 && string.IsNullOrEmpty(firstOwner))
+                if (duplicateKeys.Count > 0 && string.IsNullOrEmpty(firstOwner))
                 {
                     await using (var query = connection.CreateCommand())
                     {
@@ -321,9 +320,9 @@ public sealed class PoStore
                     }
                 }
             }
-            catch (Exception)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // Bảng PoCodes không tồn tại (file rác) -> bỏ qua.
+                throw new IOException($"Không thể đọc mã trong file PO '{file}'.", ex);
             }
             finally
             {
@@ -338,19 +337,14 @@ public sealed class PoStore
                     // Bỏ qua lỗi DETACH.
                 }
             }
-
-            // Đã tìm thấy mã trùng -> dừng sớm, không cần quét hết các PO.
-            if (total > 0)
-            {
-                break;
-            }
         }
 
         return new DuplicateCodeResult
         {
-            TotalDuplicates = total,
+            TotalDuplicates = duplicateKeys.Count,
             SampleCodes = samples,
             ExistingOrderNo = firstOwner,
+            DuplicateKeys = duplicateKeys,
         };
     }
 
@@ -381,28 +375,63 @@ public sealed class PoStore
         IReadOnlyList<PoCode> codes,
         CancellationToken ct = default)
     {
+        var existingPath = ResolvePath(order.OrderNo, order.CreatedUtc);
+        if (existingPath is not null)
+        {
+            await EnsurePoDbAtPathAsync(existingPath, order, codes, ct).ConfigureAwait(false);
+            return;
+        }
+
+        // Chỉ công bố DB mới sau khi toàn bộ metadata và mã đã commit.
+        // File tạm không có đuôi .db để lượt kiểm tra khác không nhìn thấy.
         var path = GetDbPath(order.OrderNo, order.CreatedUtc);
-        await using var connection = await OpenAsync(path, ct).ConfigureAwait(false);
+        var pendingPath = path + ".pending-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            await EnsurePoDbAtPathAsync(pendingPath, order, codes, ct, pooling: false).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+            File.Move(pendingPath, path);
+        }
+        finally
+        {
+            foreach (var suffix in new[] { "", "-wal", "-shm" })
+            {
+                try { File.Delete(pendingPath + suffix); }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
+        }
+    }
+
+    private static async Task EnsurePoDbAtPathAsync(
+        string path, ProductionOrder order, IReadOnlyList<PoCode> codes,
+        CancellationToken ct, bool pooling = true)
+    {
+        await using var connection = await OpenAsync(path, ct, pooling).ConfigureAwait(false);
+
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(ct)
+            .ConfigureAwait(false);
 
         await using (var meta = connection.CreateCommand())
         {
+            meta.Transaction = transaction;
             meta.CommandText = """
-                INSERT INTO PoMeta (Key, Value) VALUES ($key, $value)
+                INSERT INTO PoMeta (Key, Value) VALUES ($key, $value), ($createdKey, $createdValue)
                 ON CONFLICT(Key) DO NOTHING;
                 """;
             meta.Parameters.AddWithValue("$key", MetaOrderNo);
             meta.Parameters.AddWithValue("$value", order.OrderNo);
+            meta.Parameters.AddWithValue("$createdKey", MetaCreatedUtc);
+            meta.Parameters.AddWithValue("$createdValue", order.CreatedUtc.ToString("O"));
             await meta.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
 
         // Giữ nguyên trạng thái local đã có (Running/Completed/Cancelled).
         // Tải lại PO từ server không được làm mất trạng thái huỷ hoặc hoàn tất.
-        await SetMetaAsync(connection, MetaCreatedUtc, order.CreatedUtc.ToString("O"), ct)
-            .ConfigureAwait(false);
 
         // Lưu tổng số mã của PO (server có thể bổ sung mã sau này — số này sẽ
         // được cập nhật lại mỗi lần cào).
-        await SetMetaAsync(connection, MetaOrderQty, order.OrderQty.ToString(), ct)
+        await SetMetaAsync(connection, MetaOrderQty, order.OrderQty.ToString(), ct, transaction)
             .ConfigureAwait(false);
 
         // Lưu các trường mở rộng (tên sản phẩm, khách hàng...) để hỗ trợ tìm kiếm.
@@ -414,7 +443,7 @@ public sealed class PoStore
                 System.Text.Json.JsonSerializer.Serialize(
                     order.Additional,
                     PoJsonContext.Default.DictionaryStringString),
-                ct).ConfigureAwait(false);
+                ct, transaction).ConfigureAwait(false);
         }
 
         // Insert tập mã (bỏ qua mã đã tồn tại — idempotent).
@@ -426,8 +455,6 @@ public sealed class PoStore
         if (codes.Count > 0)
         {
             const int batchSize = 300;
-
-            await using var tx = await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
 
             for (var offset = 0; offset < codes.Count; offset += batchSize)
             {
@@ -441,7 +468,7 @@ public sealed class PoStore
                 // SqliteCommand thì tham số của các lô trước sẽ còn lại và
                 // làm lệnh chậm dần (và vượt giới hạn biến của SQLite).
                 await using var insert = connection.CreateCommand();
-                insert.Transaction = (SqliteTransaction)tx;
+                insert.Transaction = transaction;
 
                 // Mỗi mã dùng 3 tham số riêng ($c{n}, $g{n}, $s{n}) — tên
                 // phải KHỚP với tên trong SQL.
@@ -473,9 +500,9 @@ public sealed class PoStore
                 insert.CommandText = sql.ToString();
                 await insert.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
             }
-
-            await tx.CommitAsync(ct).ConfigureAwait(false);
         }
+
+        await transaction.CommitAsync(ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -487,7 +514,8 @@ public sealed class PoStore
     /// </para>
     /// </summary>
     public async Task<IReadOnlyList<LocalPoInfo>> ListLocalOrdersAsync(
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool strict = false)
     {
         var result = new List<LocalPoInfo>();
 
@@ -495,7 +523,12 @@ public sealed class PoStore
         {
             try
             {
-                await using var connection = new SqliteConnection($"Data Source={file}");
+                var connectionString = new SqliteConnectionStringBuilder
+                {
+                    DataSource = file,
+                    Mode = SqliteOpenMode.ReadOnly,
+                }.ToString();
+                await using var connection = new SqliteConnection(connectionString);
                 await connection.OpenAsync(ct).ConfigureAwait(false);
 
                 string orderNo = string.Empty;
@@ -536,7 +569,14 @@ public sealed class PoStore
                 }
 
                 if (string.IsNullOrWhiteSpace(orderNo))
+                {
+                    if (strict)
+                        throw new InvalidDataException($"File PO '{file}' thiếu mã lệnh sản xuất.");
                     continue;
+                }
+                if (strict && (!Enum.TryParse<ProductionOrderStatus>(status, true, out var parsedStatus)
+                    || !Enum.IsDefined(parsedStatus)))
+                    throw new InvalidDataException($"File PO '{file}' có trạng thái không hợp lệ.");
 
                 // Số mã thực tế trong file (có thể nhiều hơn orderQty nếu server
                 // bổ sung mã sau lần cào đầu tiên).
@@ -574,9 +614,15 @@ public sealed class PoStore
                     Additional = additional,
                 });
             }
-            catch (Exception)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
-                // File hỏng / không đọc được -> bỏ qua, không làm hỏng cả danh sách.
+                throw;
+            }
+            catch (Exception ex)
+            {
+                if (strict)
+                    throw new IOException($"Không thể kiểm tra trạng thái PO trong '{file}'.", ex);
+                // Danh sách UI vẫn có thể hiển thị những file đọc được.
             }
         }
 
@@ -584,6 +630,31 @@ public sealed class PoStore
         return result
             .OrderByDescending(p => p.CreatedUtc == default ? p.StartedUtc : p.CreatedUtc)
             .ToList();
+    }
+
+    /// <summary>
+    /// Kiểm tra PO dở dang từ DB và lịch sử, kể cả trước khi khôi phục cache.
+    /// Lỗi đọc dữ liệu được trả ra để bên nhận không bỏ qua kiểm tra.
+    /// Gọi trong khóa <see cref="AcquireMutationLockAsync"/> khi chuẩn bị ghi dữ liệu.
+    /// </summary>
+    public async Task<string?> GetUnfinishedOrderNoAsync(
+        PoHistoryStore history, CancellationToken ct = default)
+    {
+        var orders = await ListLocalOrdersAsync(ct, strict: true).ConfigureAwait(false);
+        var unfinished = orders.FirstOrDefault(order => order.IsUnfinished);
+        if (unfinished is not null)
+            return unfinished.OrderNo;
+
+        if (!File.Exists(history.DbPath))
+            return null;
+        var finishedOrders = orders.Where(order => order.IsFinished)
+            .Select(order => order.OrderNo).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var runs = await history.GetRunsAsync(ct).ConfigureAwait(false);
+        // Local kết thúc có thể đã commit trước khi ứng dụng dừng đột ngột,
+        // trong khi lịch sử chưa cập nhật. Không để bản ghi cũ khóa nhận mã.
+        return runs.FirstOrDefault(run =>
+            string.Equals(run.Status, "Running", StringComparison.OrdinalIgnoreCase)
+            && !finishedOrders.Contains(run.OrderNo))?.OrderNo;
     }
 
     /// <summary>
@@ -908,9 +979,11 @@ public sealed class PoStore
         SqliteConnection connection,
         string key,
         string value,
-        CancellationToken ct)
+        CancellationToken ct,
+        SqliteTransaction? transaction = null)
     {
         await using var cmd = connection.CreateCommand();
+        cmd.Transaction = transaction;
         cmd.CommandText = """
             INSERT INTO PoMeta (Key, Value) VALUES ($key, $value)
             ON CONFLICT(Key) DO UPDATE SET Value = excluded.Value;
@@ -936,49 +1009,61 @@ public sealed class PoStore
     /// <summary>
     /// Mở connection tới file DB của PO, tạo schema nếu chưa có.
     /// </summary>
-    private static async Task<SqliteConnection> OpenAsync(string path, CancellationToken ct)
+    private static async Task<SqliteConnection> OpenAsync(string path, CancellationToken ct, bool pooling = true)
     {
         var dir = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(dir))
             Directory.CreateDirectory(dir);
 
-        var connection = new SqliteConnection($"Data Source={path}");
-        await connection.OpenAsync(ct).ConfigureAwait(false);
-
-        await using (var pragma = connection.CreateCommand())
+        var connection = new SqliteConnection(new SqliteConnectionStringBuilder
         {
-            pragma.CommandText = """
-                PRAGMA journal_mode=WAL;
-                PRAGMA busy_timeout=5000;
-                PRAGMA synchronous=NORMAL;
-                """;
-            await pragma.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
-        }
-
-        await using (var schema = connection.CreateCommand())
+            DataSource = path,
+            Pooling = pooling,
+        }.ToString());
+        try
         {
-            schema.CommandText = """
-                CREATE TABLE IF NOT EXISTS PoCodes (
-                    Code        TEXT NOT NULL PRIMARY KEY,
-                    Gtin        TEXT NOT NULL DEFAULT '',
-                    Serial      TEXT NOT NULL DEFAULT '',
-                    ScannedUtc  TEXT NULL,
-                    Status      TEXT NOT NULL DEFAULT 'Pending',
-                    ActivatedUtc TEXT NULL
-                );
+            await connection.OpenAsync(ct).ConfigureAwait(false);
 
-                CREATE TABLE IF NOT EXISTS PoMeta (
-                    Key   TEXT NOT NULL PRIMARY KEY,
-                    Value TEXT NOT NULL
-                );
+            await using (var pragma = connection.CreateCommand())
+            {
+                pragma.CommandText = """
+                    PRAGMA journal_mode=WAL;
+                    PRAGMA busy_timeout=5000;
+                    PRAGMA synchronous=NORMAL;
+                    """;
+                await pragma.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+            }
 
-                CREATE INDEX IF NOT EXISTS IX_PoCodes_Serial  ON PoCodes (Serial);
-                CREATE INDEX IF NOT EXISTS IX_PoCodes_Scanned ON PoCodes (ScannedUtc);
-                """;
-            await schema.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+            await using (var schema = connection.CreateCommand())
+            {
+                schema.CommandText = """
+                    CREATE TABLE IF NOT EXISTS PoCodes (
+                        Code        TEXT NOT NULL PRIMARY KEY,
+                        Gtin        TEXT NOT NULL DEFAULT '',
+                        Serial      TEXT NOT NULL DEFAULT '',
+                        ScannedUtc  TEXT NULL,
+                        Status      TEXT NOT NULL DEFAULT 'Pending',
+                        ActivatedUtc TEXT NULL
+                    );
+
+                    CREATE TABLE IF NOT EXISTS PoMeta (
+                        Key   TEXT NOT NULL PRIMARY KEY,
+                        Value TEXT NOT NULL
+                    );
+
+                    CREATE INDEX IF NOT EXISTS IX_PoCodes_Serial  ON PoCodes (Serial);
+                    CREATE INDEX IF NOT EXISTS IX_PoCodes_Scanned ON PoCodes (ScannedUtc);
+                    """;
+                await schema.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+            }
+
+            return connection;
         }
-
-        return connection;
+        catch
+        {
+            await connection.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
     }
 
     /// <summary>
@@ -1074,6 +1159,15 @@ public sealed class LocalPoInfo
 
     /// <summary>True khi PO đã bị huỷ (không được chạy lại).</summary>
     public bool IsCancelled => Status == ProductionOrderStatus.Cancelled;
+
+    /// <summary>PO đã kết thúc, không nhận bổ sung mã hoặc chạy lại.</summary>
+    public bool IsFinished => Status is ProductionOrderStatus.Cancelled
+        or ProductionOrderStatus.Completed or ProductionOrderStatus.Closed
+        || CompletedUtc.HasValue || CancelledUtc.HasValue;
+
+    /// <summary>PO còn đang chạy hoặc đã bắt đầu nhưng chưa kết thúc.</summary>
+    public bool IsUnfinished => !IsFinished && (Status == ProductionOrderStatus.Running
+        || StartedUtc.HasValue || ScannedCodes > 0);
 }
 
 /// <summary>
@@ -1092,6 +1186,9 @@ public sealed class DuplicateCodeResult
 
     /// <summary>Tên PO đang chứa các mã trùng (rỗng nếu chưa xác định).</summary>
     public string ExistingOrderNo { get; set; } = string.Empty;
+
+    /// <summary>Các khóa chuẩn trùng dạng GTIN|Serial.</summary>
+    public IReadOnlySet<string> DuplicateKeys { get; set; } = new HashSet<string>(StringComparer.Ordinal);
 
     /// <summary>True nếu có ít nhất một mã trùng.</summary>
     public bool HasDuplicates => TotalDuplicates > 0;

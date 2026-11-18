@@ -135,9 +135,12 @@ var multiPost = await http.SendAsync(multiReq);
 var multiBody = await multiPost.Content.ReadAsStringAsync();
 Console.WriteLine($"      -> {multiBody}");
 
-// PO trung ma voi PO-E2E-XLSX -> 409 (dong nghia duoc xu ly dung).
-Check("Upload .xlsx multipart trung ma -> 409",
-    multiPost.StatusCode == HttpStatusCode.Conflict, multiBody);
+// Toàn bộ mã đã có: báo bỏ qua và không tạo PO rỗng.
+Check("Upload .xlsx trùng mã: nhận 0, bỏ qua 5",
+    multiPost.StatusCode == HttpStatusCode.OK
+    && multiBody.Contains("\"accepted\":0", StringComparison.Ordinal)
+    && multiBody.Contains("\"ignoredDuplicates\":5", StringComparison.Ordinal), multiBody);
+Check("Không tạo PO rỗng sau upload lại file Excel", store.FindExistingDbPath("PO-E2E-MULTI") is null);
 
 // =====================================================================
 // [4] Upload file CSV that

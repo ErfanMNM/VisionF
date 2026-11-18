@@ -27,6 +27,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\ClassLibraryMT.Po\ClassLibraryMT.Po.csproj" />
     <ProjectReference Include="..\..\ClassLibraryMT.PoServer\ClassLibraryMT.PoServer.csproj" />
+    <ProjectReference Include="..\..\ClassLibraryMT.MesSimulator\ClassLibraryMT.MesSimulator.csproj" />
   </ItemGroup>
 
 </Project>

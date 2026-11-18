@@ -125,6 +125,7 @@ public sealed class PoHttpServer : IDisposable
     private readonly PoServerOptions _opt;
     private readonly PoStore _store;
     private readonly ILogger<PoHttpServer> _logger;
+    private readonly PoHistoryStore _history;
     private readonly PoServerState _state = new();
 
     /// <summary>Handler đọc nội dung request (JSON thuần / upload file).</summary>
@@ -152,14 +153,17 @@ public sealed class PoHttpServer : IDisposable
     /// <param name="options">Cấu hình (section <c>PoServer</c>).</param>
     /// <param name="store">Store lưu PO — dùng chung với luồng cào PO.</param>
     /// <param name="logger">Logger kỹ thuật.</param>
+    /// <param name="history">Lịch sử sản xuất để chặn PO khi còn lần chạy dở dang.</param>
     public PoHttpServer(
         IOptions<PoServerOptions> options,
         PoStore store,
-        ILogger<PoHttpServer> logger)
+        ILogger<PoHttpServer> logger,
+        PoHistoryStore? history = null)
     {
         _opt = options?.Value ?? new PoServerOptions();
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _history = history ?? new PoHistoryStore(store.DbRoot);
 
         _throttle = new SemaphoreSlim(_opt.ResolveMaxConcurrentRequests());
 
@@ -442,7 +446,18 @@ public sealed class PoHttpServer : IDisposable
                 using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 timeoutCts.CancelAfter(_opt.ResolveRequestTimeout());
 
-                var outcome = await HandlePushAsync(request, timeoutCts.Token).ConfigureAwait(false);
+                PoPushOutcome outcome;
+                try
+                {
+                    outcome = await HandlePushAsync(request, timeoutCts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                {
+                    outcome = new PoPushOutcome(408, new PoPushResponse
+                    {
+                        Message = "Yêu cầu nhận PO quá thời gian chờ; hãy kiểm tra trạng thái trước khi gửi lại.",
+                    });
+                }
 
                 await WriteJsonAsync(response, outcome.StatusCode, outcome.Response)
                     .ConfigureAwait(false);
@@ -496,6 +511,19 @@ public sealed class PoHttpServer : IDisposable
         HttpListenerRequest request,
         CancellationToken ct)
     {
+        using var mutationLock = await _store.AcquireMutationLockAsync(ct).ConfigureAwait(false);
+
+        var running = await GetRunningOrderNoAsync(ct).ConfigureAwait(false);
+        if (running is not null)
+        {
+            return new PoPushOutcome(409, new PoPushResponse
+            {
+                Success = false,
+                Message = $"Không thể nhận PO khi PO '{running}' đang sản xuất dở dang. Hãy hoàn tất hoặc huỷ PO đang chạy trước.",
+                PoName = string.Empty,
+            });
+        }
+
         var content = await _uploadHandler
             .ReadContentAsync(request, ct)
             .ConfigureAwait(false);
@@ -515,6 +543,11 @@ public sealed class PoHttpServer : IDisposable
         payload.Codes = content.Content.RawCodes;
 
         return await SavePoAsync(payload, ct).ConfigureAwait(false);
+    }
+
+    private async Task<string?> GetRunningOrderNoAsync(CancellationToken ct)
+    {
+        return await _store.GetUnfinishedOrderNoAsync(_history, ct).ConfigureAwait(false);
     }
 
 
@@ -576,11 +609,42 @@ public sealed class PoHttpServer : IDisposable
                 });
         }
 
-        var fallbackGtin = (payload.Gtin ?? string.Empty).Trim();
+        var localOrders = await _store.ListLocalOrdersAsync(ct, strict: true).ConfigureAwait(false);
+        var existingOrder = localOrders.FirstOrDefault(order =>
+            string.Equals(order.OrderNo, poName, StringComparison.OrdinalIgnoreCase));
 
-        // Trim + bỏ rỗng + loại trùng.
+        if (existingOrder?.IsFinished == true)
+        {
+            return new PoPushOutcome(
+                409,
+                new PoPushResponse
+                {
+                    Success = false,
+                    Message = $"PO '{poName}' đã kết thúc (hoàn tất, huỷ hoặc đóng); không thể nhận thêm mã.",
+                    PoName = poName,
+                });
+        }
+
+        var existingPath = _store.FindExistingDbPath(poName);
+        if (existingPath is not null && existingOrder is null)
+        {
+            return new PoPushOutcome(409, new PoPushResponse
+            {
+                Message = "Tên PO sau chuẩn hoá trùng với file PO khác; hãy dùng tên PO khác.",
+                PoName = poName,
+            });
+        }
+
+        var fallbackGtin = (payload.Gtin ?? string.Empty).Trim();
+        if (fallbackGtin.Length == 0 && existingOrder is not null
+            && existingOrder.Additional.TryGetValue("gtin", out var existingGtin))
+            fallbackGtin = existingGtin;
+
+        // Chuẩn hoá mã và loại trùng ngay trong request.
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var codes = new List<PoCode>(rawCodes.Count);
+        var duplicateCount = 0;
+        var parsedCodeCount = 0;
 
         foreach (var raw in rawCodes)
         {
@@ -589,8 +653,11 @@ public sealed class PoHttpServer : IDisposable
                 continue;
             }
 
-            if (!seen.Add(serial))
+            parsedCodeCount++;
+            var codeKey = PoStore.BuildCodeKey(gtin, serial);
+            if (!seen.Add(codeKey))
             {
+                duplicateCount++;
                 continue;
             }
 
@@ -615,37 +682,21 @@ public sealed class PoHttpServer : IDisposable
         }
 
         // ---- Kiểm tra số lượng ----
-        // Chấp nhận khi codes >= orderQty (server có thể gửi thừa).
+        // Kiểm tra số dòng hợp lệ trước lọc trùng; tổng lưu là số mã mới thực nhận.
         // Thiếu -> 400 để MES biết phải gửi đủ.
-        if (codes.Count < payload.OrderQty)
+        if (parsedCodeCount < payload.OrderQty)
         {
             return new PoPushOutcome(
                 400,
                 new PoPushResponse
                 {
                     Success = false,
-                    Message = $"Số mã gửi lên ({codes.Count}) ít hơn orderQty ({payload.OrderQty}).",
-                    PoName = poName,
-                    Accepted = codes.Count,
-                });
-        }
-
-        // ---- Trùng PO đã có ----
-        if (_store.FindExistingDbPath(poName) is not null)
-        {
-            return new PoPushOutcome(
-                409,
-                new PoPushResponse
-                {
-                    Success = false,
-                    Message = $"PO '{poName}' đã tồn tại trên máy — không thể nhận lại.",
+                    Message = $"Số mã hợp lệ gửi lên ({parsedCodeCount}) ít hơn orderQty ({payload.OrderQty}).",
                     PoName = poName,
                 });
         }
 
-        // ---- Mã trùng với PO KHÁC đã có trên máy ----
-        // So khớp theo khoá chuẩn "Gtin|Serial" — đúng cách dùng khi quét mã,
-        // nên Digital Link và mã trần cùng GTIN/serial vẫn bị coi là trùng.
+        // ---- Lọc mã đã có trên máy theo khóa chuẩn GTIN|Serial ----
         try
         {
             var keys = new List<string>(codes.Count);
@@ -655,30 +706,14 @@ public sealed class PoHttpServer : IDisposable
             }
 
             var duplicates = await _store
-                .FindDuplicateCodesAsync(keys, poName, MaxDuplicateSamples, ct)
+                .FindDuplicateCodesAsync(keys, null, MaxDuplicateSamples, ct)
                 .ConfigureAwait(false);
 
             if (duplicates.HasDuplicates)
             {
-                var owner = string.IsNullOrEmpty(duplicates.ExistingOrderNo)
-                    ? "một PO khác trên máy"
-                    : $"PO '{duplicates.ExistingOrderNo}'";
-
-                var sampleText = duplicates.SampleCodes.Count > 0
-                    ? string.Join(", ", duplicates.SampleCodes.Take(MaxDuplicateSamples))
-                    : "(không lấy được ví dụ)";
-
-                return new PoPushOutcome(
-                    409,
-                    new PoPushResponse
-                    {
-                        Success = false,
-                        Message =
-                            $"PO bị từ chối: {duplicates.TotalDuplicates} mã đã tồn tại trong {owner} "
-                            + $"(ví dụ: {sampleText}). Không thể nhận PO có mã trùng.",
-                        PoName = poName,
-                        Accepted = 0,
-                    });
+                duplicateCount += duplicates.TotalDuplicates;
+                codes.RemoveAll(code => duplicates.DuplicateKeys.Contains(
+                    PoStore.BuildCodeKey(code.Gtin, code.Serial)));
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -694,12 +729,36 @@ public sealed class PoHttpServer : IDisposable
         }
         catch (Exception ex)
         {
-            // Lỗi kiểm tra mã trùng KHÔNG được chặn PO — chỉ ghi log.
             _logger.LogError(ex, "Lỗi khi kiểm tra mã trùng cho PO {PoName}.", poName);
+            return new PoPushOutcome(
+                500,
+                new PoPushResponse
+                {
+                    Success = false,
+                    Message = "Không thể xác minh mã trùng trên máy; PO chưa được nhận. " + ex.Message,
+                    PoName = poName,
+                });
+        }
+
+        if (codes.Count == 0)
+        {
+            var duplicateMessage = duplicateCount > 0
+                ? $"Không có mã mới cho PO {poName}; đã bỏ qua {duplicateCount} mã trùng."
+                : $"PO {poName} không có mã mới để nhận.";
+            return new PoPushOutcome(200, new PoPushResponse
+            {
+                Success = true,
+                Message = duplicateMessage,
+                PoName = poName,
+                Accepted = 0,
+                IgnoredDuplicates = duplicateCount,
+            });
         }
 
         // ---- Trường mở rộng ----
-        var additional = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var additional = existingOrder is null
+            ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, string>(existingOrder.Additional, StringComparer.OrdinalIgnoreCase);
         if (payload.Additional is not null)
         {
             foreach (var (key, value) in payload.Additional)
@@ -720,9 +779,9 @@ public sealed class PoHttpServer : IDisposable
 
         var order = new ProductionOrder
         {
-            OrderNo = poName,
-            OrderQty = payload.OrderQty,
-            CreatedUtc = DateTime.UtcNow,
+            OrderNo = existingOrder?.OrderNo ?? poName,
+            OrderQty = (existingOrder?.TotalCodes ?? 0) + codes.Count,
+            CreatedUtc = existingOrder?.CreatedUtc ?? DateTime.UtcNow,
             Additional = additional,
         };
 
@@ -758,8 +817,8 @@ public sealed class PoHttpServer : IDisposable
         _state.IncrementReceived();
 
         _logger.LogInformation(
-            "Đã nhận PO {PoName} từ MES: {Count} mã (orderQty {Qty}).",
-            poName, codes.Count, payload.OrderQty);
+            "Đã nhận PO {PoName} từ MES: thêm {Count} mã mới, bỏ qua {Duplicates} mã trùng.",
+            poName, codes.Count, duplicateCount);
 
         // Báo UI tải lại danh sách PO (bắt lỗi để không làm hỏng response).
         try
@@ -776,9 +835,12 @@ public sealed class PoHttpServer : IDisposable
             new PoPushResponse
             {
                 Success = true,
-                Message = $"Đã nhận PO {poName} với {codes.Count} mã.",
+                Message = duplicateCount > 0
+                    ? $"Đã nhận thêm {codes.Count} mã mới vào PO {poName}; bỏ qua {duplicateCount} mã trùng."
+                    : $"Đã nhận PO {poName} với {codes.Count} mã mới.",
                 PoName = poName,
                 Accepted = codes.Count,
+                IgnoredDuplicates = duplicateCount,
             });
     }
 

@@ -7,6 +7,7 @@ using ClassLibraryMT.Logging;
 using ClassLibraryMT.Plc;
 using ClassLibraryMT.Po;
 using ClassLibraryMT.PoServer;
+using ClassLibraryMT.MesSimulator;
 using ClassLibraryMT.Scans;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -69,6 +70,10 @@ public static class TanTienAppServices
         // (cùng thư mục DB với luồng cào PO) để PO nhận về hiện luôn trong
         // danh sách "Truy xuất Sản xuất (Local)".
         services.AddPoServer(configuration);
+
+        // ---- MES simulator (chỉ dùng cho test tích hợp) ----
+        // Mặc định tắt; khi bật sẽ gửi PO mẫu tới PoServer qua HTTP POST.
+        services.AddMesSimulator(configuration);
 
         // ---- Camera: bind cấu hình thủ công (tương thích Native AOT) ----
         services.AddOptions<CameraOptions>()

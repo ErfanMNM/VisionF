@@ -163,6 +163,9 @@ await using (var conn = await scanStore.OpenAsync())
     while (await reader.ReadAsync()) cols.Add(reader.GetString(1));
 
     Check("Migration: them duoc cot OrderNo", cols.Contains("OrderNo"), string.Join(",", cols));
+    Check("Migration giữ đủ cột trạng thái gửi mã",
+        new[] { "SendStatus", "SendStatusCode", "SendMessage", "SendAttempts", "SendTimeUtc", "SendAttemptUtc" }
+            .All(cols.Contains), string.Join(",", cols));
     Check("Migration: ProcessingTimeMs la REAL",
         cols.Contains("ProcessingTimeMs"));
 

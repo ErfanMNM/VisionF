@@ -226,13 +226,21 @@ internal sealed class ScanStore
                     PlcResult        TEXT    NOT NULL DEFAULT 'Skipped',
                     BatchNo          TEXT    NOT NULL DEFAULT 'NoBatch',
                     Raw              TEXT    NOT NULL DEFAULT '',
-                    OrderNo          TEXT    NOT NULL DEFAULT ''
+                    OrderNo          TEXT    NOT NULL DEFAULT '',
+                    SendStatus       TEXT    NOT NULL DEFAULT '',
+                    SendStatusCode   INTEGER NOT NULL DEFAULT 0,
+                    SendMessage      TEXT    NOT NULL DEFAULT '',
+                    SendAttempts     INTEGER NOT NULL DEFAULT 0,
+                    SendTimeUtc      TEXT    NULL,
+                    SendAttemptUtc   TEXT    NULL
                 );
                 INSERT INTO ScanRecords
                     (Id, ReceivedUtc, Code, Gtin, Serial, Status,
-                     ProcessingTimeMs, PlcResult, BatchNo, Raw, OrderNo)
+                     ProcessingTimeMs, PlcResult, BatchNo, Raw, OrderNo,
+                     SendStatus, SendStatusCode, SendMessage, SendAttempts, SendTimeUtc, SendAttemptUtc)
                 SELECT Id, ReceivedUtc, Code, Gtin, Serial, Status,
-                       ProcessingTimeMs, PlcResult, BatchNo, Raw, OrderNo
+                       ProcessingTimeMs, PlcResult, BatchNo, Raw, OrderNo,
+                       SendStatus, SendStatusCode, SendMessage, SendAttempts, SendTimeUtc, SendAttemptUtc
                 FROM ScanRecords_Legacy;
                 DROP TABLE ScanRecords_Legacy;
                 """;

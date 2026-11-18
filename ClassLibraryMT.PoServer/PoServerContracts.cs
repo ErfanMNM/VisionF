@@ -18,13 +18,13 @@ public sealed class PoPushRequest
 {
     /// <summary>
     /// Tên / mã lệnh sản xuất (bắt buộc). Dùng làm khoá duy nhất —
-    /// trùng với PO đã có trên máy thì trả về HTTP 409.
+    /// PO chưa bắt đầu được bổ sung mã mới; PO đã kết thúc bị từ chối HTTP 409.
     /// </summary>
     [JsonPropertyName("poName")]
     public string PoName { get; set; } = string.Empty;
 
     /// <summary>
-    /// Số lượng mã của PO (bắt buộc, &gt; 0).
+    /// Số dòng mã hợp lệ trong lần gửi (bắt buộc, &gt; 0), kiểm tra trước lọc trùng.
     /// </summary>
     [JsonPropertyName("orderQty")]
     public int OrderQty { get; set; }
@@ -91,9 +91,13 @@ public sealed class PoPushResponse
     [JsonPropertyName("poName")]
     public string PoName { get; set; } = string.Empty;
 
-    /// <summary>Số mã đã chấp nhận (0 nếu lỗi).</summary>
+    /// <summary>Số mã mới được lưu trong lần gửi; 0 nếu lỗi hoặc toàn bộ đã có.</summary>
     [JsonPropertyName("accepted")]
     public int Accepted { get; set; }
+
+    /// <summary>Số mã trùng đã tự động bỏ qua.</summary>
+    [JsonPropertyName("ignoredDuplicates")]
+    public int IgnoredDuplicates { get; set; }
 }
 
 /// <summary>

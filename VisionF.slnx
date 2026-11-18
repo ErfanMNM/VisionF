@@ -6,6 +6,7 @@
   <Project Path="ClassLibraryMT.Scans/ClassLibraryMT.Scans.csproj" />
   <Project Path="ClassLibraryMT.Po/ClassLibraryMT.Po.csproj" />
   <Project Path="ClassLibraryMT.PoServer/ClassLibraryMT.PoServer.csproj" />
+  <Project Path="ClassLibraryMT.MesSimulator/ClassLibraryMT.MesSimulator.csproj" />
   <Project Path="TanTienQR/TanTienQR.csproj" />
   <Project Path="tools/LicenseTool/LicenseTool.csproj" />
   <Project Path="tools/PoServer/PoServer.csproj" />

@@ -3,7 +3,7 @@
 > **Dành cho:** Đội phát triển MES muốn đẩy Lệnh sản xuất (Production Order) + tập mã
 > xuống máy chạy ứng dụng **TanTienQR** (VisionF).
 >
-> **Phiên bản tài liệu:** 1.2 — bổ sung hỗ trợ **upload file thật** (`.csv`, `.json`, `.xlsx`, `.xls`).
+> **Phiên bản tài liệu:** 1.3 — upload nhiều lần, tự lọc mã trùng và chặn nhận khi còn PO dở dang.
 >
 > **Ngày cập nhật:** 2026-11-18
 
@@ -212,8 +212,8 @@ Content-Type: <xem mục 6>
 
 | Tham số | Vị trí | Bắt buộc | Ý nghĩa |
 |---|---|---|---|
-| `poName` | query string **hoặc** field multipart **hoặc** JSON | ✅ | Tên/mã lệnh sản xuất. Duy nhất — trùng PO đã có → `409`. Tối đa 200 ký tự. |
-| `orderQty` | query string **hoặc** field multipart **hoặc** JSON | ✅ | Số lượng mã của PO. Phải `> 0`. |
+| `poName` | query string **hoặc** field multipart **hoặc** JSON | ✅ | Tên/mã lệnh sản xuất. Cho phép bổ sung mã vào PO chưa bắt đầu; PO đã kết thúc → `409`. Tối đa 200 ký tự. |
+| `orderQty` | query string **hoặc** field multipart **hoặc** JSON | ✅ | Số dòng mã hợp lệ trong lần gửi, kiểm tra trước lọc trùng. Phải `> 0`. Tổng mã lưu là tổng mã duy nhất sau khi bổ sung. |
 | `gtin` | query string / field / JSON | ⬜ | GTIN (mã sản phẩm). Dùng cho **mã trần** (serial không kèm GTIN) và lưu vào trường mở rộng. |
 | `batchCode` | field multipart / JSON | ⬜ | Mã lô. |
 | `productName` | field multipart / JSON | ⬜ | Tên sản phẩm. |
@@ -231,8 +231,10 @@ Content-Type: <xem mục 6>
 }
 ```
 
-`accepted` = số mã **thực sự được chấp nhận** (đã de-dup, đã loại mã không hợp lệ).
-Nếu `accepted < orderQty` → server trả `400` (xem [mục 9](#9-mã-lỗi-http-status-codes)).
+`accepted` là số mã **mới được lưu trong lần gửi**. `ignoredDuplicates` là
+số mã tự động bỏ qua do đã tồn tại trong request hoặc trên máy. Sau lọc trùng,
+`accepted` có thể nhỏ hơn `orderQty`, kể cả bằng 0, và server vẫn trả `200`.
+`400` chỉ áp dụng nếu số dòng mã hợp lệ trước lọc trùng ít hơn `orderQty`.
 
 ### 5.3. Ví dụ gửi JSON thuần
 
@@ -506,48 +508,56 @@ có giá trị chuỗi.
 
 ---
 
-## 8. Quy tắc trùng lặp
+## 8. Quy tắc trùng lặp và trạng thái sản xuất
 
-Server **từ chối** (không ghi đè) PO nếu gặp một trong hai trường hợp. Cả hai đều trả `409`.
+### 8.1. Upload nhiều lần vào cùng PO
 
-### 8.1. Trùng tên PO
+PO chưa bắt đầu sản xuất được upload nhiều lần. Server chỉ thêm mã chưa có,
+giữ file database gốc (kể cả PO thuộc tháng cũ), thời điểm tạo, trạng thái mã
+và các trường mở rộng không gửi lại. Tổng số lượng PO lưu trên máy bằng tổng
+mã duy nhất sau khi bổ sung.
 
-`poName` đã tồn tại trên máy (kể cả PO tải từ server trước đó, không chỉ PO do MES đẩy).
+PO đã **huỷ**, **hoàn tất** hoặc **đóng** bị từ chối `409`, kể cả khi file
+chỉ chứa mã mới. Upload không mở lại PO đã kết thúc.
+
+### 8.2. Lọc mã trùng trên toàn bộ máy
+
+Server so khóa **`GTIN|Serial`** trong cùng request và mọi PO đã có trên máy,
+kể cả các tháng trước hoặc PO đã kết thúc. Mã trần, GS1 và Digital Link có
+cùng GTIN/serial được coi là trùng; cùng serial với GTIN khác nhau được giữ.
+Mã trùng bị bỏ qua, phần mã mới được lưu. Ví dụ gửi hai mã đã có và ba mã mới:
 
 ```json
 {
-  "success": false,
-  "message": "PO 'PO-001' đã tồn tại trên máy — không thể nhận lại.",
+  "success": true,
+  "message": "Đã nhận thêm 3 mã mới vào PO PO-001; bỏ qua 2 mã trùng.",
   "poName": "PO-001",
-  "accepted": 0
+  "accepted": 3,
+  "ignoredDuplicates": 2
 }
 ```
 
-> PO đã **huỷ** cũng vẫn bị từ chối — trạng thái `Cancelled` được giữ nguyên, không bị ghi đè.
+Upload lại toàn bộ file trả `200`, `accepted: 0`, `ignoredDuplicates` là số
+mã bị bỏ qua. Server không tạo PO rỗng nếu toàn bộ mã đã có. `accepted` luôn
+là số mã **mới lưu trong lần gửi**, không phải tổng số mã hiện có trong PO.
 
-### 8.2. Trùng mã với PO khác
+`orderQty` phải dương và không lớn hơn số dòng mã hợp lệ trước lọc trùng;
+sau lọc, số mã thực nhận có thể ít hơn `orderQty`.
 
-Bất kỳ mã nào trong tập mã đã tồn tại trong **PO khác** trên máy → `409`, **PO mới không được tạo**.
+### 8.3. Chặn nhận khi đang sản xuất hoặc còn PO dở dang
 
-```json
-{
-  "success": false,
-  "message": "PO bị từ chối: 1 mã đã tồn tại trong PO 'PO-MES-001' (ví dụ: 08934567890123|SER001). Không thể nhận PO có mã trùng.",
-  "poName": "PO-002",
-  "accepted": 0
-}
-```
+Khi bất kỳ PO nào đang chạy, đã có thời điểm bắt đầu hoặc đã quét mã nhưng
+chưa kết thúc, server từ chối **mọi** `POST /api/po` bằng `409`. Áp dụng cho
+PO mới, bổ sung PO cũ, upload lặp và mọi dạng JSON/CSV/Excel/multipart.
 
-**Cách so khớp mã (quan trọng):**
+Trạng thái được kiểm tra từ database và lịch sử `Running` đã lưu, nên vẫn
+chặn ngay sau khi mở lại ứng dụng, trước khi khôi phục PO vào bộ nhớ. Hoàn
+tất hoặc huỷ PO đang dở dang để tiếp tục nhận. Các thao tác bắt đầu/kết thúc
+sản xuất và nhận PO dùng chung khóa để tránh ghi xen nhau. Nút tải PO từ
+server trong ứng dụng cũng bị chặn khi còn PO dở dang.
 
-- Khoá so sánh là **`GTIN|Serial`** — giống hệt cách dùng khi quét mã trên máy.
-- Nhờ vậy, **mã trần** `SER001` và **Digital Link** `https://digital-link.txng.vn/01/08934567890123/21/SER001`
-  (cùng GTIN) được coi là **trùng nhau**.
-- Thông điệp lỗi luôn nêu rõ: **số mã trùng**, **tên PO chứa mã trùng**, và **ví dụ mã** (tối đa 5).
-
-### 8.3. De-dup trong cùng một file
-
-Mã trùng nhau **trong cùng file/JSON** bị loại bỏ (giữ lần đầu) và **không** gây lỗi.
+Nếu không đọc được database để xác minh trạng thái hoặc mã trùng, server
+trả `500` và không ghi PO mới. `GET /api/health` vẫn hoạt động khi sản xuất.
 
 ---
 
@@ -556,19 +566,19 @@ Mã trùng nhau **trong cùng file/JSON** bị loại bỏ (giữ lần đầu) 
 Mọi response đều có cùng một shape JSON:
 
 ```json
-{ "success": false, "message": "<thông điệp tiếng Việt>", "poName": "...", "accepted": 0 }
+{ "success": false, "message": "<thông điệp tiếng Việt>", "poName": "...", "accepted": 0, "ignoredDuplicates": 0 }
 ```
 
 | Mã | Ý nghĩa | Thông điệp mẫu | MES nên làm gì |
 |---|---|---|---|
-| **200** | Thành công | `Đã nhận PO PO-001 với 100 mã.` | Ghi nhận, có thể xoá file tạm. |
+| **200** | Đã xử lý upload | `accepted` là số mã mới, `ignoredDuplicates` là số mã bỏ qua. | Toàn mã trùng vẫn trả 200 và không thêm dữ liệu. |
 | **400** | Request sai định dạng / thiếu dữ liệu | `Thiếu trường poName (tên/mã lệnh sản xuất).`<br>`Thiếu tập mã: cần gửi "codes" (mảng JSON), "csv" (nội dung CSV), hoặc tải file .csv/.json/.xlsx/.xls lên.`<br>`Số mã gửi lên (2) ít hơn orderQty (3).`<br>`Định dạng file không được hỗ trợ: 'codes.txt'. Chỉ chấp nhận .csv, .json, .xlsx, .xls.`<br>`Tên file không hợp lệ: Tên file không được chứa đường dẫn.` | Sửa payload rồi gửi lại. **Đây là lỗi của MES.** |
 | **401** | Thiếu / sai API key | `Thiếu hoặc sai API key (header x-api-key).` | Kiểm tra lại header `x-api-key` và giá trị trong `appsettings.json`. |
 | **404** | Endpoint không tồn tại | `Endpoint không tồn tại: GET /api/po. Dùng POST /api/po hoặc GET /api/health.` | Kiểm tra lại URL/method. |
 | **408** | Quá thời gian chờ | `Yêu cầu bị hủy do quá thời gian chờ.` | File quá lớn hoặc mạng chậm → tăng `RequestTimeoutSeconds` / chia nhỏ PO. |
-| **409** | Trùng PO hoặc trùng mã | `PO 'PO-001' đã tồn tại trên máy — không thể nhận lại.`<br>`PO bị từ chối: 3 mã đã tồn tại trong PO 'PO-MES-001' (ví dụ: ...).` | **Không gửi lại.** PO đã có trên máy → cần operator xử lý (huỷ PO cũ hoặc sinh mã mới). |
+| **409** | Có PO dở dang, PO đích đã kết thúc hoặc tên file PO xung đột | `Không thể nhận PO khi PO đang sản xuất dở dang.` | Hoàn tất/huỷ PO đang chạy; không gửi bổ sung vào PO đã kết thúc. |
 | **413** | Vượt giới hạn kích thước | `Body vượt quá dung lượng cho phép (64 MB).`<br>`File vượt quá dung lượng cho phép (64 MB).` | Tăng `MaxBodyMB` / `MaxFileMB` phía máy, hoặc chia nhỏ file. |
-| **500** | Lỗi máy chủ | `Lỗi khi lưu PO: ...` | Ghi log lỗi, báo admin. **Không** gửi lại liên tục (có thể gây trùng). |
+| **500** | Lỗi đọc/ghi database | `Không thể xác minh mã trùng trên máy; PO chưa được nhận.` | Kiểm tra database và log trước khi gửi lại. |
 
 ### 9.1. Ví dụ response đầy đủ từng mã
 
@@ -616,12 +626,12 @@ Mọi response đều có cùng một shape JSON:
 }
 ```
 
-**409 — trùng PO**
+**409 — PO đã kết thúc**
 
 ```json
 {
   "success": false,
-  "message": "PO 'PO-001' đã tồn tại trên máy — không thể nhận lại.",
+  "message": "PO 'PO-001' đã kết thúc (hoàn tất, huỷ hoặc đóng); không thể nhận thêm mã.",
   "poName": "PO-001",
   "accepted": 0
 }
@@ -781,9 +791,11 @@ Trạng thái lỗi bind được hiển thị ở tab **Server** trong ứng d�
 
 ### 12.4. Trả `409`
 
-- [ ] PO đã có trên máy chưa? → Kiểm tra tab *"Truy xuất Sản xuất (Local)"*.
-- [ ] Mã trong file đã nằm trong PO khác chưa? → Đổi tên PO **không** giải quyết được;
-      phải dùng mã mới hoặc huỷ PO cũ (nếu PO cũ đã huỷ thì vẫn bị từ chối — hãy đổi tên file/PO và dùng mã mới).
+- [ ] Có PO đang chạy hoặc còn lịch sử `Running` từ lần trước? Hoàn tất hoặc huỷ PO đó.
+- [ ] PO đích đã huỷ/hoàn tất/đóng? PO đã kết thúc không nhận bổ sung.
+- [ ] Tên PO sau chuẩn hoá trùng tên file của PO khác? Dùng tên PO khác.
+
+Mã trùng được tự động bỏ qua với `200`; đọc `accepted` và `ignoredDuplicates`.
 
 ### 12.5. Trả `413` / `408`
 
@@ -817,6 +829,14 @@ Log ứng dụng nằm trong thư mục `logs/` cạnh file `.exe`:
 ---
 
 ## 13. Changelog
+
+### 1.3 — Upload lặp và khóa sản xuất
+
+- Cho phép bổ sung PO chưa bắt đầu, lọc mã trùng toàn máy theo `GTIN|Serial`.
+- Phản hồi `accepted`/`ignoredDuplicates`; toàn mã trùng không tạo PO rỗng.
+- Chặn mọi lượt nhận khi còn PO dở dang và từ chối sửa PO đã kết thúc.
+- Giữ đúng database tháng cũ, ghi mã và metadata trong cùng transaction.
+
 
 ### v1.2 — 2026-11-18
 

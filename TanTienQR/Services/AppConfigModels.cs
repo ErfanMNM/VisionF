@@ -166,10 +166,10 @@ public sealed class CheckeeConfig
     [ConfigField("Địa chỉ host", Order = 1, Placeholder = "VD: https://beta-api-eco.checkee.vn", RequiresRestart = true, Validation = "Url")]
     [JsonPropertyName("BaseUrl")] public string BaseUrl { get; set; } = "https://beta-api-eco.checkee.vn";
 
-    [ConfigField("API key", Order = 2, Control = ConfigControlKind.Password, RequiresRestart = true, HelpText = "API Key do Checkee cấp cho doanh nghiệp (header x-api-key).")]
+    [ConfigField("API key", Order = 2, Control = ConfigControlKind.Password, Required = false, RequiresRestart = true, HelpText = "API Key do Checkee cấp cho doanh nghiệp (header x-api-key).")]
     [JsonPropertyName("ApiKey")] public string ApiKey { get; set; } = string.Empty;
 
-    [ConfigField("Client ID", Order = 3, Control = ConfigControlKind.Password, RequiresRestart = true, HelpText = "Client Key / Client ID do Checkee cấp (header x-client-id).")]
+    [ConfigField("Client ID", Order = 3, Control = ConfigControlKind.Password, Required = false, RequiresRestart = true, HelpText = "Client Key / Client ID do Checkee cấp (header x-client-id).")]
     [JsonPropertyName("ClientId")] public string ClientId { get; set; } = string.Empty;
 
     [ConfigField("Bật gửi mã", Order = 4, RequiresRestart = true, HelpText = "Bật worker gửi mã đã quét lên Checkee theo chu kỳ.")]
@@ -187,7 +187,7 @@ public sealed class CheckeeConfig
     [ConfigField("Chỉ gửi mã Pass", Order = 8, RequiresRestart = true, HelpText = "Chỉ gửi những mã quét có kết quả hợp lệ.")]
     [JsonPropertyName("OnlyPassCodes")] public bool OnlyPassCodes { get; set; } = true;
 
-    [ConfigField("Mã lô (batch code)", Order = 9, Placeholder = "VD: LOT-2026-01", RequiresRestart = true, HelpText = "Mã lô gửi kèm khi kích hoạt mã (bắt buộc theo API Checkee).")]
+    [ConfigField("Mã lô (batch code)", Order = 9, Placeholder = "VD: LOT-2026-01", Required = false, RequiresRestart = true, HelpText = "Mã lô mặc định gửi kèm khi kích hoạt mã; có thể để trống để dùng thông tin từ PO.")]
     [JsonPropertyName("BatchCode")] public string BatchCode { get; set; } = string.Empty;
 
     [ConfigField("Loại mã TXNG", Order = 10, Options = new[] { "DECLARE", "RANDOM", "INCREASING" }, RequiresRestart = true)]
@@ -217,7 +217,7 @@ public sealed class PoServerConfig
     [ConfigField("Địa chỉ lắng nghe", Order = 3, Placeholder = "VD: 127.0.0.1 hoặc 0.0.0.0", RequiresRestart = true, SkipWhenDisabledBy = "PoServer:Enabled", HelpText = "127.0.0.1 = chỉ máy cục bộ. 0.0.0.0 = mọi máy trong mạng (cần quyền quản trị + mở firewall).")]
     [JsonPropertyName("BindAddress")] public string BindAddress { get; set; } = "127.0.0.1";
 
-    [ConfigField("API key", Order = 4, Control = ConfigControlKind.Password, RequiresRestart = true, SkipWhenDisabledBy = "PoServer:Enabled", HelpText = "MES gửi kèm header x-api-key. Để trống = không kiểm tra.")]
+    [ConfigField("API key", Order = 4, Control = ConfigControlKind.Password, Required = false, RequiresRestart = true, SkipWhenDisabledBy = "PoServer:Enabled", HelpText = "MES gửi kèm header x-api-key. Để trống = không kiểm tra.")]
     [JsonPropertyName("ApiKey")] public string ApiKey { get; set; } = string.Empty;
 
     [ConfigField("Body tối đa (MB)", Order = 5, Min = 1, Max = 1024, RequiresRestart = true, SkipWhenDisabledBy = "PoServer:Enabled", HelpText = "Giới hạn dung lượng body của một lần gửi PO.")]
@@ -228,6 +228,46 @@ public sealed class PoServerConfig
 
     [ConfigField("Số request đồng thời", Order = 7, Min = 1, Max = 64, RequiresRestart = true, SkipWhenDisabledBy = "PoServer:Enabled")]
     [JsonPropertyName("MaxConcurrentRequests")] public int MaxConcurrentRequests { get; set; } = 4;
+}
+
+/// <summary>Cấu hình plugin giả lập MES gửi PO để test tích hợp.</summary>
+[ConfigSection(
+    Key = "MesSimulator",
+    Title = "GIẢ LẬP MES · GỬI PO TEST",
+    Order = 43,
+    Icon = "Upload",
+    Description = "Sinh PO mẫu và upload qua HTTP POST /api/po. Được nạp một lần khi khởi động.")]
+public sealed class MesSimulatorConfig
+{
+    [ConfigField("Bật giả lập MES", Order = 1, RequiresRestart = true, HelpText = "Bật worker gửi PO test định kỳ tới HTTP server. Cần bật PoServer ở cùng máy hoặc cấu hình đúng TargetUrl/API key.")]
+    [JsonPropertyName("Enabled")] public bool Enabled { get; set; }
+
+    [ConfigField("Địa chỉ HTTP đích", Order = 2, Placeholder = "VD: http://127.0.0.1:8085", RequiresRestart = true, Validation = "Url", SkipWhenDisabledBy = "MesSimulator:Enabled")]
+    [JsonPropertyName("TargetUrl")] public string TargetUrl { get; set; } = "http://127.0.0.1:8085";
+
+    [ConfigField("API key", Order = 3, Control = ConfigControlKind.Password, Required = false, RequiresRestart = true, SkipWhenDisabledBy = "MesSimulator:Enabled")]
+    [JsonPropertyName("ApiKey")] public string ApiKey { get; set; } = string.Empty;
+
+    [ConfigField("Chu kỳ gửi (giây)", Order = 4, Min = 1, Max = 86400, RequiresRestart = true, SkipWhenDisabledBy = "MesSimulator:Enabled")]
+    [JsonPropertyName("IntervalSeconds")] public int IntervalSeconds { get; set; } = 30;
+
+    [ConfigField("Số mã / PO", Order = 5, Min = 1, Max = 100000, RequiresRestart = true, SkipWhenDisabledBy = "MesSimulator:Enabled", HelpText = "Dùng làm orderQty cả khi upload file custom.")]
+    [JsonPropertyName("OrderQty")] public int OrderQty { get; set; } = 10;
+
+    [ConfigField("GTIN mẫu", Order = 6, RequiresRestart = true, SkipWhenDisabledBy = "MesSimulator:Enabled")]
+    [JsonPropertyName("Gtin")] public string Gtin { get; set; } = "08934567890123";
+
+    [ConfigField("Tiền tố PO / serial", Order = 7, RequiresRestart = true, SkipWhenDisabledBy = "MesSimulator:Enabled")]
+    [JsonPropertyName("PoPrefix")] public string PoPrefix { get; set; } = "MES-TEST";
+
+    [ConfigField("File PO có sẵn", Order = 8, Control = ConfigControlKind.Path, Required = false, Placeholder = "Để trống để tự sinh PO; hỗ trợ CSV/JSON/XLSX/XLS", RequiresRestart = true, SkipWhenDisabledBy = "MesSimulator:Enabled", HelpText = "Có file thì upload một lần lúc khởi động. Đường dẫn tương đối tính từ thư mục ứng dụng.")]
+    [JsonPropertyName("CustomFilePath")] public string CustomFilePath { get; set; } = string.Empty;
+
+    [ConfigField("Tên PO file custom", Order = 9, Required = false, Placeholder = "Mặc định lấy tên file", RequiresRestart = true, SkipWhenDisabledBy = "MesSimulator:Enabled")]
+    [JsonPropertyName("CustomPoName")] public string CustomPoName { get; set; } = string.Empty;
+
+    [ConfigField("Timeout (giây)", Order = 10, Min = 5, Max = 3600, RequiresRestart = true, SkipWhenDisabledBy = "MesSimulator:Enabled")]
+    [JsonPropertyName("TimeoutSeconds")] public int TimeoutSeconds { get; set; } = 30;
 }
 
 /// <summary>Cấu hình ghi log SQLite (mục "Logging:Sqlite").</summary>
@@ -398,6 +438,7 @@ public sealed class AppConfigSnapshot
     [JsonPropertyName("Scanner")] public ScannerConfig Scanner { get; set; } = new();
     [JsonPropertyName("Po")] public PoConfig Po { get; set; } = new();
     [JsonPropertyName("PoServer")] public PoServerConfig PoServer { get; set; } = new();
+    [JsonPropertyName("MesSimulator")] public MesSimulatorConfig MesSimulator { get; set; } = new();
     [JsonPropertyName("Checkee")] public CheckeeConfig Checkee { get; set; } = new();
     [JsonPropertyName("Logging")] public LoggingConfig Logging { get; set; } = new();
     [JsonPropertyName("Auth")] public AuthConfig Auth { get; set; } = new();
@@ -421,6 +462,7 @@ public sealed class AppConfigSnapshot
 [JsonSerializable(typeof(ScannerConfig))]
 [JsonSerializable(typeof(PoConfig))]
 [JsonSerializable(typeof(PoServerConfig))]
+[JsonSerializable(typeof(MesSimulatorConfig))]
 [JsonSerializable(typeof(CheckeeConfig))]
 [JsonSerializable(typeof(CameraConfig))]
 [JsonSerializable(typeof(PlcConfig))]

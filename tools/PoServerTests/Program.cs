@@ -3,7 +3,9 @@ using System.Text;
 using System.Text.Json;
 using ClassLibraryMT.Po;
 using ClassLibraryMT.PoServer;
+using ClassLibraryMT.MesSimulator;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 // =====================================================================
 // Kiem thu HTTP server nhan PO tu MES.
@@ -36,6 +38,7 @@ Console.WriteLine($"Prefix:     {prefix}\n");
 
 // ---- Dung store + server that ----
 var store = new PoStore(Path.Combine(workDir, "po"));
+var history = new PoHistoryStore(Path.Combine(workDir, "po"));
 
 using var loggerFactory = LoggerFactory.Create(b => b.AddConsole().SetMinimumLevel(LogLevel.Warning));
 var logger = loggerFactory.CreateLogger<PoHttpServer>();
@@ -56,7 +59,7 @@ var options = Microsoft.Extensions.Options.Options.Create(new PoServerOptions
     MaxConcurrentRequests = 4,
 });
 
-using var server = new PoHttpServer(options, store, logger);
+using var server = new PoHttpServer(options, store, logger, history);
 
 var receivedEvents = new List<string>();
 server.PoReceived += (_, poName) =>
@@ -184,15 +187,18 @@ Check("PO CSV co 2 ma (bo qua dong tieu de)", csvStored?.TotalCodes == 2,
     csvStored?.TotalCodes.ToString() ?? "null");
 
 // =====================================================================
-// [4] Trung PO -> 409
+// [4] Upload lại cùng PO: bỏ qua toàn bộ mã đã có
 // =====================================================================
-Console.WriteLine("\n[4] POST lai cung mot PO -> 409");
+Console.WriteLine("\n[4] Upload lại cùng PO không tạo mã trùng");
 
 var dupPost = await http.PostAsJsonAsync("/api/po", payload);
 var dupBody = await dupPost.Content.ReadAsStringAsync();
 
-Check("POST trung PO tra HTTP 409", dupPost.StatusCode == System.Net.HttpStatusCode.Conflict,
-    dupBody);
+Check("Upload lại cùng PO trả HTTP 200", dupPost.IsSuccessStatusCode, dupBody);
+Check("Upload lại bỏ qua 3 mã, không nhận mã mới",
+    ResultOf(dupBody).Accepted == 0 && ResultOf(dupBody).IgnoredDuplicates == 3, dupBody);
+Check("Upload lại giữ nguyên số mã",
+    (await store.ListLocalOrdersAsync()).Single(p => p.OrderNo == "PO-MES-001").TotalCodes == 3);
 Console.WriteLine($"      -> {dupBody}");
 
 // =====================================================================
@@ -416,6 +422,40 @@ Check("PO multipart co 2 ma", multiStored?.TotalCodes == 2,
     multiStored?.TotalCodes.ToString() ?? "null");
 
 // =====================================================================
+// [14b] MES simulator client upload PO qua multipart
+// =====================================================================
+Console.WriteLine("\n[14b] MES simulator upload PO qua multipart/form-data");
+
+var simulatorOptions = Options.Create(new MesSimulatorOptions
+{
+    Enabled = true,
+    TargetUrl = prefix.TrimEnd('/'),
+    OrderQty = 2,
+    Gtin = "08934567890123",
+    PoPrefix = "MES-TEST",
+});
+var simulatorLogger = loggerFactory.CreateLogger<MesSimulatorClient>();
+var simulatorClient = new MesSimulatorClient(http, simulatorOptions, simulatorLogger);
+var simulatorResult = await simulatorClient.UploadTestOrderAsync(
+    "PO-SIMULATOR-001",
+    ["MES-SIM-001", "MES-SIM-002"]);
+var simulatorOrder = (await store.ListLocalOrdersAsync())
+    .FirstOrDefault(p => p.OrderNo == "PO-SIMULATOR-001");
+
+Check("Simulator POST multipart tra HTTP 200", simulatorResult.Success, simulatorResult.ResponseBody);
+Check("Simulator PO duoc luu vao DB local", simulatorOrder is not null);
+Check("Simulator PO co du ma", simulatorOrder?.TotalCodes == 2, simulatorOrder?.TotalCodes.ToString() ?? "null");
+
+var customCsvPath = Path.Combine(workDir, "custom-po.csv");
+await File.WriteAllTextAsync(customCsvPath, "serial\nCUSTOM-001\nCUSTOM-002\nCUSTOM-003\n");
+var customFileResult = await simulatorClient.UploadExistingFileAsync(
+    "PO-CUSTOM-FILE-001", 3, customCsvPath, "08934567890123");
+var customOrder = (await store.ListLocalOrdersAsync())
+    .FirstOrDefault(p => p.OrderNo == "PO-CUSTOM-FILE-001");
+Check("Upload file custom CSV tra HTTP 200", customFileResult.Success, customFileResult.ResponseBody);
+Check("PO tu file custom co du ma", customOrder?.TotalCodes == 3, customOrder?.TotalCodes.ToString() ?? "null");
+
+// =====================================================================
 // [15] PO da huỷ khong bi chay lai + khong bi ghi de trang thai
 // =====================================================================
 Console.WriteLine("\n[15] PO da huy giu nguyen trang thai khi MES gui lai");
@@ -519,9 +559,9 @@ Check("Server van phan hoi sau khi nhan PO lon",
     healthAfter.StatusCode.ToString());
 
 // =====================================================================
-// [18] Trùng PO ở THÁNG KHÁC (logs/po/yyyy-MM) -> phải bị từ chối 409
+// [18] Bổ sung vào PO tháng cũ, kể cả DB thiếu metadata CreatedUtc
 // =====================================================================
-Console.WriteLine("\n[18] Trùng PO ở tháng khác -> 409");
+Console.WriteLine("\n[18] Bổ sung mã vào đúng DB PO tháng cũ");
 
 // Tạo thủ công một file DB PO nằm ở tháng KHÁC (không phải tháng hiện tại)
 // để mô phỏng PO đã tồn tại từ lâu / tải từ PO server vào tháng trước.
@@ -566,20 +606,23 @@ var oldMonthPost = await http.PostAsJsonAsync("/api/po", new
 });
 var oldMonthBody = await oldMonthPost.Content.ReadAsStringAsync();
 
-Check("POST trung PO o thang khac tra HTTP 409",
-    oldMonthPost.StatusCode == System.Net.HttpStatusCode.Conflict, oldMonthBody);
+Check("Bổ sung PO tháng cũ trả HTTP 200",
+    oldMonthPost.IsSuccessStatusCode && ResultOf(oldMonthBody).Accepted == 1, oldMonthBody);
 Console.WriteLine($"      -> {oldMonthBody}");
 
-// PO cũ KHÔNG bị ghi đè / thêm mã mới
+// Giữ DB gốc, thêm mã mới và không tạo DB khác tháng.
 var oldMonthInfo = (await store.ListLocalOrdersAsync())
     .FirstOrDefault(p => p.OrderNo == "PO-OLD-MONTH-001");
-Check("PO thang khac van giu nguyen so ma cu",
-    oldMonthInfo?.TotalCodes == 1, oldMonthInfo?.TotalCodes.ToString() ?? "null");
+Check("PO tháng cũ nhận thêm mã và giữ mã cũ",
+    oldMonthInfo?.TotalCodes == 2, oldMonthInfo?.TotalCodes.ToString() ?? "null");
+Check("Bổ sung đúng đường dẫn DB cũ", oldMonthInfo?.DbPath == oldPoFile, oldMonthInfo?.DbPath ?? "null");
+Check("Chỉ tồn tại một DB cho PO tháng cũ",
+    (await store.ListLocalOrdersAsync()).Count(p => p.OrderNo == "PO-OLD-MONTH-001") == 1);
 
 // =====================================================================
-// [19] Mã trùng với PO KHÁC -> phải bị từ chối 409
+// [19] Mã trùng với PO khác được lọc, phần mã mới được nhận
 // =====================================================================
-Console.WriteLine("\n[19] Ma trung voi PO khac -> 409");
+Console.WriteLine("\n[19] Lọc mã trùng và nhận phần mã mới");
 
 // PO mới dùng lại mã đã có trong PO-MES-001 (SER001) nhưng khác tên PO.
 var dupCodePost = await http.PostAsJsonAsync("/api/po", new
@@ -596,31 +639,19 @@ var dupCodePost = await http.PostAsJsonAsync("/api/po", new
 });
 var dupCodeBody = await dupCodePost.Content.ReadAsStringAsync();
 
-Check("POST co ma trung voi PO khac tra HTTP 409",
-    dupCodePost.StatusCode == System.Net.HttpStatusCode.Conflict, dupCodeBody);
-Console.WriteLine($"      -> {dupCodeBody}");
-
-Check("Thong bao loi la tieng Viet",
-    MsgOf(dupCodeBody).Contains("trùng", StringComparison.OrdinalIgnoreCase), dupCodeBody);
-Check("Thong bao loi nen so ma trung",
-    dupCodeBody.Contains("1", StringComparison.Ordinal), dupCodeBody);
-Check("Thong bao loi nen ten PO chua ma trung",
-    dupCodeBody.Contains("PO-MES-001", StringComparison.Ordinal), dupCodeBody);
-Check("Thong bao loi nen co ma vi du",
-    dupCodeBody.Contains("SER001", StringComparison.Ordinal), dupCodeBody);
-Check("Thong bao loi nen so ma trung chinh xac",
-    MsgOf(dupCodeBody).Contains("1 mã", StringComparison.Ordinal), dupCodeBody);
-
-// PO bị từ chối -> KHÔNG được tạo trong DB local
+Check("Lô có mã trùng và mã mới trả HTTP 200", dupCodePost.IsSuccessStatusCode, dupCodeBody);
+Check("Báo đúng một mã nhận, một mã trùng",
+    ResultOf(dupCodeBody).Accepted == 1 && ResultOf(dupCodeBody).IgnoredDuplicates == 1, dupCodeBody);
 var dupLocals = await store.ListLocalOrdersAsync();
-Check("PO bi tu choi khong duoc tao trong DB",
-    !dupLocals.Any(p => p.OrderNo == "PO-DUP-CODE-001"),
-    dupLocals.Count(p => p.OrderNo == "PO-DUP-CODE-001").ToString());
+var partialOrder = dupLocals.Single(p => p.OrderNo == "PO-DUP-CODE-001");
+var partialCodes = await store.GetCodesAsync(partialOrder.OrderNo, partialOrder.CreatedUtc);
+Check("PO mới chỉ chứa mã mới", partialCodes.Count == 1 && partialCodes[0].Serial == "NEWSER999");
+Check("Số lượng PO phản ánh mã thực nhận", partialOrder.OrderQty == 1);
 
 // =====================================================================
 // [20] Mã trùng ở DẠNG KHÁC (mã trần vs Digital Link) vẫn bị phát hiện
 // =====================================================================
-Console.WriteLine("\n[20] Ma trung o dang khac (ma tran vs Digital Link) -> 409");
+Console.WriteLine("\n[20] Mã trần và Digital Link được so theo GTIN|Serial");
 
 // PO-MES-001 chứa SER002 (dạng Digital Link). Gửi lại SER002 dạng mã trần
 // cùng GTIN -> phải bị coi là trùng (cùng cách chuẩn hoá khi quét).
@@ -633,14 +664,17 @@ var dupFormatPost = await http.PostAsJsonAsync("/api/po", new
 });
 var dupFormatBody = await dupFormatPost.Content.ReadAsStringAsync();
 
-Check("Ma trung o dang khac van tra HTTP 409",
-    dupFormatPost.StatusCode == System.Net.HttpStatusCode.Conflict, dupFormatBody);
+Check("Mã trùng khác định dạng được bỏ qua",
+    dupFormatPost.IsSuccessStatusCode && ResultOf(dupFormatBody).Accepted == 0
+    && ResultOf(dupFormatBody).IgnoredDuplicates == 1, dupFormatBody);
+Check("Không tạo PO rỗng khi toàn bộ mã đã có",
+    store.FindExistingDbPath("PO-DUP-FORMAT-001") is null);
 Console.WriteLine($"      -> {dupFormatBody}");
 
 // =====================================================================
-// [21] Mã trùng với PO ở THÁNG KHÁC -> phải bị từ chối 409
+// [21] Mã trùng với PO tháng cũ vẫn bị lọc
 // =====================================================================
-Console.WriteLine("\n[21] Ma trung voi PO o thang khac -> 409");
+Console.WriteLine("\n[21] Lọc mã trùng ở tháng cũ");
 
 var dupOldMonthPost = await http.PostAsJsonAsync("/api/po", new
 {
@@ -650,11 +684,11 @@ var dupOldMonthPost = await http.PostAsJsonAsync("/api/po", new
 });
 var dupOldMonthBody = await dupOldMonthPost.Content.ReadAsStringAsync();
 
-Check("Ma trung voi PO thang khac tra HTTP 409",
-    dupOldMonthPost.StatusCode == System.Net.HttpStatusCode.Conflict, dupOldMonthBody);
+Check("Bỏ qua mã đã có ở tháng cũ",
+    dupOldMonthPost.IsSuccessStatusCode && ResultOf(dupOldMonthBody).Accepted == 0, dupOldMonthBody);
 Console.WriteLine($"      -> {dupOldMonthBody}");
-Check("Thong bao nen ten PO thang khac chua ma trung",
-    dupOldMonthBody.Contains("PO-OLD-MONTH-001", StringComparison.Ordinal), dupOldMonthBody);
+Check("Báo đúng số mã trùng ở tháng cũ",
+    ResultOf(dupOldMonthBody).IgnoredDuplicates == 1, dupOldMonthBody);
 
 // =====================================================================
 // [22] PO không trùng mã nào -> vẫn nhận bình thường (200)
@@ -705,8 +739,7 @@ var bigStored2 = bigLocals2.FirstOrDefault(p => p.OrderNo == "PO-BIG-002");
 Check("PO lon 2 luu du 100.000 ma", bigStored2?.TotalCodes == 100_000,
     bigStored2?.TotalCodes.ToString() ?? "null");
 
-// PO lớn có mã trùng với PO lớn trước -> phải 409 (kiểm tra hiệu năng khi
-// đã có sẵn 100k mã trong DB).
+// Lọc 100.000 mã đã có và không tạo PO rỗng.
 var bigDupSw = System.Diagnostics.Stopwatch.StartNew();
 var bigDupPost = await http.PostAsJsonAsync("/api/po", new
 {
@@ -717,8 +750,10 @@ var bigDupPost = await http.PostAsJsonAsync("/api/po", new
 bigDupSw.Stop();
 var bigDupBody = await bigDupPost.Content.ReadAsStringAsync();
 
-Check("POST 100.000 ma trung voi PO lon truoc tra HTTP 409",
-    bigDupPost.StatusCode == System.Net.HttpStatusCode.Conflict, bigDupBody);
+Check("Bỏ qua toàn bộ 100.000 mã trùng",
+    bigDupPost.IsSuccessStatusCode && ResultOf(bigDupBody).Accepted == 0
+    && ResultOf(bigDupBody).IgnoredDuplicates == 100_000, bigDupBody);
+Check("Không tạo DB cho PO toàn mã trùng", store.FindExistingDbPath("PO-BIG-003") is null);
 Check("So ma trung cua PO lon dung bang 100.000",
     MsgOf(bigDupBody).Contains("100000 mã", StringComparison.Ordinal), bigDupBody);
 Console.WriteLine($"      Thoi gian: {bigDupSw.ElapsedMilliseconds} ms -> {bigDupBody}");
@@ -1118,9 +1153,9 @@ Check("File rong tra HTTP 400",
 Console.WriteLine($"      -> {emptyFileBody}");
 
 // =====================================================================
-// [34] Upload file CSV ma trung voi PO khac -> 409
+// [34] Upload CSV chứa mã trùng: chỉ nhận phần mã mới
 // =====================================================================
-Console.WriteLine("\n[34] Upload file CSV co ma trung voi PO khac -> 409");
+Console.WriteLine("\n[34] Lọc mã trùng khi upload CSV");
 
 var dupFileContent = new ByteArrayContent(
     Encoding.UTF8.GetBytes("SER001\nSER-NEW-999\n"));
@@ -1137,14 +1172,15 @@ var dupFilePost = await http.PostAsync(
     dupFileContent);
 var dupFileBody = await dupFilePost.Content.ReadAsStringAsync();
 
-Check("Upload file co ma trung tra HTTP 409",
-    dupFilePost.StatusCode == System.Net.HttpStatusCode.Conflict, dupFileBody);
+Check("CSV có mã trùng vẫn nhận phần mã mới",
+    dupFilePost.IsSuccessStatusCode && ResultOf(dupFileBody).Accepted == 1
+    && ResultOf(dupFileBody).IgnoredDuplicates == 1, dupFileBody);
 Console.WriteLine($"      -> {dupFileBody}");
 
 // =====================================================================
-// [35] Upload file CSV trung TEN PO -> 409
+// [35] Upload thêm file vào PO chưa sản xuất
 // =====================================================================
-Console.WriteLine("\n[35] Upload file CSV trung ten PO -> 409");
+Console.WriteLine("\n[35] Upload thêm file vào cùng PO");
 
 var dupNameContent = new ByteArrayContent(
     Encoding.UTF8.GetBytes("SER-ANOTHER-1\n"));
@@ -1160,14 +1196,266 @@ var dupNamePost = await http.PostAsync(
     "/api/po?poName=PO-CSV-REAL&orderQty=1", dupNameContent);
 var dupNameBody = await dupNamePost.Content.ReadAsStringAsync();
 
-Check("Upload file trung ten PO tra HTTP 409",
-    dupNamePost.StatusCode == System.Net.HttpStatusCode.Conflict, dupNameBody);
+Check("Upload thêm cùng PO trả HTTP 200",
+    dupNamePost.IsSuccessStatusCode && ResultOf(dupNameBody).Accepted == 1, dupNameBody);
+var mergedFileOrder = (await store.ListLocalOrdersAsync()).Single(p => p.OrderNo == "PO-CSV-REAL");
+Check("PO tăng từ 4 lên 5 mã", mergedFileOrder.TotalCodes == 5);
+Check("Merge giữ CreatedUtc", mergedFileOrder.CreatedUtc == csvRealStored!.CreatedUtc);
+Check("Merge giữ metadata cũ khi request không gửi lại",
+    mergedFileOrder.Additional.TryGetValue("gtin", out var keptGtin) && keptGtin == "08934567890123");
 Console.WriteLine($"      -> {dupNameBody}");
 
 // =====================================================================
-// [36] Tong ket danh sach PO trong DB local
+// [36] Kiểm thử trạng thái sản xuất và upload đồng thời trên kho riêng
 // =====================================================================
-Console.WriteLine("\n[36] Tong ket danh sach PO trong DB local");
+Console.WriteLine("\n[36] Chặn nhận PO khi sản xuất đang chạy hoặc còn dở dang");
+
+var safetyRoot = Path.Combine(workDir, "safety-po");
+var safetyStore = new PoStore(safetyRoot);
+var safetyHistory = new PoHistoryStore(safetyRoot);
+using var safetyServer = new PoHttpServer(Options.Create(new PoServerOptions
+{
+    Enabled = true,
+    Port = FindFreePort(),
+    BindAddress = "127.0.0.1",
+    UploadTempDirectory = workDir,
+}), safetyStore, logger, safetyHistory);
+safetyServer.Start();
+Check("Server kiểm thử trạng thái khởi động được", !safetyServer.State.IsError, safetyServer.State.Status);
+using var safetyHttp = new HttpClient { BaseAddress = new Uri(safetyServer.Prefix), Timeout = TimeSpan.FromSeconds(15) };
+var production = new ProductionOrderService(new LocalOnlyPoClient(), safetyStore, safetyHistory, new PoCodeCache());
+
+async Task<(System.Net.HttpStatusCode Status, PoPushResponse Result)> PushSafetyAsync(string name, params string[] codes)
+{
+    using var response = await safetyHttp.PostAsJsonAsync("api/po", new
+    {
+        poName = name,
+        orderQty = codes.Length,
+        gtin = "08934567890123",
+        codes,
+    });
+    return (response.StatusCode, ResultOf(await response.Content.ReadAsStringAsync()));
+}
+
+await PushSafetyAsync("PO-ACTIVE", "ACTIVE-1", "ACTIVE-2");
+Check("Bắt đầu sản xuất thật", await production.StartProductionAsync("PO-ACTIVE"));
+var activeBefore = (await safetyStore.ListLocalOrdersAsync()).Single(p => p.OrderNo == "PO-ACTIVE");
+var blockJson = await PushSafetyAsync("PO-BLOCK-JSON", "BLOCK-JSON-1");
+Check("Có PO đang chạy: chặn JSON PO mới", blockJson.Status == System.Net.HttpStatusCode.Conflict && blockJson.Result.Accepted == 0);
+var blockRepeat = await PushSafetyAsync("PO-ACTIVE", "ACTIVE-1", "ACTIVE-NEW");
+Check("Có PO đang chạy: chặn bổ sung và upload lại cùng PO", blockRepeat.Status == System.Net.HttpStatusCode.Conflict);
+using (var raw = new StringContent("BLOCK-RAW-1\n", Encoding.UTF8, "text/csv"))
+using (var response = await safetyHttp.PostAsync("api/po?poName=PO-BLOCK-RAW&orderQty=1&gtin=08934567890123", raw))
+{
+    Check("Có PO đang chạy: chặn file CSV thuần", response.StatusCode == System.Net.HttpStatusCode.Conflict);
+}
+using (var form = new MultipartFormDataContent())
+{
+    form.Add(new StringContent("PO-BLOCK-MULTI"), "poName");
+    form.Add(new StringContent("1"), "orderQty");
+    form.Add(new StringContent("BLOCK-MULTI-1\n", Encoding.UTF8), "file", "blocked.csv");
+    using var response = await safetyHttp.PostAsync("api/po", form);
+    Check("Có PO đang chạy: chặn multipart", response.StatusCode == System.Net.HttpStatusCode.Conflict);
+}
+var activeAfter = (await safetyStore.ListLocalOrdersAsync()).Single(p => p.OrderNo == "PO-ACTIVE");
+Check("Các lần bị chặn không tạo PO mới", !(await safetyStore.ListLocalOrdersAsync()).Any(p => p.OrderNo.StartsWith("PO-BLOCK-", StringComparison.Ordinal)));
+Check("PO đang chạy không bị thay đổi", activeAfter.TotalCodes == activeBefore.TotalCodes && activeAfter.Status == ProductionOrderStatus.Running);
+
+// Hoàn tất bằng luồng quét thực tế để kiểm tra khóa không gây deadlock.
+await production.MarkCodeScannedAsync("08934567890123", "ACTIVE-1");
+await production.MarkCodeScannedAsync("08934567890123", "ACTIVE-2");
+Check("Quét đủ mã tự hoàn tất", !production.IsProductionRunning && production.LastFinishedStatus == ProductionOrderStatus.Completed);
+var completeRetry = await PushSafetyAsync("PO-ACTIVE", "ACTIVE-NEW");
+Check("PO đã hoàn tất không nhận thêm mã", completeRetry.Status == System.Net.HttpStatusCode.Conflict && completeRetry.Result.Accepted == 0);
+Check("PO hoàn tất giữ nguyên số mã", (await safetyStore.ListLocalOrdersAsync()).Single(p => p.OrderNo == "PO-ACTIVE").TotalCodes == 2);
+var afterComplete = await PushSafetyAsync("PO-AFTER-COMPLETE", "AFTER-COMPLETE-1");
+Check("Sau hoàn tất cho phép nhận PO mới", afterComplete.Status == System.Net.HttpStatusCode.OK && afterComplete.Result.Accepted == 1);
+
+Check("Chạy PO tiếp theo", await production.StartProductionAsync("PO-AFTER-COMPLETE"));
+Check("Huỷ PO đang chạy", await production.CancelProductionAsync());
+var cancelRetry = await PushSafetyAsync("PO-AFTER-COMPLETE", "CANCEL-NEW");
+Check("PO đã huỷ không nhận thêm mã", cancelRetry.Status == System.Net.HttpStatusCode.Conflict);
+var afterCancel = await PushSafetyAsync("PO-AFTER-CANCEL", "AFTER-CANCEL-1");
+Check("Sau huỷ cho phép nhận PO mới", afterCancel.Status == System.Net.HttpStatusCode.OK);
+var closed = (await safetyStore.ListLocalOrdersAsync()).Single(p => p.OrderNo == "PO-AFTER-CANCEL");
+await safetyStore.SetMetaAsync(closed.OrderNo, closed.CreatedUtc, PoStore.MetaStatus, ProductionOrderStatus.Closed.ToString());
+var closedRetry = await PushSafetyAsync(closed.OrderNo, "CLOSED-NEW");
+Check("PO đã đóng không nhận thêm mã", closedRetry.Status == System.Net.HttpStatusCode.Conflict);
+
+// Dữ liệu dở dang trên đĩa phải chặn ngay cả khi service chưa khôi phục RAM.
+await PushSafetyAsync("PO-PERSISTED-RUNNING", "PERSISTED-1", "PERSISTED-2");
+var persisted = (await safetyStore.ListLocalOrdersAsync()).Single(p => p.OrderNo == "PO-PERSISTED-RUNNING");
+await safetyStore.SetMetaAsync(persisted.OrderNo, persisted.CreatedUtc, PoStore.MetaStatus, ProductionOrderStatus.Running.ToString());
+var persistedBlock = await PushSafetyAsync("PO-PERSISTED-BLOCK", "PERSISTED-BLOCK-1");
+Check("Chặn PO Running trên đĩa dù chưa khôi phục RAM", persistedBlock.Status == System.Net.HttpStatusCode.Conflict);
+await safetyStore.MarkCancelledAsync(persisted.OrderNo, persisted.CreatedUtc);
+
+await PushSafetyAsync("PO-PERSISTED-STARTED", "STARTED-1", "STARTED-2");
+var started = (await safetyStore.ListLocalOrdersAsync()).Single(p => p.OrderNo == "PO-PERSISTED-STARTED");
+await safetyStore.SetMetaAsync(started.OrderNo, started.CreatedUtc, PoStore.MetaStartedUtc, DateTime.UtcNow.ToString("O"));
+var startedBlock = await PushSafetyAsync("PO-STARTED-BLOCK", "STARTED-BLOCK-1");
+Check("Chặn PO đã bắt đầu nhưng chưa ghi trạng thái kết thúc", startedBlock.Status == System.Net.HttpStatusCode.Conflict);
+await safetyStore.MarkCancelledAsync(started.OrderNo, started.CreatedUtc);
+
+await PushSafetyAsync("PO-PERSISTED-SCANNED", "SCANNED-1", "SCANNED-2");
+var scanned = (await safetyStore.ListLocalOrdersAsync()).Single(p => p.OrderNo == "PO-PERSISTED-SCANNED");
+await safetyStore.MarkScannedAsync(scanned.OrderNo, scanned.CreatedUtc, "08934567890123|SCANNED-1");
+var scannedBlock = await PushSafetyAsync("PO-SCANNED-BLOCK", "SCANNED-BLOCK-1");
+Check("Chặn PO đã quét dở dù status chưa là Running", scannedBlock.Status == System.Net.HttpStatusCode.Conflict);
+await safetyStore.MarkCancelledAsync(scanned.OrderNo, scanned.CreatedUtc);
+
+await safetyHistory.StartRunAsync("PO-HISTORY-ONLY", 2, DateTime.UtcNow);
+var historyBlock = await PushSafetyAsync("PO-HISTORY-BLOCK", "HISTORY-BLOCK-1");
+Check("Lịch sử còn Running cũng chặn nhận khi DB PO thiếu", historyBlock.Status == System.Net.HttpStatusCode.Conflict);
+await safetyHistory.CancelRunAsync("PO-HISTORY-ONLY");
+
+// Các PO kết thúc không được giữ khóa nhận vô thời hạn.
+var unlocked = await PushSafetyAsync("PO-UNLOCKED", "UNLOCKED-1");
+Check("Các PO đã huỷ/hoàn tất không chặn PO mới", unlocked.Status == System.Net.HttpStatusCode.OK);
+Check("Không có DB nào cho các request dở dang bị chặn",
+    new[] { "PO-PERSISTED-BLOCK", "PO-STARTED-BLOCK", "PO-SCANNED-BLOCK", "PO-HISTORY-BLOCK" }
+        .All(name => safetyStore.FindExistingDbPath(name) is null));
+
+Console.WriteLine("\n[37] Lọc trùng theo khóa chuẩn và giữa nhiều PO");
+using (var response = await safetyHttp.PostAsJsonAsync("api/po", new
+{
+    poName = "PO-GTIN-KEY",
+    orderQty = 3,
+    codes = new[]
+    {
+        "https://example.test/01/08934567890123/21/SAME-SERIAL",
+        "(01)08934567890123(21)SAME-SERIAL",
+        "https://example.test/01/08934567890124/21/SAME-SERIAL",
+    },
+}))
+{
+    var result = ResultOf(await response.Content.ReadAsStringAsync());
+    Check("Cùng GTIN/Serial khác định dạng bị loại trùng; khác GTIN vẫn giữ",
+        response.IsSuccessStatusCode && result.Accepted == 2 && result.IgnoredDuplicates == 1);
+}
+await PushSafetyAsync("PO-OWNER-A", "OWNER-A-1");
+await PushSafetyAsync("PO-OWNER-B", "OWNER-B-1");
+var severalOwners = await PushSafetyAsync("PO-SEVERAL-OWNERS", "OWNER-A-1", "OWNER-B-1", "OWNER-NEW-1", "OWNER-NEW-1");
+Check("Quét hết nhiều PO sở hữu mã trùng và trùng trong cùng request",
+    severalOwners.Status == System.Net.HttpStatusCode.OK && severalOwners.Result.Accepted == 1
+    && severalOwners.Result.IgnoredDuplicates == 3);
+
+Console.WriteLine("\n[38] Upload đồng thời không tạo mã trùng");
+var competing = await Task.WhenAll(Enumerable.Range(0, 8).Select(i => PushSafetyAsync($"PO-RACE-{i}", "RACE-SHARED-1")));
+Check("Các lượt upload đồng thời đều trả kết quả hợp lệ", competing.All(r => r.Status == System.Net.HttpStatusCode.OK));
+Check("Chỉ một lượt nhận mã mới", competing.Sum(r => r.Result.Accepted) == 1);
+Check("Bảy lượt còn lại báo bỏ qua mã trùng", competing.Sum(r => r.Result.IgnoredDuplicates) == 7);
+Check("Chỉ tạo một PO chứa mã chung", (await safetyStore.ListLocalOrdersAsync()).Count(p => p.OrderNo.StartsWith("PO-RACE-", StringComparison.Ordinal)) == 1);
+var concurrentMerge = await Task.WhenAll(
+    PushSafetyAsync("PO-CONCURRENT-MERGE", "MERGE-SHARED", "MERGE-LEFT"),
+    PushSafetyAsync("PO-CONCURRENT-MERGE", "MERGE-SHARED", "MERGE-RIGHT"));
+Check("Bổ sung đồng thời cùng PO chỉ nhận ba mã duy nhất", concurrentMerge.Sum(r => r.Result.Accepted) == 3);
+Check("DB merge đồng thời có đủ ba mã", (await safetyStore.ListLocalOrdersAsync()).Single(p => p.OrderNo == "PO-CONCURRENT-MERGE").TotalCodes == 3);
+
+// Xếp thao tác bắt đầu trước request nhận trong cùng khóa; request phải thấy trạng thái mới.
+await PushSafetyAsync("PO-START-RACE", "START-RACE-1", "START-RACE-2");
+Task<bool> startWhileLocked;
+Task<(System.Net.HttpStatusCode Status, PoPushResponse Result)> receiveWhileLocked;
+using (await safetyStore.AcquireMutationLockAsync())
+{
+    startWhileLocked = production.StartProductionAsync("PO-START-RACE");
+    receiveWhileLocked = PushSafetyAsync("PO-RECEIVE-RACE", "RECEIVE-RACE-1");
+}
+Check("Bắt đầu sản xuất qua khóa dùng chung", await startWhileLocked.WaitAsync(TimeSpan.FromSeconds(10)));
+var receiveRace = await receiveWhileLocked.WaitAsync(TimeSpan.FromSeconds(10));
+Check("Không nhận PO chen vào lúc bắt đầu sản xuất", receiveRace.Status == System.Net.HttpStatusCode.Conflict);
+Check("Request đua với Start không tạo DB", safetyStore.FindExistingDbPath("PO-RECEIVE-RACE") is null);
+await production.CancelProductionAsync();
+
+Console.WriteLine("\n[39] Không ghi khi không xác minh được dữ liệu PO hiện hữu");
+var corruptRoot = Path.Combine(workDir, "corrupt-po");
+var corruptMonth = Path.Combine(corruptRoot, DateTime.UtcNow.ToString("yyyy-MM"));
+Directory.CreateDirectory(corruptMonth);
+await File.WriteAllTextAsync(Path.Combine(corruptMonth, "unreadable.db"), "not a sqlite database");
+var corruptStore = new PoStore(corruptRoot);
+using var corruptServer = new PoHttpServer(Options.Create(new PoServerOptions
+{
+    Enabled = true,
+    Port = FindFreePort(),
+    BindAddress = "127.0.0.1",
+}), corruptStore, logger, new PoHistoryStore(corruptRoot));
+corruptServer.Start();
+using var corruptHttp = new HttpClient { BaseAddress = new Uri(corruptServer.Prefix), Timeout = TimeSpan.FromSeconds(15) };
+using (var response = await corruptHttp.PostAsJsonAsync("api/po", new
+{
+    poName = "PO-MUST-NOT-WRITE",
+    orderQty = 1,
+    codes = new[] { "UNVERIFIED-1" },
+}))
+{
+    var result = ResultOf(await response.Content.ReadAsStringAsync());
+    Check("DB cũ hỏng: trả lỗi và không nhận mã", response.StatusCode == System.Net.HttpStatusCode.InternalServerError && result.Accepted == 0);
+    Check("DB cũ hỏng: không tạo PO mới", corruptStore.FindExistingDbPath("PO-MUST-NOT-WRITE") is null);
+}
+
+// Bản ghi lịch sử còn sót sau khi PO local đã kết thúc không được khóa máy.
+await safetyHistory.StartRunAsync("PO-ACTIVE", 2, activeBefore.CreatedUtc);
+var staleCompletedRun = await PushSafetyAsync("PO-AFTER-STALE-COMPLETE", "STALE-COMPLETE-1");
+Check("Lịch sử Running cũ của PO hoàn tất không chặn nhận", staleCompletedRun.Status == System.Net.HttpStatusCode.OK);
+await safetyHistory.StartRunAsync("PO-AFTER-COMPLETE", 1, activeBefore.CreatedUtc);
+var staleCancelledRun = await PushSafetyAsync("PO-AFTER-STALE-CANCEL", "STALE-CANCEL-1");
+Check("Lịch sử Running cũ của PO đã huỷ không chặn nhận", staleCancelledRun.Status == System.Net.HttpStatusCode.OK);
+await safetyHistory.StartRunAsync("PO-REAL-UNFINISHED", 1, DateTime.UtcNow);
+await safetyHistory.StartRunAsync("PO-ACTIVE", 2, activeBefore.CreatedUtc);
+var hiddenRun = await PushSafetyAsync("PO-HIDDEN-RUN-BLOCK", "HIDDEN-RUN-1");
+Check("Lịch sử dở dang cũ vẫn chặn dù lần mới nhất đã kết thúc", hiddenRun.Status == System.Net.HttpStatusCode.Conflict);
+await safetyHistory.CancelRunAsync("PO-REAL-UNFINISHED");
+
+// Lần nhận đầu thất bại không để DB rỗng; lần bổ sung thất bại rollback metadata và mã.
+var rollbackOrder = new ProductionOrder { OrderNo = "PO-ROLLBACK", OrderQty = 2, CreatedUtc = DateTime.UtcNow };
+try
+{
+    await safetyStore.EnsurePoDbAsync(rollbackOrder,
+    [
+        new() { Code = "ROLLBACK-1", Gtin = "G", Serial = "ROLLBACK-1" },
+        new() { Code = null!, Gtin = "G", Serial = "ROLLBACK-BAD" },
+    ]);
+    Check("Lỗi lưu mã phải được báo", false);
+}
+catch (InvalidOperationException)
+{
+    Check("Lần nhận đầu lỗi không để lại DB công khai", safetyStore.FindExistingDbPath(rollbackOrder.OrderNo) is null);
+}
+await safetyStore.EnsurePoDbAsync(rollbackOrder, [new() { Code = "ROLLBACK-1", Gtin = "G", Serial = "ROLLBACK-1" }]);
+rollbackOrder.OrderQty = 999;
+try
+{
+    var failingCodes = Enumerable.Range(0, 300).Select(i => new PoCode
+        { Code = $"ROLLBACK-NEW-{i}", Gtin = "G", Serial = $"ROLLBACK-NEW-{i}" }).ToList();
+    failingCodes.Add(new() { Code = null!, Gtin = "G", Serial = "ROLLBACK-BAD" });
+    await safetyStore.EnsurePoDbAsync(rollbackOrder, failingCodes);
+    Check("Lỗi bổ sung phải được báo", false);
+}
+catch (InvalidOperationException)
+{
+    var rollbackMeta = await safetyStore.GetMetaAsync(rollbackOrder.OrderNo, rollbackOrder.CreatedUtc);
+    var rollbackCodes = await safetyStore.GetCodesAsync(rollbackOrder.OrderNo, rollbackOrder.CreatedUtc);
+    Check("Lỗi ở batch sau rollback toàn bộ mã và metadata", rollbackCodes.Count == 1
+        && rollbackMeta[PoStore.MetaOrderQty] == "2");
+}
+var uploadAfterFailure = await PushSafetyAsync("PO-AFTER-WRITE-FAILURE", "AFTER-WRITE-FAILURE-1");
+Check("Tiếp tục nhận được sau lỗi ghi DB", uploadAfterFailure.Status == System.Net.HttpStatusCode.OK);
+
+// Không gửi lại GTIN thì dùng GTIN đã lưu của chính PO khi bổ sung serial trần.
+using (var response = await safetyHttp.PostAsJsonAsync("api/po", new
+{
+    poName = "PO-OWNER-A", orderQty = 2, codes = new[] { "OWNER-A-1", "OWNER-A-EXTRA" },
+}))
+{
+    var result = ResultOf(await response.Content.ReadAsStringAsync());
+    Check("Bổ sung serial trần dùng GTIN cũ để lọc trùng", response.IsSuccessStatusCode
+        && result.Accepted == 1 && result.IgnoredDuplicates == 1);
+}
+
+// =====================================================================
+// [40] Tổng kết danh sách PO trong DB local
+// =====================================================================
+Console.WriteLine("\n[40] Tổng kết danh sách PO trong DB local");
 
 foreach (var p in locals2(store).OrderBy(p => p.OrderNo))
 {
@@ -1199,6 +1487,10 @@ static string MsgOf(string json)
         return string.Empty;
     }
 }
+
+static PoPushResponse ResultOf(string json) =>
+    JsonSerializer.Deserialize(json, PoServerJsonContext.Default.PoPushResponse)
+    ?? throw new InvalidOperationException("Phản hồi PO rỗng.");
 
 static int FindFreePort()
 {
@@ -1493,4 +1785,18 @@ static async Task WriteZipAsync(
 
     File.Move(tmp, path, overwrite: true);
     await Task.CompletedTask;
+}
+
+
+// Client cô lập dùng cho kiểm thử lifecycle: các PO đều đã được nhận qua HTTP.
+file sealed class LocalOnlyPoClient : IPoClient
+{
+    public Task<IReadOnlyList<ProductionOrder>> GetOrdersAsync(bool includeCompleted = false, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<ProductionOrder>>([]);
+    public Task<IReadOnlyList<PoCode>> GetCodesAsync(string orderNo, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<PoCode>>([]);
+    public Task<PoActivateResult> ActivateAsync(string orderNo, IReadOnlyList<string> serials, CancellationToken ct = default) =>
+        Task.FromResult(new PoActivateResult { Ok = true, Activated = serials.Count });
+    public Task<ProductionOrder?> CreateOrderAsync(string orderNo, int orderQty, CancellationToken ct = default) =>
+        Task.FromResult<ProductionOrder?>(null);
 }

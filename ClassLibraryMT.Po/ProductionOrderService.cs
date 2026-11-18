@@ -179,6 +179,11 @@ public sealed class ProductionOrderService
     /// </summary>
     public async Task<PoSyncResult> SyncFromServerAsync(CancellationToken ct = default)
     {
+        using var mutationLock = await _store.AcquireMutationLockAsync(ct).ConfigureAwait(false);
+        var unfinished = await _store.GetUnfinishedOrderNoAsync(_history, ct).ConfigureAwait(false);
+        if (unfinished is not null)
+            throw new PoServerException($"Không thể tải PO khi PO '{unfinished}' đang sản xuất dở dang.");
+
         var orders = await _client.GetOrdersAsync(includeCompleted: true, ct).ConfigureAwait(false);
 
         var newPoCount = 0;
@@ -186,9 +191,34 @@ public sealed class ProductionOrderService
 
         foreach (var order in orders)
         {
-            var existed = _store.FindExistingDbPath(order.OrderNo) is not null;
+            var local = await FindLocalOrderAsync(order.OrderNo, ct).ConfigureAwait(false);
+            if (local?.IsFinished == true)
+                continue;
+            var existed = local is not null;
+            if (local is not null)
+                order.CreatedUtc = local.CreatedUtc;
 
             var codes = await _client.GetCodesAsync(order.OrderNo, ct).ConfigureAwait(false);
+            var duplicateKeys = await _store.FindDuplicateCodesAsync(
+                codes.Select(code => PoStore.BuildCodeKey(code.Gtin, code.Serial)).ToArray(), ct: ct)
+                .ConfigureAwait(false);
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            codes = codes.Where(code =>
+            {
+                var key = PoStore.BuildCodeKey(code.Gtin, code.Serial);
+                return seen.Add(key) && !duplicateKeys.DuplicateKeys.Contains(key);
+            }).ToArray();
+            if (codes.Count == 0)
+                continue;
+
+            order.OrderQty = (local?.TotalCodes ?? 0) + codes.Count;
+            if (local is not null)
+            {
+                var additional = new Dictionary<string, string>(local.Additional, StringComparer.OrdinalIgnoreCase);
+                foreach (var entry in order.Additional)
+                    additional[entry.Key] = entry.Value;
+                order.Additional = additional;
+            }
 
             var before = await CountCodesAsync(order, ct).ConfigureAwait(false);
             await _store.EnsurePoDbAsync(order, codes, ct).ConfigureAwait(false);
@@ -266,6 +296,8 @@ public sealed class ProductionOrderService
         if (string.IsNullOrWhiteSpace(orderNo))
             return false;
 
+        using var mutationLock = await _store.AcquireMutationLockAsync(ct).ConfigureAwait(false);
+
         if (_halted)
         {
             _logger?.LogWarning(
@@ -284,6 +316,13 @@ public sealed class ProductionOrderService
             }
         }
 
+        var unfinished = await _store.GetUnfinishedOrderNoAsync(_history, ct).ConfigureAwait(false);
+        if (unfinished is not null && !string.Equals(unfinished, orderNo, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger?.LogWarning("PO {OrderNo} còn dở dang, không thể bắt đầu PO khác.", unfinished);
+            return false;
+        }
+
         // Tìm PO trong DB local (đường dẫn file + CreatedUtc đã lưu sẵn).
         var local = await FindLocalOrderAsync(orderNo, ct).ConfigureAwait(false);
         if (local is null)
@@ -294,7 +333,7 @@ public sealed class ProductionOrderService
         }
 
         // PO đã kết thúc vòng sản xuất (đã huỷ hoặc đã hoàn tất) → không được chạy lại.
-        if (local.Status is ProductionOrderStatus.Cancelled or ProductionOrderStatus.Completed)
+        if (local.IsFinished)
         {
             _logger?.LogWarning(
                 "PO {OrderNo} đã {Status}, không được chạy lại.", orderNo, local.Status);
@@ -354,6 +393,7 @@ public sealed class ProductionOrderService
     /// </remarks>
     public async Task<bool> CompleteProductionAsync(CancellationToken ct = default)
     {
+        using var mutationLock = await _store.AcquireMutationLockAsync(ct).ConfigureAwait(false);
         ProductionOrder? order;
         lock (_gate)
         {
@@ -405,6 +445,7 @@ public sealed class ProductionOrderService
         string? orderNo = null,
         CancellationToken ct = default)
     {
+        using var mutationLock = await _store.AcquireMutationLockAsync(ct).ConfigureAwait(false);
         ProductionOrder? order;
         lock (_gate)
         {
@@ -488,6 +529,7 @@ public sealed class ProductionOrderService
     /// </summary>
     public async Task<bool> RestoreRunningOrderAsync(CancellationToken ct = default)
     {
+        using var mutationLock = await _store.AcquireMutationLockAsync(ct).ConfigureAwait(false);
         var run = await _history.GetRunningRunAsync(ct).ConfigureAwait(false);
         if (run is null)
         {
@@ -504,7 +546,7 @@ public sealed class ProductionOrderService
             return false;
         }
 
-        if (local.Status is ProductionOrderStatus.Cancelled or ProductionOrderStatus.Completed)
+        if (local.IsFinished)
         {
             _logger?.LogInformation(
                 "PO {OrderNo} đã {Status}, không khôi phục.", run.OrderNo, local.Status);
@@ -743,6 +785,7 @@ public sealed class ProductionOrderService
         IReadOnlyList<string> conflicts,
         CancellationToken ct)
     {
+        using var mutationLock = await _store.AcquireMutationLockAsync(ct).ConfigureAwait(false);
         _halted = true;
 
         _logger?.LogError(

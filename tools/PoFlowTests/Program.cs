@@ -17,7 +17,8 @@ var poRoot = Path.Combine(workDir, "po");
 var store = new PoStore(poRoot);
 var history = new PoHistoryStore(poRoot);
 var cache = new PoCodeCache();
-var svc = new ProductionOrderService(new FakeClient(), store, history, cache);
+var client = new FakeClient();
+var svc = new ProductionOrderService(client, store, history, cache);
 
 // ---------------------------------------------------------------------
 // [1] Sync tu server KHONG duoc ghi de trang thai local (Cancelled/Completed)
@@ -141,19 +142,61 @@ Check("PO da hoan thanh co moc CompletedUtc",
     doneSummary.CompletedUtc is not null,
     doneSummary.CompletedUtc?.ToString("O") ?? "null");
 
+Console.WriteLine("\n[5] Tải PO từ server cũng lọc trùng, giữ PO đã kết thúc và chặn khi đang chạy");
+await svc.CancelProductionAsync();
+client.Orders =
+[
+    new() { OrderNo = "PO-SYNC-NEW", OrderQty = 3, CreatedUtc = DateTime.UtcNow },
+    new() { OrderNo = "PO-KEEP-001", OrderQty = 3, CreatedUtc = DateTime.UtcNow },
+    new() { OrderNo = "PO-DONE-001", OrderQty = 3, CreatedUtc = DateTime.UtcNow },
+];
+client.Codes =
+[
+    new() { Code = "/01/G/21/A1", Gtin = "G", Serial = "A1" },
+    new() { Code = "/01/G/21/SYNC-1", Gtin = "G", Serial = "SYNC-1" },
+    new() { Code = "/01/G/21/SYNC-1", Gtin = "G", Serial = "SYNC-1" },
+];
+var syncFirst = await svc.SyncFromServerAsync();
+Check("Tải lần đầu chỉ tạo một PO và thêm một mã mới",
+    syncFirst.NewPoCount == 1 && syncFirst.NewCodeCount == 1);
+var syncAgain = await svc.SyncFromServerAsync();
+Check("Tải lại không thêm mã hoặc PO", syncAgain.NewPoCount == 0 && syncAgain.NewCodeCount == 0);
+var syncedOrders = await store.ListLocalOrdersAsync();
+Check("PO đã huỷ không được bổ sung", syncedOrders.Single(p => p.OrderNo == "PO-KEEP-001").TotalCodes == 2);
+Check("PO hoàn tất không được bổ sung", syncedOrders.Single(p => p.OrderNo == "PO-DONE-001").TotalCodes == 1);
+Check("Bắt đầu PO vừa tải", await svc.StartProductionAsync("PO-SYNC-NEW"));
+var callsBefore = client.GetOrdersCalls;
+try
+{
+    await svc.SyncFromServerAsync();
+    Check("Đang sản xuất phải chặn tải PO", false);
+}
+catch (PoServerException)
+{
+    Check("Đang sản xuất bị chặn trước khi gọi mạng", client.GetOrdersCalls == callsBefore);
+}
+await svc.CancelProductionAsync();
+
 Console.WriteLine($"\nKet qua: {(failures == 0 ? "TAT CA PASS" : failures + " FAIL")}");
 return failures == 0 ? 0 : 1;
 
 // Client PO gia lap: khong goi mang.
 file sealed class FakeClient : IPoClient
 {
+    public IReadOnlyList<ProductionOrder> Orders { get; set; } = [];
+    public IReadOnlyList<PoCode> Codes { get; set; } = [];
+    public int GetOrdersCalls { get; private set; }
+
     public Task<IReadOnlyList<ProductionOrder>> GetOrdersAsync(
-        bool includeCompleted = false, CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyList<ProductionOrder>>([]);
+        bool includeCompleted = false, CancellationToken ct = default)
+    {
+        GetOrdersCalls++;
+        return Task.FromResult(Orders);
+    }
 
     public Task<IReadOnlyList<PoCode>> GetCodesAsync(
         string orderNo, CancellationToken ct = default) =>
-        Task.FromResult<IReadOnlyList<PoCode>>([]);
+        Task.FromResult(Codes);
 
     public Task<PoActivateResult> ActivateAsync(
         string orderNo, IReadOnlyList<string> serials, CancellationToken ct = default) =>
