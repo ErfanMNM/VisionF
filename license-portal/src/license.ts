@@ -12,6 +12,7 @@
  */
 
 import { computeKeyId, enc, groupHwid, importSigningKey, normalizeHwid, signData, toBase64 } from './crypto';
+import { ApiError, type LicenseRequestRow } from './requests';
 import type { Env } from './types';
 
 export interface LicensePayload {
@@ -44,7 +45,7 @@ export interface IssueResult {
  */
 export async function issueLicense(
   env: Env,
-  input: { customer: string; hwid: string; daysValid: number; product: string; note?: string; createdBy: string },
+  input: { customer: string; hwid: string; daysValid: number; product: string; note?: string; createdBy: string; requestId?: string },
 ): Promise<IssueResult> {
   const customer = input.customer.trim();
   if (!customer) throw new Error('Tên khách hàng không được để trống.');
@@ -64,6 +65,17 @@ export async function issueLicense(
   const product = (input.product || env.DEFAULT_PRODUCT).trim();
   if (!product) throw new Error('Sản phẩm không được để trống.');
   if (product.length > 100) throw new Error('Tên sản phẩm quá dài.');
+
+  if (input.requestId) {
+    const licenseRequest = await env.DB.prepare(
+      'SELECT hwid, product, status FROM license_requests WHERE id = ?',
+    ).bind(input.requestId).first<Pick<LicenseRequestRow, 'hwid' | 'product' | 'status'>>();
+    if (!licenseRequest) throw new ApiError('Không tìm thấy yêu cầu cấp license.', 404);
+    if (licenseRequest.status !== 'pending') throw new ApiError('Yêu cầu này đã được cấp license.', 409);
+    if (licenseRequest.hwid !== hwid || licenseRequest.product !== product) {
+      throw new ApiError('HWID và sản phẩm phải khớp yêu cầu cấp license đã chọn.', 409);
+    }
+  }
 
   // Kiểm tra sản phẩm có tồn tại trong bảng products không.
   const productRow = await env.DB.prepare(
@@ -116,31 +128,56 @@ export async function issueLicense(
   const licenseKey = generateLicenseKey();
   const hwidDisplay = groupHwid(hwid);
 
-  // Luu vao D1.
-  await env.DB.prepare(
+  const fields = [
+    licenseKey,
+    customer,
+    product,
+    hwid,
+    hwidDisplay,
+    daysValid,
+    payload.issued,
+    payload.expires,
+    keyId,
+    file.data,
+    file.sig,
+    (input.note ?? '').trim() || null,
+    input.createdBy,
+  ];
+  const insertSql =
     `INSERT INTO licenses
        (license_key, customer, product, hwid, hwid_display, days_valid,
-        issued_at, expires_at, key_id, data_b64, sig_b64, note, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  )
-    .bind(
-      licenseKey,
-      customer,
-      product,
-      hwid,
-      hwidDisplay,
-      daysValid,
-      payload.issued,
-      payload.expires,
-      keyId,
-      file.data,
-      file.sig,
-      (input.note ?? '').trim() || null,
-      input.createdBy,
-    )
-    .run();
+        issued_at, expires_at, key_id, data_b64, sig_b64, note, created_by)`;
 
-  await audit(env, input.createdBy, 'issue', `key=${licenseKey} customer=${customer} product=${product}`);
+  if (input.requestId) {
+    // Cấp và đánh dấu đã xử lý cùng một transaction. Hai quản trị viên
+    // cấp đồng thời chỉ có một INSERT thấy request còn pending.
+    const result = await env.DB.batch([
+      env.DB.prepare(
+        `${insertSql}
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          WHERE EXISTS (SELECT 1 FROM license_requests
+                         WHERE id = ? AND status = 'pending' AND hwid = ? AND product = ?)`,
+      ).bind(...fields, input.requestId, hwid, product),
+      env.DB.prepare(
+        `UPDATE license_requests SET status = 'issued', license_key = ?, updated_at = ?
+          WHERE id = ? AND status = 'pending' AND hwid = ? AND product = ?
+            AND EXISTS (SELECT 1 FROM licenses WHERE license_key = ?)`,
+      ).bind(licenseKey, payload.issued, input.requestId, hwid, product, licenseKey),
+      env.DB.prepare(
+        `INSERT INTO audit_log (actor, action, detail)
+         SELECT ?, 'issue', ?
+          WHERE EXISTS (SELECT 1 FROM license_requests WHERE id = ? AND license_key = ?)`,
+      ).bind(input.createdBy, `key=${licenseKey} request=${input.requestId} customer=${customer} product=${product}`,
+        input.requestId, licenseKey),
+    ]);
+    if (result[0].meta.changes === 0) {
+      throw new ApiError('Yêu cầu này đã được xử lý; hãy tải lại danh sách.', 409);
+    }
+  } else {
+    await env.DB.prepare(`${insertSql} VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(...fields).run();
+    await audit(env, input.createdBy, 'issue', `key=${licenseKey} customer=${customer} product=${product}`);
+  }
 
   const idRow = await env.DB.prepare(
     'SELECT id FROM licenses WHERE license_key = ?',
@@ -226,6 +263,30 @@ export async function revokeLicense(
 
   await audit(env, actor, 'revoke', `key=${licenseKey} reason=${reason || '-'}`);
   return true;
+}
+
+/** Chỉ xoá license đã thu hồi, giữ lại nhật ký của lần xoá. */
+export async function deleteRevokedLicense(
+  env: Env, licenseKey: string, actor: string,
+): Promise<'deleted' | 'missing' | 'not-revoked'> {
+  const existing = await env.DB.prepare(
+    'SELECT revoked_at FROM licenses WHERE license_key = ?',
+  ).bind(licenseKey).first<{ revoked_at: string | null }>();
+  if (!existing) return 'missing';
+  if (existing.revoked_at === null) return 'not-revoked';
+
+  // Ghi audit và xoá cùng transaction, không mất dấu thao tác xoá vĩnh viễn.
+  const result = await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO audit_log (actor, action, detail)
+       SELECT ?, 'delete', ? FROM licenses
+        WHERE license_key = ? AND revoked_at IS NOT NULL`,
+    ).bind(actor, `Đã xoá license thu hồi ${licenseKey}`, licenseKey),
+    env.DB.prepare(
+      'DELETE FROM licenses WHERE license_key = ? AND revoked_at IS NOT NULL',
+    ).bind(licenseKey),
+  ]);
+  return result[1].meta.changes > 0 ? 'deleted' : 'missing';
 }
 
 /** Gia hạn: cấp lại license mới cho cùng HWID, thay thế bản cũ. */

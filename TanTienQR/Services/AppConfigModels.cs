@@ -419,16 +419,19 @@ public sealed class ScanConfig
     [JsonPropertyName("PruneIntervalMs")] public long PruneIntervalMs { get; set; } = 3_600_000;
 }
 
+/// <summary>Địa chỉ portal nhận yêu cầu cấp license, không chứa tài khoản quản trị.</summary>
+[ConfigSection(Key = "LicensePortal", Title = "LICENSE · CỔNG CẤP PHÉP", Order = 95, Icon = "Link",
+    Description = "Địa chỉ cổng nhận yêu cầu cấp license từ máy này.")]
+public sealed class LicensePortalConfig
+{
+    [ConfigField("URL License Portal", Required = false, Validation = "Url", RequiresRestart = true,
+        Placeholder = "https://portal-cua-ban.workers.dev", HelpText = "Điền URL của Worker đã triển khai. Không cần mật khẩu quản trị.")]
+    [JsonPropertyName("BaseUrl")] public string BaseUrl { get; set; } = "";
+}
+
 /// <summary>
-/// Toàn bộ nội dung file appsettings.json.
-///
-/// Các thuộc tính được đặt tên "Camera", "Plc", "Web", "Logging", "Auth",
-/// "PlcSettings" để khớp đúng key trong file JSON (không dùng camelCase mặc định
-/// của System.Text.Json).
-///
-/// Phần "Logging", "Auth", "PlcSettings" và "Scans" được giữ nguyên khi lưu cấu hình từ UI —
-/// nếu không có nó, thao tác lưu cấu hình sẽ xoá mất thiết lập ghi log, xác thực,
-/// tham số PLC và lưu bản ghi quét mã.
+/// Toàn bộ nội dung file appsettings.json. Giữ đúng tên section và giữ cả các
+/// thiết lập không có form nhập khi lưu cấu hình từ giao diện.
 /// </summary>
 public sealed class AppConfigSnapshot
 {
@@ -444,6 +447,7 @@ public sealed class AppConfigSnapshot
     [JsonPropertyName("Auth")] public AuthConfig Auth { get; set; } = new();
     [JsonPropertyName("PlcSettings")] public PlcSettingsConfig PlcSettings { get; set; } = new();
     [JsonPropertyName("Scans")] public ScanConfig Scans { get; set; } = new();
+    [JsonPropertyName("LicensePortal")] public LicensePortalConfig LicensePortal { get; set; } = new();
 }
 
 // ---------------------------------------------------------------- JsonContext
@@ -453,6 +457,7 @@ public sealed class AppConfigSnapshot
     WriteIndented = true,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 [JsonSerializable(typeof(AppConfigSnapshot))]
+[JsonSerializable(typeof(LicensePortalConfig))]
 [JsonSerializable(typeof(LoggingConfig))]
 [JsonSerializable(typeof(SqliteLoggingConfig))]
 [JsonSerializable(typeof(LoggingHistoryConfig))]

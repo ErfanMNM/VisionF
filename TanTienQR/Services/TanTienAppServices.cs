@@ -4,6 +4,7 @@ using ClassLibraryMT.Communications.CodeReaderProtocol;
 using ClassLibraryMT.Communications.Plc;
 using ClassLibraryMT.Configuration;
 using ClassLibraryMT.Logging;
+using ClassLibraryMT.Licensing;
 using ClassLibraryMT.Plc;
 using ClassLibraryMT.Po;
 using ClassLibraryMT.PoServer;
@@ -174,6 +175,10 @@ public static class TanTienAppServices
 
         // ---- Quản lý license ----
         services.AddSingleton<LicenseManager>();
+        services.AddOptions<LicensePortalOptions>()
+            .Configure<IConfiguration>((o, cfg) => o.BaseUrl = cfg["LicensePortal:BaseUrl"]?.Trim() ?? "");
+        services.AddHttpClient<LicensePortalClient>(http => http.Timeout = TimeSpan.FromSeconds(30))
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 
         // ---- Đọc/ghi file cấu hình (tab Cấu hình) ----
         // Base path của file cấu hình lấy từ chính nguồn cấu hình đang chạy

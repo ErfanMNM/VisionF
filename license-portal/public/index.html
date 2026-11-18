@@ -52,6 +52,7 @@
     <nav class="tabs">
       <button class="tab active" data-tab="issue">Cấp license</button>
       <button class="tab" data-tab="list">Danh sách</button>
+      <button class="tab" data-tab="requests">Yêu cầu cấp license</button>
       <button class="tab" data-tab="keys">Khóa ký</button>
       <button class="tab" data-tab="audit">Nhật ký</button>
     </nav>
@@ -62,6 +63,14 @@
         <div class="grid-2">
           <div class="card">
             <h2>Thông tin cấp license</h2>
+
+            <div id="request-selection" class="request-selection hidden" role="status">
+              <div>
+                <strong>Đang cấp theo yêu cầu từ ứng dụng</strong>
+                <p id="request-selection-detail" class="hint"></p>
+              </div>
+              <button id="clear-request" type="button" class="btn btn-ghost btn-sm">Bỏ chọn yêu cầu</button>
+            </div>
 
             <label for="customer">Khách hàng <span class="req">*</span></label>
             <input id="customer" type="text" placeholder="Tên công ty / người dùng" />
@@ -163,6 +172,41 @@
         </div>
       </section>
 
+      <!-- ---------- TAB: YÊU CẦU CẤP LICENSE ---------- -->
+      <section id="tab-requests" class="tab-panel">
+        <div class="card">
+          <h2>Yêu cầu từ TanTienQR</h2>
+          <p class="hint section-hint">Chọn yêu cầu đang chờ để điền sẵn mã máy và sản phẩm vào biểu mẫu cấp license.</p>
+          <div class="toolbar requests-toolbar">
+            <label for="requests-status" class="toolbar-label">Trạng thái</label>
+            <select id="requests-status">
+              <option value="pending">Đang chờ cấp</option>
+              <option value="issued">Đã cấp</option>
+              <option value="all">Tất cả</option>
+            </select>
+            <button id="requests-reload" type="button" class="btn btn-secondary">Tải lại</button>
+          </div>
+          <div class="table-wrap">
+            <table id="requests-table">
+              <thead>
+                <tr>
+                  <th>Thời gian</th>
+                  <th>Khách hàng / liên hệ</th>
+                  <th>HWID / sản phẩm</th>
+                  <th>Ghi chú</th>
+                  <th>Trạng thái</th>
+                  <th class="col-actions">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody id="requests-body">
+                <tr><td colspan="6" class="empty-cell">Đang tải...</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p id="requests-count" class="hint" aria-live="polite"></p>
+        </div>
+      </section>
+
       <!-- ---------- TAB: KHÓA KÝ ---------- -->
       <section id="tab-keys" class="tab-panel">
         <div class="card">
@@ -208,7 +252,7 @@ public static IReadOnlyDictionary&lt;string, string&gt; All { get; } =
   </div>
 
   <!-- ================= HỘP THOẠI ================= -->
-  <div id="modal" class="modal hidden">
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-text">
     <div class="modal-backdrop"></div>
     <div class="modal-card">
       <h3 id="modal-title"></h3>

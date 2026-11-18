@@ -1,5 +1,6 @@
 import { createSession, clearSessionCookieHeader, getCookie, sessionCookieHeader, verifyPassword, verifySession, SESSION_COOKIE } from './auth';
-import { audit, issueLicense, renewLicense, revokeLicense, verifyStoredLicense } from './license';
+import { audit, deleteRevokedLicense, issueLicense, renewLicense, revokeLicense, verifyStoredLicense } from './license';
+import { ApiError, listLicenseRequests, readRequestJson, requestText, submitLicenseRequest } from './requests';
 import type { Env } from './types';
 
 export default {
@@ -14,6 +15,7 @@ export default {
       // Phan con lai: phuc vu static assets (UI).
       return env.ASSETS.fetch(request);
     } catch (e) {
+      if (e instanceof ApiError) return json({ error: e.message }, e.status);
       const message = e instanceof Error ? e.message : String(e);
       console.error('Unhandled error:', message);
       return json({ error: message }, 500);
@@ -43,6 +45,17 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
     return json({ ok: true }, 200, { 'Set-Cookie': clearSessionCookieHeader() });
   }
 
+  if (path === '/api/license-requests' && method === 'POST') {
+    const body = await readRequestJson(request);
+    const pending = await submitLicenseRequest(env, body);
+    return json({
+      ok: true,
+      requestId: pending.id,
+      status: pending.status,
+      message: 'Đã gửi yêu cầu cấp license. Quản trị viên sẽ kiểm tra và cấp license cho máy của bạn.',
+    });
+  }
+
   // ---- API can dang nhap ----
   const user = await currentUser(request, env);
   if (!user) {
@@ -55,6 +68,20 @@ async function handleApi(request: Request, env: Env, url: URL): Promise<Response
 
   if (path === '/api/licenses' && method === 'POST') {
     return await handleIssue(request, env, user);
+  }
+
+  if (path === '/api/licenses' && method === 'DELETE') {
+    const body = await readRequestJson(request);
+    const key = requestText(body.licenseKey, 'License key', 100);
+    if (!key) throw new ApiError('Thiếu license key.');
+    const outcome = await deleteRevokedLicense(env, key, user);
+    if (outcome === 'missing') throw new ApiError('Không tìm thấy license.', 404);
+    if (outcome === 'not-revoked') throw new ApiError('Chỉ được xoá license đã thu hồi.', 409);
+    return json({ ok: true });
+  }
+
+  if (path === '/api/license-requests' && method === 'GET') {
+    return json(await listLicenseRequests(env, url));
   }
 
   if (path === '/api/licenses/download' && method === 'GET') {
@@ -191,21 +218,23 @@ async function handleListLicenses(env: Env, url: URL): Promise<Response> {
 }
 
 async function handleIssue(request: Request, env: Env, user: string): Promise<Response> {
-  let body: { customer?: string; hwid?: string; daysValid?: number; product?: string; note?: string };
+  const body = await readRequestJson(request);
   try {
-    body = await request.json();
-  } catch {
-    return json({ error: 'Dữ liệu gửi lên không hợp lệ.' }, 400);
-  }
-
-  try {
+    const requestId = requestText(body.requestId, 'Mã yêu cầu', 36);
+    if (requestId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)) {
+      throw new ApiError('Mã yêu cầu cấp license không hợp lệ.');
+    }
+    if (body.daysValid !== undefined && (typeof body.daysValid !== 'number' || !Number.isFinite(body.daysValid))) {
+      throw new ApiError('Số ngày hiệu lực phải là số hợp lệ.');
+    }
     const result = await issueLicense(env, {
-      customer: body.customer ?? '',
-      hwid: body.hwid ?? '',
+      customer: requestText(body.customer, 'Tên khách hàng', 200),
+      hwid: requestText(body.hwid, 'HWID', 100),
       daysValid: Number(body.daysValid ?? 30),
-      product: (body.product ?? '').trim() || env.DEFAULT_PRODUCT,
-      note: body.note ?? '',
+      product: requestText(body.product, 'Sản phẩm', 100) || env.DEFAULT_PRODUCT,
+      note: requestText(body.note, 'Ghi chú', 1000),
       createdBy: user,
+      requestId: requestId || undefined,
     });
     return json({
       ok: true,
@@ -217,6 +246,7 @@ async function handleIssue(request: Request, env: Env, user: string): Promise<Re
       hwidDisplay: result.hwidDisplay,
     });
   } catch (e) {
+    if (e instanceof ApiError) return json({ error: e.message }, e.status);
     const message = e instanceof Error ? e.message : String(e);
     return json({ error: message }, 400);
   }

@@ -395,6 +395,7 @@ internal sealed class ConfigStore
         snapshot.Auth ??= new AuthConfig();
         snapshot.PlcSettings ??= new PlcSettingsConfig();
         snapshot.Scans ??= new ScanConfig();
+        snapshot.LicensePortal ??= new LicensePortalConfig();
     }
 }
 

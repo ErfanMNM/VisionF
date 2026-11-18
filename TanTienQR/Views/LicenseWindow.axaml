@@ -3,11 +3,11 @@
         xmlns:vm="using:TanTienQR.ViewModels"
         xmlns:d="http://schemas.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="480" d:DesignHeight="560"
+        mc:Ignorable="d" d:DesignWidth="560" d:DesignHeight="780"
         x:Class="TanTienQR.Views.LicenseWindow"
         x:DataType="vm:MainViewModel"
         Title="Quản lý license"
-        Width="480" Height="560"
+        Width="560" Height="780"
         MinWidth="420" MinHeight="480"
         CanResize="True"
         WindowStartupLocation="CenterOwner">
@@ -16,7 +16,14 @@
         <vm:MainViewModel />
     </Design.DataContext>
 
-    <Grid RowDefinitions="Auto,Auto,*" Margin="20">
+    <Window.Styles>
+        <Style Selector="TextBlock.request-error">
+            <Setter Property="Foreground" Value="{StaticResource Danger}" />
+        </Style>
+    </Window.Styles>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+    <Grid RowDefinitions="Auto,Auto,Auto" Margin="20">
 
         <!-- Tiêu đề -->
         <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,16">
@@ -78,6 +85,27 @@
             </Border>
 
             <StackPanel Grid.Row="1" Spacing="8">
+                <Border Classes="device" Padding="14" Margin="0,0,0,6">
+                    <StackPanel Spacing="8" IsEnabled="{Binding !RequestLicenseCommand.IsRunning}">
+                        <TextBlock Text="Yêu cầu cấp license" FontSize="15" FontWeight="Bold" />
+                        <TextBlock Classes="label" FontSize="11" TextWrapping="Wrap"
+                                   Text="Gửi HWID của máy này đến nhà cung cấp. Sau khi được cấp, nhập file .lic để kích hoạt." />
+                        <TextBox Text="{Binding LicensePortalUrl, Mode=TwoWay}"
+                                 PlaceholderText="URL License Portal (https://...workers.dev)" />
+                        <TextBox Text="{Binding LicenseRequestCustomer, Mode=TwoWay}" MaxLength="200"
+                                 PlaceholderText="Tên khách hàng / công ty (tuỳ chọn)" />
+                        <TextBox Text="{Binding LicenseRequestContact, Mode=TwoWay}" MaxLength="200"
+                                 PlaceholderText="Email / số điện thoại liên hệ (tuỳ chọn)" />
+                        <TextBox Text="{Binding LicenseRequestNote, Mode=TwoWay}" MaxLength="1000"
+                                 PlaceholderText="Ghi chú cấp license (tuỳ chọn)" />
+                        <Button Classes="chip" HorizontalAlignment="Stretch"
+                                Command="{Binding RequestLicenseCommand}" Content="Gửi yêu cầu cấp license" />
+                    </StackPanel>
+                </Border>
+                <TextBlock Classes="label" FontSize="12" TextWrapping="Wrap"
+                           Classes.request-error="{Binding IsLicenseRequestError}"
+                           IsVisible="{Binding HasLicenseRequestMessage}"
+                           Text="{Binding LicenseRequestMessage}" />
                 <Button Classes="chip"
                         HorizontalAlignment="Stretch"
                         FontSize="13"
@@ -114,4 +142,5 @@
                        Text="Gửi mã máy (HWID) cho nhà cung cấp để được cấp file license.lic, sau đó bấm &quot;Nhập license&quot; để chọn file đó." />
         </Grid>
     </Grid>
+    </ScrollViewer>
 </Window>

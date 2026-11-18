@@ -7,10 +7,14 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "types": "wrangler types",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "test": "node --test tests/integration.mjs",
+    "test:preview": "node tests/preview.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241127.0",
+    "esbuild": "0.28.2",
+    "miniflare": "5.20261110.0-beta",
     "typescript": "^5.7.2",
     "wrangler": "^4.0.0"
   },

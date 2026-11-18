@@ -2,6 +2,8 @@
 
 Web cấp license chỉ dùng Cloudflare — **không tốn 1 đồng server nào**.
 
+Portal đang triển khai: https://tantien-license-portal.okeynhat.workers.dev
+
 | Thành phần | Cloudflare | Phí (free tier) |
 |---|---|---|
 | Web UI + API | Workers (Static Assets) | 100k request/ngày |
@@ -49,6 +51,32 @@ Web cấp license chỉ dùng Cloudflare — **không tốn 1 đồng server nà
 
 Trong app `TanTienQR`: **Quản trị → License** — copy mã máy 32 ký tự hex
 (dạng `XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX`).
+
+### Gửi yêu cầu trực tiếp từ TanTienQR
+
+Cấu hình địa chỉ portal trong `appsettings.json` của TanTienQR:
+
+```json
+"LicensePortal": {
+  "BaseUrl": "https://tantien-license-portal.<account>.workers.dev"
+}
+```
+
+Dùng URL Worker hoặc domain thực tế của bạn. Trong hộp thoại **Quản lý
+license**, nhập thông tin khách hàng/liên hệ nếu cần và bấm **Gửi yêu cầu cấp
+license**. App gửi HWID của chính máy đang chạy và sản phẩm `TanTienQR` tới
+portal. Thao tác này tạo yêu cầu chờ xử lý, không tự cấp license và không cần
+đưa tài khoản quản trị hay private key vào app.
+
+Trên portal, mở tab **Yêu cầu cấp license** và chọn **Cấp license** ở yêu cầu
+đang chờ. Biểu mẫu điền sẵn HWID, sản phẩm, khách hàng và ghi chú. HWID/sản
+phẩm được giữ cố định khi đang xử lý yêu cầu; bấm **Bỏ chọn yêu cầu** để quay
+về cấp thủ công. Sau khi cấp thành công, yêu cầu chuyển sang **Đã cấp**. Quản
+trị viên tải file `.lic` rồi gửi khách nhập vào TanTienQR như trước.
+
+Trong tab **Danh sách**, license **Đã thu hồi** có thêm nút **Xoá**. Portal
+yêu cầu xác nhận trước khi xoá vĩnh viễn bản ghi; nhật ký thu hồi và xoá vẫn
+được giữ. License chưa thu hồi không được xoá, kể cả khi đã hết hạn.
 
 ---
 
@@ -104,10 +132,18 @@ dotnet build TanTienQR\TanTienQR.csproj -c Release
 
 ## 5. Deploy
 
+Sau khi cập nhật mã nguồn, áp dụng migration mới trước khi deploy Worker:
+
 ```bash
 cd license-portal
+npx wrangler d1 migrations apply tantien-license --remote
 npx wrangler deploy
 ```
+
+Migration `0004_license_requests.sql` bổ sung hàng đợi yêu cầu cấp license.
+Khi thử tại máy phát triển, dùng `--local` thay cho `--remote` để chỉ cập nhật
+database local. Không chạy lại `scripts/setup.mjs` cho lần cập nhật này vì
+script đó sinh khóa ký mới.
 
 URL sẽ là: `https://tantien-license-portal.<account>.workers.dev`
 
@@ -130,6 +166,25 @@ npm run dev
 
 File `.dev.vars` (đã có sẵn sau setup) chứa secrets cho local. File này **không được commit**.
 
+### Kiểm thử bằng dữ liệu riêng
+
+```bash
+npm run check
+npm test
+npm run test:preview
+```
+
+Hai lệnh test tạo khóa RSA, tài khoản và D1 mới trong bộ nhớ, không đọc
+`.dev.vars` và không kết nối D1 trên Cloudflare. Preview in URL localhost và
+đường dẫn metadata chứa tài khoản kiểm thử. Có thể dùng URL đó để kiểm tra
+client .NET từ thư mục gốc repository:
+
+```bash
+dotnet run --project tools/LicensePortalTests -- --live http://127.0.0.1:<port>
+```
+
+Không truyền URL production cho `--live`: lệnh này gửi hai yêu cầu kiểm thử.
+
 ---
 
 ## 7. API
@@ -140,8 +195,11 @@ File `.dev.vars` (đã có sẵn sau setup) chứa secrets cho local. File này 
 | GET | `/api/session` | Trạng thái đăng nhập (công khai) |
 | POST | `/api/login` | `{ username, password }` |
 | POST | `/api/logout` | Xoá session |
+| POST | `/api/license-requests` | Công khai: nhận `{ hwid, product, customer?, contact?, note? }` từ app |
+| GET | `/api/license-requests` | Danh sách yêu cầu (`?status=pending\|issued\|all&limit=&offset=`), cần đăng nhập |
 | GET | `/api/licenses` | Danh sách (`?q=&product=&status=active\|expired\|revoked\|all&limit=&offset=`) |
-| POST | `/api/licenses` | Cấp license `{ customer, hwid, daysValid, product, note }` |
+| POST | `/api/licenses` | Cấp license `{ customer, hwid, daysValid, product, note, requestId? }` |
+| DELETE | `/api/licenses` | Xoá license đã thu hồi `{ licenseKey }`; chưa thu hồi trả `409`, không tồn tại trả `404` |
 | GET | `/api/licenses/download?key=` | Tải file `.lic` |
 | POST | `/api/licenses/revoke` | Thu hồi `{ licenseKey, reason }` |
 | POST | `/api/licenses/renew` | Gia hạn `{ licenseKey, daysValid }` |
@@ -150,7 +208,25 @@ File `.dev.vars` (đã có sẵn sau setup) chứa secrets cho local. File này 
 | GET | `/api/audit` | Nhật ký 100 dòng gần nhất |
 | GET | `/api/public-key` | Public key đang active |
 
-Mọi API (trừ health/session/login) **yêu cầu cookie session**.
+API quản trị **yêu cầu cookie session**. Health, session, login và
+`POST /api/license-requests` là công khai; app không có quyền cấp/xoá license.
+
+Ví dụ phản hồi tạo yêu cầu:
+
+```json
+{
+  "ok": true,
+  "requestId": "<UUID>",
+  "status": "pending",
+  "message": "Yêu cầu cấp license đã được tiếp nhận."
+}
+```
+
+Gửi lặp cùng HWID/sản phẩm khi còn yêu cầu chờ sẽ trả lại mã yêu cầu đang có,
+không tạo hàng loạt bản ghi. Yêu cầu giới hạn body 8 KB; HWID cần đủ 32 ký tự
+hex, khách hàng/liên hệ tối đa 200 ký tự mỗi trường, ghi chú tối đa 1.000 ký
+tự. Khi cấp bằng `requestId`, HWID và sản phẩm phải khớp yêu cầu; server kiểm
+tra trạng thái để tránh cấp trùng nếu hai quản trị viên cùng xử lý.
 
 ---
 

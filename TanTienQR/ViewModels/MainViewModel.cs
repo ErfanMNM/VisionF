@@ -8,6 +8,7 @@ using Avalonia.Threading;
 using ClassLibraryMT.Auth;
 using ClassLibraryMT.DeviceStatus;
 using ClassLibraryMT.Logging;
+using ClassLibraryMT.Licensing;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Options;
@@ -57,6 +58,8 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     public MainViewModel(
         ScanFeed feed,
         LicenseManager license,
+        LicensePortalClient licensePortal,
+        IOptions<LicensePortalOptions> licensePortalOptions,
         IOptions<WebOptions> webOptions,
         ConfigEditorViewModel configEditor,
         HistoryViewModel historyView,
@@ -74,6 +77,8 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     {
         _feed = feed;
         _license = license;
+        _licensePortal = licensePortal;
+        LicensePortalUrl = licensePortalOptions.Value.BaseUrl;
         _configEditor = configEditor;
         _historyView = historyView;
         _accountsView = accountsView;
