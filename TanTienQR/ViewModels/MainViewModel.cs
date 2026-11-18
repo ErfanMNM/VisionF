@@ -2,6 +2,7 @@ using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using ClassLibraryMT.Auth;
@@ -453,6 +454,16 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     public partial string HwidText { get; set; } = "—";
 
     /// <summary>
+    /// Nhãn nút sao chép mã máy — tạm đổi sang "Đã sao chép" vài giây
+    /// để người dùng biết lệnh copy đã thành công.
+    /// </summary>
+    [ObservableProperty]
+    public partial string CopyHwidButtonText { get; set; } = "Sao chép mã máy (HWID)";
+
+    /// <summary>Chống bấm nhiều lần trong lúc đang sao chép.</summary>
+    private bool _hwidCopyBusy;
+
+    /// <summary>
     /// True khi hộp thoại license đang mở (ẩn sau dấu "?" ở góc màn hình).
     /// </summary>
     [ObservableProperty]
@@ -585,6 +596,47 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         RefreshLicenseInfo();
 
         _actionLog.Log("License.Revoke", "License", "Huy license hien tai", UserActionResults.Success);
+    }
+
+    /// <summary>
+    /// Sao chép mã máy (HWID) vào clipboard — tiện khi gửi cho nhà cung cấp
+    /// cấp file license.lic thay vì gõ tay.
+    /// </summary>
+    [RelayCommand]
+    private async Task CopyHwidAsync()
+    {
+        var hwid = HwidText.Trim();
+        if (_hwidCopyBusy || hwid.Length == 0 || hwid == "—")
+            return;
+
+        var clipboard = _window?.Clipboard;
+        if (clipboard is null)
+            return;
+
+        _hwidCopyBusy = true;
+        try
+        {
+            await clipboard.SetTextAsync(hwid);
+
+            CopyHwidButtonText = "✓ Đã sao chép mã máy!";
+            _actionLog.Log("License.CopyHwid", "License", "Sao chep ma may HWID", UserActionResults.Success);
+
+            await Task.Delay(2000);
+            CopyHwidButtonText = "Sao chép mã máy (HWID)";
+        }
+        catch (Exception ex)
+        {
+            LicenseMessageText = "Không sao chép được mã máy: " + ex.Message;
+            _actionLog.Log(
+                "License.CopyHwid",
+                "License",
+                $"Loi sao chep HWID: {ex.Message}",
+                UserActionResults.Failed);
+        }
+        finally
+        {
+            _hwidCopyBusy = false;
+        }
     }
 
     /// <summary>

@@ -81,6 +81,11 @@
                 <Button Classes="chip"
                         HorizontalAlignment="Stretch"
                         FontSize="13"
+                        Content="{Binding CopyHwidButtonText}"
+                        Command="{Binding CopyHwidCommand}" />
+                <Button Classes="chip"
+                        HorizontalAlignment="Stretch"
+                        FontSize="13"
                         Content="Nhập license từ file .lic..."
                         Command="{Binding ImportLicenseCommand}" />
                 <Button Classes="chip"

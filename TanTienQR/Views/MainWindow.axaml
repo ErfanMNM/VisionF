@@ -526,12 +526,22 @@
                                                    Foreground="{StaticResource TextPrimary}"
                                                    Text="{Binding LicenseExpiryText}" />
                                     </Grid>
-                                    <Grid Grid.Row="2" ColumnDefinitions="86,*" ColumnSpacing="10">
+                                    <Grid Grid.Row="2" ColumnDefinitions="86,*,Auto" ColumnSpacing="10">
                                         <TextBlock Classes="label" FontSize="10" Text="MÃ MÁY" VerticalAlignment="Top" />
                                         <TextBlock Grid.Column="1" Classes="mono" FontSize="10"
                                                    Foreground="{StaticResource TextMuted}"
                                                    TextWrapping="Wrap"
                                                    Text="{Binding HwidText}" />
+                                        <Button Grid.Column="2"
+                                                Classes="chip"
+                                                MinHeight="24"
+                                                MinWidth="0"
+                                                Padding="10,0"
+                                                FontSize="10"
+                                                VerticalAlignment="Top"
+                                                Content="Sao chép"
+                                                ToolTip.Tip="Sao chép mã máy (HWID) vào clipboard"
+                                                Command="{Binding CopyHwidCommand}" />
                                     </Grid>
                                 </Grid>
                             </Border>
