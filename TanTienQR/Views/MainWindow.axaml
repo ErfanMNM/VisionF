@@ -412,6 +412,15 @@
                                 </StackPanel>
                             </Button>
                             <Button Classes="menubtn"
+                                    Classes.active="{Binding IsPrintVisible}"
+                                    Command="{Binding ShowPrintTabCommand}"
+                                    Click="OnMoreItemClick">
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <TextBlock Width="16" Text="▣" FontSize="15" Foreground="{StaticResource TextMuted}" VerticalAlignment="Center" />
+                                    <TextBlock Text="Máy in" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                            <Button Classes="menubtn"
                                     Classes.active="{Binding IsAccountsVisible}"
                             IsVisible="{Binding CanManageUsers}"
                                     Command="{Binding ShowAccountsTabCommand}"
@@ -511,7 +520,7 @@
 
                             <!-- Thông tin chi tiết -->
                             <Border Classes="device" Padding="12">
-                                <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
+                                <Grid RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="8">
                                     <Grid ColumnDefinitions="86,*" ColumnSpacing="10">
                                         <TextBlock Classes="label" FontSize="10" Text="KHÁCH HÀNG" VerticalAlignment="Center" />
                                         <TextBlock Grid.Column="1" FontSize="12" FontWeight="SemiBold"
@@ -526,7 +535,12 @@
                                                    Foreground="{StaticResource TextPrimary}"
                                                    Text="{Binding LicenseExpiryText}" />
                                     </Grid>
-                                    <Grid Grid.Row="2" ColumnDefinitions="86,*,Auto" ColumnSpacing="10">
+                                    <Grid Grid.Row="2" ColumnDefinitions="86,*" ColumnSpacing="10">
+                                        <TextBlock Classes="label" FontSize="10" Text="GÓI MODULE" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" FontSize="11" Foreground="{StaticResource TextPrimary}"
+                                                   TextWrapping="Wrap" Text="{Binding LicenseModulesText}" />
+                                    </Grid>
+                                    <Grid Grid.Row="3" ColumnDefinitions="86,*,Auto" ColumnSpacing="10">
                                         <TextBlock Classes="label" FontSize="10" Text="MÃ MÁY" VerticalAlignment="Top" />
                                         <TextBlock Grid.Column="1" Classes="mono" FontSize="10"
                                                    Foreground="{StaticResource TextMuted}"
@@ -692,6 +706,9 @@
                 <views:LazyTabHost x:Name="ProductionOrdersTab"
                                    IsVisible="{Binding IsProductionOrdersVisible}"
                                    Factory="{x:Static views:LazyTabFactories.ProductionOrders}" />
+                <views:LazyTabHost x:Name="PrintTab"
+                                   IsVisible="{Binding IsPrintVisible}"
+                                   Factory="{x:Static views:LazyTabFactories.Print}" />
             </Grid>
         </Grid>
 

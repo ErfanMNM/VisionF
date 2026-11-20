@@ -88,6 +88,9 @@
                     <NumericUpDown Value="{Binding DaysValid}" Minimum="1" Maximum="3650" />
                   </StackPanel>
                 </Grid>
+                <CheckBox IsChecked="{Binding PrinterEntitled}">
+                  <TextBlock Text="Cấp quyền Máy in + gói bán kèm" />
+                </CheckBox>
               </StackPanel>
             </Border>
 

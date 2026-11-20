@@ -45,7 +45,7 @@
 
         <!-- Thông tin license -->
         <Border Grid.Row="1" Classes="device" Padding="14" Margin="0,0,0,14">
-            <Grid RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="7">
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="7">
                 <Grid ColumnDefinitions="130,*" ColumnSpacing="12">
                     <TextBlock Classes="label" FontSize="11" Text="KHÁCH HÀNG" />
                     <TextBlock Grid.Column="1" FontSize="13" FontWeight="SemiBold"
@@ -62,6 +62,11 @@
                                Text="{Binding LicenseDaysLeftText}" />
                 </Grid>
                 <Grid Grid.Row="3" ColumnDefinitions="130,*" ColumnSpacing="12">
+                    <TextBlock Classes="label" FontSize="11" Text="GÓI MODULE" />
+                    <TextBlock Grid.Column="1" FontSize="12" TextWrapping="Wrap"
+                               Text="{Binding LicenseModulesText}" />
+                </Grid>
+                <Grid Grid.Row="4" ColumnDefinitions="130,*" ColumnSpacing="12">
                     <TextBlock Classes="label" FontSize="11" Text="MÃ MÁY (HWID)" />
                     <TextBlock Grid.Column="1" Classes="mono" FontSize="11"
                                Foreground="{StaticResource TextMuted}"

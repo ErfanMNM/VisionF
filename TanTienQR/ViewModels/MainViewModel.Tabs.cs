@@ -1,5 +1,6 @@
 ﻿using ClassLibraryMT.Auth;
 using ClassLibraryMT.Logging;
+using ClassLibraryMT.Licensing;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using TanTienQR.Models;
@@ -75,6 +76,7 @@ internal partial class MainViewModel
     [NotifyPropertyChangedFor(nameof(IsDevVisible))]
     [NotifyPropertyChangedFor(nameof(IsCodeLookupVisible))]
     [NotifyPropertyChangedFor(nameof(IsProductionOrdersVisible))]
+    [NotifyPropertyChangedFor(nameof(IsPrintVisible))]
     [NotifyPropertyChangedFor(nameof(IsMoreActive))]
     [NotifyPropertyChangedFor(nameof(PageTitle))]
     [NotifyPropertyChangedFor(nameof(PageSubtitle))]
@@ -129,6 +131,10 @@ internal partial class MainViewModel
     public bool IsProductionOrdersVisible =>
         CurrentSection == AppSection.ProductionOrders && CanViewProduction;
 
+    public bool IsPrintVisible => CurrentSection == AppSection.Print;
+
+    public bool CanUsePrinter => LicenseEntitlements.HasFeature(_license.Current, LicenseFeatures.Printer);
+
     /// <summary>Tiêu đề trên thanh header, đổi theo tab.</summary>
     public string PageTitle => CurrentSection switch
     {
@@ -140,6 +146,7 @@ internal partial class MainViewModel
         AppSection.Dev => "Dev",
         AppSection.CodeLookup => "Tra cứu mã",
         AppSection.ProductionOrders => "Truy xuất Sản xuất (Local)",
+        AppSection.Print => "Máy in",
         _ => "Thông tin",
     };
 
@@ -154,6 +161,7 @@ internal partial class MainViewModel
         AppSection.Dev => "Trạng thái runtime, bộ đếm, bộ nhớ, log kỹ thuật — dành cho nhà phát triển",
         AppSection.CodeLookup => "Tra cứu mã đã quét qua hệ thống — nhập tay hoặc quét bằng handheld cầm tay",
         AppSection.ProductionOrders => "Quản lý lệnh sản xuất (PO) tải từ server — bắt đầu / hoàn tất sản xuất",
+        AppSection.Print => "Gửi mã từ PO vào máy in và theo dõi xác nhận, mực, lỗi",
         _ => "Nhận tín hiệu camera và gửi kết quả xuống PLC Omron (D12 = kết quả, D16 = Ready)",
     };
 
@@ -205,6 +213,8 @@ internal partial class MainViewModel
         OnPropertyChanged(nameof(IsDevVisible));
         OnPropertyChanged(nameof(IsCodeLookupVisible));
         OnPropertyChanged(nameof(IsProductionOrdersVisible));
+        OnPropertyChanged(nameof(CanUsePrinter));
+        OnPropertyChanged(nameof(IsPrintVisible));
     }
 
     // ---------- Lệnh chuyển tab ----------
@@ -349,6 +359,13 @@ internal partial class MainViewModel
 
         // Nạp danh sách PO (nếu chưa có) khi mở tab.
         ProductionOrders.Load();
+    }
+
+    [RelayCommand]
+    private void ShowPrintTab()
+    {
+        SwitchTo(AppSection.Print, "Máy in");
+        if (CanUsePrinter) Print.RefreshCommand.Execute(null);
     }
 
     /// <summary>

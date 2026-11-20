@@ -22,7 +22,7 @@ test('Portal license với Workers và D1 cục bộ', async (suite) => {
   async function count(table) {
     return (await db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first()).n;
   }
-  const issueBody = { customer: 'Khách hàng kiểm thử', hwid: machine, product: 'TanTienQR', daysValid: 30 };
+  const issueBody = { customer: 'Khách hàng kiểm thử', hwid: machine, product: 'TanTienQR', daysValid: 30, features: ['printer'] };
 
   try {
     await suite.test('API quản trị từ chối khách chưa đăng nhập', async () => {
@@ -111,6 +111,7 @@ test('Portal license với Workers và D1 cục bộ', async (suite) => {
       assert.equal(row.license_key, issuedKey);
       const payload = Buffer.from(result.licenseFile.data, 'base64');
       assert.equal(JSON.parse(payload.toString()).hwid, machine);
+      assert.deepEqual(JSON.parse(payload.toString()).features, ['printer']);
       assert.equal(verify('RSA-SHA256', payload, fixture.publicKey, Buffer.from(result.licenseFile.sig, 'base64')), true);
       assert.equal((await call('/api/license-requests?status=pending')).data.total, 0);
       assert.equal((await call('/api/license-requests?status=issued')).data.total, 1);
@@ -141,8 +142,9 @@ test('Portal license với Workers và D1 cục bộ', async (suite) => {
     });
 
     await suite.test('Luồng cấp thủ công cũ vẫn hoạt động, máy có thể gửi yêu cầu mới sau duyệt', async () => {
-      const result = await call('/api/licenses', { method: 'POST', body: issueBody });
+      const result = await call('/api/licenses', { method: 'POST', body: { ...issueBody, features: [] } });
       assert.equal(result.status, 200);
+      assert.deepEqual(JSON.parse(Buffer.from(result.data.licenseFile.data, 'base64').toString()).features, []);
       assert.equal((await call('/api/licenses/verify', { method: 'POST', body: { licenseKey: result.data.licenseKey } })).status, 200);
       const request = await call('/api/license-requests', { method: 'POST', authenticated: false, body: { hwid: machine, product: 'TanTienQR' } });
       assert.equal(request.status, 200);

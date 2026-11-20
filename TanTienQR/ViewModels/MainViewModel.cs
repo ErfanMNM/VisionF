@@ -40,6 +40,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     private readonly CodeLookupViewModel _codeLookupView;
     private readonly ProductionInfoViewModel _productionInfo;
     private readonly ProductionOrdersViewModel _productionOrders;
+    public PrintViewModel Print { get; }
     private readonly VirtualKeyboardViewModel _keyboard;
     private readonly IUserActionLogger _actionLog;
     private readonly ISessionContext _session;
@@ -70,6 +71,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         CodeLookupViewModel codeLookupView,
         ProductionInfoViewModel productionInfo,
         ProductionOrdersViewModel productionOrders,
+        PrintViewModel print,
         VirtualKeyboardViewModel keyboard,
         LoginViewModel login,
         IUserActionLogger actionLog,
@@ -90,6 +92,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         _codeLookupView = codeLookupView;
         _productionInfo = productionInfo;
         _productionOrders = productionOrders;
+        Print = print;
         _keyboard = keyboard;
         _login = login;
         _actionLog = actionLog;
@@ -449,6 +452,10 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     public partial string LicenseExpiryText { get; set; } = "—";
 
+    /// <summary>Quyền module được cấp theo license.</summary>
+    [ObservableProperty]
+    public partial string LicenseModulesText { get; set; } = "—";
+
     /// <summary>Số ngày còn lại.</summary>
     [ObservableProperty]
     public partial string LicenseDaysLeftText { get; set; } = "—";
@@ -766,6 +773,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     private void RefreshLicenseInfo()
     {
         var check = _license.Current;
+        Print.RefreshLicense();
 
         HwidText = _license.Hwid;
 
@@ -776,6 +784,9 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
                 ? "—"
                 : check.Payload.Customer;
             LicenseExpiryText = check.Payload.ExpiresUtc.ToLocalTime().ToString("dd/MM/yyyy", ViCulture);
+            LicenseModulesText = LicenseEntitlements.HasFeature(check, LicenseFeatures.Printer)
+                ? "Máy in + gói bán kèm"
+                : "Không có quyền máy in";
             LicenseDaysLeftText = $"còn {check.DaysLeft} ngày";
             LicenseMessageText = string.Empty;
         }
@@ -784,6 +795,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
             LicenseStatusText = "Không hợp lệ";
             LicenseCustomerText = "—";
             LicenseExpiryText = "—";
+            LicenseModulesText = "—";
             LicenseDaysLeftText = "—";
             LicenseMessageText = check.Message;
         }

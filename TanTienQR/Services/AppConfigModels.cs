@@ -151,6 +151,39 @@ public sealed class PoConfig
     [JsonPropertyName("CodeSampleSize")] public int CodeSampleSize { get; set; } = 100;
 }
 
+/// <summary>Cấu hình máy in G10 mặc định.</summary>
+[ConfigSection(Key = "Print", Title = "MÁY IN · G10", Order = 48, Icon = "Printer",
+    Description = "Cấu hình máy in và lô gửi. Thay đổi kết nối cần khởi động lại.")]
+public sealed class PrintConfig
+{
+    [ConfigField("Bật module máy in", Order = 1, RequiresRestart = true)]
+    [JsonPropertyName("Enabled")] public bool Enabled { get; set; }
+
+    [ConfigField("Mã máy in mặc định", Order = 2, Required = true, RequiresRestart = true)]
+    [JsonPropertyName("DefaultPrinterId")] public string DefaultPrinterId { get; set; } = "g10-1";
+
+    [ConfigField("Tên máy in", Order = 3, Required = true, RequiresRestart = true)]
+    [JsonPropertyName("PrinterName")] public string PrinterName { get; set; } = "Máy in G10";
+
+    [ConfigField("IP máy in", Order = 4, Validation = "IpOrHost", RequiresRestart = true)]
+    [JsonPropertyName("Ip")] public string Ip { get; set; } = "192.168.0.3";
+
+    [ConfigField("Port TCP", Order = 5, Min = 1, Max = 65535, RequiresRestart = true)]
+    [JsonPropertyName("Port")] public int Port { get; set; } = 6007;
+
+    [ConfigField("Số mã tối đa / lần gửi", Order = 6, Min = 1, Max = 1000, RequiresRestart = true)]
+    [JsonPropertyName("BatchSize")] public int BatchSize { get; set; } = 100;
+
+    [ConfigField("Dung lượng buffer máy in", Order = 7, Min = 1, Max = 1000, RequiresRestart = true)]
+    [JsonPropertyName("BufferCapacity")] public int BufferCapacity { get; set; } = 100;
+
+    [ConfigField("Timeout phản hồi (ms)", Order = 8, Min = 250, Max = 30000, RequiresRestart = true)]
+    [JsonPropertyName("ResponseTimeoutMs")] public int ResponseTimeoutMs { get; set; } = 1500;
+
+    [ConfigField("Chu kỳ đối soát (ms)", Order = 9, Min = 1000, Max = 60000, RequiresRestart = true)]
+    [JsonPropertyName("ReconcileIntervalMs")] public int ReconcileIntervalMs { get; set; } = 2500;
+}
+
 /// <summary>
 /// Cấu hình kết nối Checkee Middleware API (mục "Checkee").
 ///
@@ -443,6 +476,7 @@ public sealed class AppConfigSnapshot
     [JsonPropertyName("Web")] public WebConfig Web { get; set; } = new();
     [JsonPropertyName("Scanner")] public ScannerConfig Scanner { get; set; } = new();
     [JsonPropertyName("Po")] public PoConfig Po { get; set; } = new();
+    [JsonPropertyName("Print")] public PrintConfig Print { get; set; } = new();
     [JsonPropertyName("PoServer")] public PoServerConfig PoServer { get; set; } = new();
     [JsonPropertyName("MesSimulator")] public MesSimulatorConfig MesSimulator { get; set; } = new();
     [JsonPropertyName("Checkee")] public CheckeeConfig Checkee { get; set; } = new();
@@ -469,6 +503,7 @@ public sealed class AppConfigSnapshot
 [JsonSerializable(typeof(ScanConfig))]
 [JsonSerializable(typeof(ScannerConfig))]
 [JsonSerializable(typeof(PoConfig))]
+[JsonSerializable(typeof(PrintConfig))]
 [JsonSerializable(typeof(PoServerConfig))]
 [JsonSerializable(typeof(MesSimulatorConfig))]
 [JsonSerializable(typeof(CheckeeConfig))]

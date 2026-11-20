@@ -207,7 +207,7 @@ async function handleListLicenses(env: Env, url: URL): Promise<Response> {
 
   const { results } = await env.DB.prepare(
     `SELECT license_key, customer, product, hwid_display, days_valid,
-            issued_at, expires_at, key_id, revoked_at, revoke_reason, note, created_by, created_at
+            issued_at, expires_at, key_id, features_json, revoked_at, revoke_reason, note, created_by, created_at
        FROM licenses ${whereSql}
       ORDER BY id DESC LIMIT ? OFFSET ?`,
   ).bind(...binds, limit, offset).all();
@@ -236,6 +236,7 @@ async function handleIssue(request: Request, env: Env, user: string): Promise<Re
       daysValid: Number(body.daysValid ?? 30),
       product: requestText(body.product, 'Sản phẩm', 100) || env.DEFAULT_PRODUCT,
       note: requestText(body.note, 'Ghi chú', 1000),
+      features: body.features,
       createdBy: user,
       requestId: requestId || undefined,
     });

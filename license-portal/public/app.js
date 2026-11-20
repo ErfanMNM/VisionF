@@ -187,6 +187,7 @@ $('#issue-btn').addEventListener('click', async () => {
     hwid: $('#hwid').value.trim(),
     daysValid: Number($('#days-valid').value),
     product: $('#product').value,
+    features: $('#feature-printer').checked ? ['printer'] : [],
     note: $('#note').value.trim(),
     ...(submittedRequest ? { requestId: submittedRequest.id } : {}),
   };
@@ -214,6 +215,7 @@ $('#issue-btn').addEventListener('click', async () => {
       <dt>Cấp lúc</dt><dd>${escapeHtml(formatDate(data.payload.issued))}</dd>
       <dt>Hết hạn</dt><dd>${escapeHtml(formatDate(data.payload.expires))}</dd>
       <dt>Key ID</dt><dd>${escapeHtml(data.payload.kid)}</dd>
+      <dt>Module</dt><dd>${escapeHtml((data.payload.features || []).join(', ') || 'Cơ bản')}</dd>
     `;
 
     hide($('#issue-empty'));
@@ -264,7 +266,7 @@ $('#download-license').addEventListener('click', () => {
 async function loadLicenses() {
   const sequence = ++licensesLoadSequence;
   const body = $('#licenses-body');
-  body.innerHTML = '<tr><td colspan="7" class="empty-cell">Đang tải...</td></tr>';
+  body.innerHTML = '<tr><td colspan="8" class="empty-cell">Đang tải...</td></tr>';
 
   const params = new URLSearchParams({
     q: $('#search').value.trim(),
@@ -280,7 +282,7 @@ async function loadLicenses() {
     setText('#licenses-count', 'Tổng số: ' + data.total + ' license');
   } catch (err) {
     if (sequence !== licensesLoadSequence || !currentUser) return;
-    body.innerHTML = `<tr><td colspan="7" class="empty-cell">${escapeHtml(err.message)}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="8" class="empty-cell">${escapeHtml(err.message)}</td></tr>`;
   }
 }
 
@@ -288,7 +290,7 @@ function renderLicenses(licenses) {
   const body = $('#licenses-body');
 
   if (!licenses || licenses.length === 0) {
-    body.innerHTML = '<tr><td colspan="7" class="empty-cell">Không có license nào.</td></tr>';
+    body.innerHTML = '<tr><td colspan="8" class="empty-cell">Không có license nào.</td></tr>';
     return;
   }
 
@@ -318,6 +320,7 @@ function renderLicenses(licenses) {
         <td>${escapeHtml(l.customer)}</td>
         <td class="mono">${escapeHtml(l.hwid_display)}</td>
         <td>${escapeHtml(l.product)}</td>
+        <td>${escapeHtml(JSON.parse(l.features_json || '[]').join(', ') || 'Cơ bản')}</td>
         <td>${escapeHtml(formatDate(l.expires_at))}</td>
         <td><span class="badge ${badgeClass}"${title}>${statusText}</span></td>
         <td>
@@ -379,7 +382,7 @@ $('#reload-btn').addEventListener('click', () => { loadProducts(); loadLicenses(
 
 function updateIssueControls() {
   const busy = issueBusy || requestSelectionBusy;
-  for (const selector of ['#customer', '#days-valid', '#note', '#clear-request', '#issue-btn']) {
+  for (const selector of ['#customer', '#days-valid', '#note', '#feature-printer', '#clear-request', '#issue-btn']) {
     $(selector).disabled = busy;
   }
   $('#hwid').disabled = busy;
@@ -397,6 +400,7 @@ function clearRequestSelection() {
   $('#customer').value = '';
   $('#hwid').value = '';
   $('#note').value = '';
+  $('#feature-printer').checked = false;
   updateIssueControls();
 }
 

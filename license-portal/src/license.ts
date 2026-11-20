@@ -2,7 +2,7 @@
  * Logic cấp license. Payload phải KHỚP 100% với
  * ClassLibraryMT/Licensing/LicenseModels.cs + LicenseSigner.cs:
  *
- *   { hwid, customer, issued, expires, product, kid }
+ *   { hwid, customer, issued, expires, product, kid, features }
  *
  * và file license.lic:
  *   { "v": 1, "data": "<base64 json>", "sig": "<base64 RSA-SHA256 PKCS1v1.5>" }
@@ -22,6 +22,7 @@ export interface LicensePayload {
   expires: string;
   product: string;
   kid: string;
+  features: string[];
 }
 
 export interface LicenseFile {
@@ -40,12 +41,32 @@ export interface IssueResult {
   hwidDisplay: string;
 }
 
+const ALLOWED_FEATURES = new Set(['printer']);
+
+function normalizeFeatures(value: unknown): string[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) throw new Error('Danh sách module không hợp lệ.');
+  if (value.length > 32) throw new Error('License chỉ được chứa tối đa 32 module.');
+
+  const features = new Set<string>();
+  for (const item of value) {
+    if (typeof item !== 'string') throw new Error('Tên module không hợp lệ.');
+    const feature = item.trim();
+    if (!/^[A-Za-z0-9._-]{1,64}$/.test(feature)) {
+      throw new Error('Tên module chỉ được chứa chữ, số, dấu chấm, gạch ngang hoặc gạch dưới.');
+    }
+    if (!ALLOWED_FEATURES.has(feature)) throw new Error(`Module "${feature}" chưa được đăng ký.`);
+    features.add(feature);
+  }
+  return [...features].sort((a, b) => a.localeCompare(b));
+}
+
 /**
  * Tạo và ký 1 license mới.
  */
 export async function issueLicense(
   env: Env,
-  input: { customer: string; hwid: string; daysValid: number; product: string; note?: string; createdBy: string; requestId?: string },
+  input: { customer: string; hwid: string; daysValid: number; product: string; note?: string; createdBy: string; requestId?: string; features?: unknown },
 ): Promise<IssueResult> {
   const customer = input.customer.trim();
   if (!customer) throw new Error('Tên khách hàng không được để trống.');
@@ -65,6 +86,7 @@ export async function issueLicense(
   const product = (input.product || env.DEFAULT_PRODUCT).trim();
   if (!product) throw new Error('Sản phẩm không được để trống.');
   if (product.length > 100) throw new Error('Tên sản phẩm quá dài.');
+  const features = normalizeFeatures(input.features);
 
   if (input.requestId) {
     const licenseRequest = await env.DB.prepare(
@@ -103,9 +125,10 @@ export async function issueLicense(
     expires: expires.toISOString(),
     product,
     kid: keyId,
+    features,
   };
 
-  // Thứ tự field phải giống .NET: hwid, customer, issued, expires, product, kid.
+  // Thứ tự field phải giống .NET: hwid, customer, issued, expires, product, kid, features.
   const json = JSON.stringify({
     hwid: payload.hwid,
     customer: payload.customer,
@@ -113,6 +136,7 @@ export async function issueLicense(
     expires: payload.expires,
     product: payload.product,
     kid: payload.kid,
+    features: payload.features,
   });
 
   const dataBytes = enc.encode(json);
@@ -140,13 +164,14 @@ export async function issueLicense(
     keyId,
     file.data,
     file.sig,
+    JSON.stringify(features),
     (input.note ?? '').trim() || null,
     input.createdBy,
   ];
   const insertSql =
     `INSERT INTO licenses
        (license_key, customer, product, hwid, hwid_display, days_valid,
-        issued_at, expires_at, key_id, data_b64, sig_b64, note, created_by)`;
+        issued_at, expires_at, key_id, data_b64, sig_b64, features_json, note, created_by)`;
 
   if (input.requestId) {
     // Cấp và đánh dấu đã xử lý cùng một transaction. Hai quản trị viên
@@ -154,7 +179,7 @@ export async function issueLicense(
     const result = await env.DB.batch([
       env.DB.prepare(
         `${insertSql}
-         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
           WHERE EXISTS (SELECT 1 FROM license_requests
                          WHERE id = ? AND status = 'pending' AND hwid = ? AND product = ?)`,
       ).bind(...fields, input.requestId, hwid, product),
@@ -174,7 +199,7 @@ export async function issueLicense(
       throw new ApiError('Yêu cầu này đã được xử lý; hãy tải lại danh sách.', 409);
     }
   } else {
-    await env.DB.prepare(`${insertSql} VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    await env.DB.prepare(`${insertSql} VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .bind(...fields).run();
     await audit(env, input.createdBy, 'issue', `key=${licenseKey} customer=${customer} product=${product}`);
   }
@@ -297,8 +322,8 @@ export async function renewLicense(
   actor: string,
 ): Promise<IssueResult> {
   const row = await env.DB.prepare(
-    'SELECT customer, product, hwid FROM licenses WHERE license_key = ?',
-  ).bind(licenseKey).first<{ customer: string; product: string; hwid: string }>();
+    'SELECT customer, product, hwid, features_json FROM licenses WHERE license_key = ?',
+  ).bind(licenseKey).first<{ customer: string; product: string; hwid: string; features_json?: string }>();
   if (!row) throw new Error('Không tìm thấy license để gia hạn.');
 
   const result = await issueLicense(env, {
@@ -308,6 +333,7 @@ export async function renewLicense(
     product: row.product,
     note: `Gia hạn từ ${licenseKey}`,
     createdBy: actor,
+    features: JSON.parse(row.features_json ?? '[]'),
   });
   await revokeLicense(env, licenseKey, 'Thay thế bằng license gia hạn', actor);
   return result;
