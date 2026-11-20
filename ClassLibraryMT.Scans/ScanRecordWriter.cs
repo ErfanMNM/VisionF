@@ -26,7 +26,8 @@ internal sealed class ScanRecordWriter : IScanRecordWriter, IDisposable
     private readonly Channel<object> _queue;
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _worker;
-    private bool _disposed;
+    private volatile bool _disposed;
+    private Exception? _writeFailure;
 
     /// <summary>Số bản ghi đã ghi thành công (dùng cho test/thống kê).</summary>
     private long _writtenCount;
@@ -49,7 +50,7 @@ internal sealed class ScanRecordWriter : IScanRecordWriter, IDisposable
                 FullMode = BoundedChannelFullMode.DropOldest,
                 SingleReader = true,
                 SingleWriter = false,
-            });
+            }, OnItemDropped);
 
         _worker = Task.Run(() => RunAsync(_cts.Token));
 
@@ -71,6 +72,7 @@ internal sealed class ScanRecordWriter : IScanRecordWriter, IDisposable
         }
         catch (Exception ex)
         {
+            RecordFailure(ex);
             ScanDiagnostics.Error("Khong tao duoc file DB ban ghi quet ma.", ex);
         }
     }
@@ -91,10 +93,12 @@ internal sealed class ScanRecordWriter : IScanRecordWriter, IDisposable
 
         if (_disposed)
         {
+            RecordFailure(new ObjectDisposedException(nameof(ScanRecordWriter)));
             return;
         }
 
-        _queue.Writer.TryWrite(record);
+        if (!_queue.Writer.TryWrite(record))
+            RecordFailure(new IOException("Hàng đợi bản ghi đã đóng."));
     }
 
     /// <summary>
@@ -115,6 +119,44 @@ internal sealed class ScanRecordWriter : IScanRecordWriter, IDisposable
 
         await _queue.Writer.WriteAsync(request, cancellationToken).ConfigureAwait(false);
         await request.WaitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task VerifyHealthyAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfUnhealthy();
+        await FlushAsync(cancellationToken).ConfigureAwait(false);
+        ThrowIfUnhealthy();
+        try
+        {
+            await using var connection = await _store.OpenAsync(cancellationToken).ConfigureAwait(false);
+            // BEGIN IMMEDIATE xác nhận quyền ghi cả khi SQLite mở fallback read-only.
+            await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            RecordFailure(ex);
+            throw new IOException("Không xác minh được database bản ghi quét mã.", ex);
+        }
+        ThrowIfUnhealthy();
+    }
+
+    private void RecordFailure(Exception cause) => Interlocked.CompareExchange(ref _writeFailure, cause, null);
+
+    private void ThrowIfUnhealthy()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (Volatile.Read(ref _writeFailure) is { } cause)
+            throw new IOException("Writer bản ghi quét mã đã gặp lỗi hoặc mất dữ liệu. Hãy kiểm tra trước khi cập nhật.", cause);
+        if (_worker.IsCompleted)
+            throw new IOException("Writer bản ghi quét mã đã dừng.");
+    }
+
+    private void OnItemDropped(object item)
+    {
+        RecordFailure(new IOException("Hàng đợi bản ghi quét mã đã tràn."));
+        // Flush thường vẫn có thể hoàn thành; VerifyHealthy kiểm tra latch sau barrier.
+        if (item is FlushRequest request) request.Complete();
     }
 
     private async Task RunAsync(CancellationToken ct)
@@ -192,6 +234,7 @@ internal sealed class ScanRecordWriter : IScanRecordWriter, IDisposable
             }
             catch (Exception ex)
             {
+                RecordFailure(ex);
                 // Worker không được chết vì lỗi ghi DB. Log ra stderr và tiếp tục.
                 ScanDiagnostics.Error("Loi trong worker ghi ban ghi quet ma SQLite.", ex);
                 try
@@ -229,6 +272,7 @@ internal sealed class ScanRecordWriter : IScanRecordWriter, IDisposable
         }
         catch (Exception ex)
         {
+            RecordFailure(ex);
             ScanDiagnostics.Error("Khong flush duoc ban ghi con lai khi dong worker.", ex);
         }
     }
@@ -252,6 +296,7 @@ internal sealed class ScanRecordWriter : IScanRecordWriter, IDisposable
         }
         catch (Exception ex)
         {
+            RecordFailure(ex);
             // Mất batch này cũng được: ưu tiên app chạy ổn định.
             ScanDiagnostics.Error(
                 $"Ghi batch ban ghi quet ma that bai ({batch.Count} ban ghi).", ex);

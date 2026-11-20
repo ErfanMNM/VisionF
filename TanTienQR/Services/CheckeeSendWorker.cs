@@ -38,6 +38,9 @@ internal sealed class CheckeeSendWorker : BackgroundService
     private readonly IScanRecordWriter _scanWriter;
     private readonly CheckeeOptions _opt;
     private readonly ILogger<CheckeeSendWorker> _logger;
+    private readonly ScanIntakeGate _intake;
+    private readonly SemaphoreSlim _sendLock = new(1, 1);
+    private int _inFlight;
 
     /// <summary>Trạng thái gần nhất (để UI hiển thị, đọc an toàn từ nhiều luồng).</summary>
     private readonly CheckeeSendState _state = new();
@@ -47,12 +50,14 @@ internal sealed class CheckeeSendWorker : BackgroundService
         IScanSendStatusStore sendStore,
         IScanRecordWriter scanWriter,
         IOptions<CheckeeOptions> options,
+        ScanIntakeGate intake,
         ILogger<CheckeeSendWorker> logger)
     {
         _client = client;
         _sendStore = sendStore;
         _scanWriter = scanWriter;
         _opt = options.Value;
+        _intake = intake;
         _logger = logger;
     }
 
@@ -131,7 +136,61 @@ internal sealed class CheckeeSendWorker : BackgroundService
     /// </summary>
     /// <param name="ct">Token hủy.</param>
     /// <returns>Số mã đã gửi thành công.</returns>
-    public async Task<int> SendPendingAsync(CancellationToken ct = default)
+    public Task<int> SendPendingAsync(CancellationToken ct = default) =>
+        SendWithGateAsync(() => SendPendingCoreAsync(ct), 0, ct);
+
+    /// <summary>Đưa mã lỗi về Pending rồi gửi trong cùng lượt được theo dõi khi bàn giao.</summary>
+    public Task<(int Reset, int Sent)> ResendFailedAsync(IReadOnlyList<long> ids, CancellationToken ct = default) =>
+        SendWithGateAsync(async () =>
+        {
+            var reset = await _sendStore.ResetToPendingAsync(ids, ct).ConfigureAwait(false);
+            var sent = await SendPendingCoreAsync(ct).ConfigureAwait(false);
+            return (reset, sent);
+        }, (0, 0), ct);
+
+    private async Task<T> SendWithGateAsync<T>(Func<Task<T>> action, T suspendedResult, CancellationToken ct)
+    {
+        // Admission dùng cùng khóa với bật bảo trì: Drain không bỏ sót một
+        // yêu cầu manual/timer vừa đi qua cổng nhưng chưa bắt đầu HTTP.
+        var admitted = false;
+        _intake.Dispatch(() =>
+        {
+            Interlocked.Increment(ref _inFlight);
+            admitted = true;
+        });
+        if (!admitted)
+        {
+            _state.SetStatus("Tạm dừng gửi mã trong lúc cập nhật phần mềm.", isError: false);
+            return suspendedResult;
+        }
+
+        var acquired = false;
+        try
+        {
+            // Một lượt manual và một tick timer không được gửi trùng tập Pending.
+            await _sendLock.WaitAsync(ct).ConfigureAwait(false);
+            acquired = true;
+            if (_intake.IsSuspended)
+                return suspendedResult;
+            return await action().ConfigureAwait(false);
+        }
+        finally
+        {
+            if (acquired) _sendLock.Release();
+            Interlocked.Decrement(ref _inFlight);
+        }
+    }
+
+    internal async Task DrainAsync(CancellationToken ct)
+    {
+        if (!_intake.IsSuspended)
+            throw new InvalidOperationException("Phải khóa nhận lượt gửi mới trước khi chờ bàn giao cập nhật.");
+        // Bao gồm cả ghi trạng thái trả về vào SQLite sau khi HTTP đã hoàn tất.
+        while (Volatile.Read(ref _inFlight) != 0)
+            await Task.Delay(25, ct).ConfigureAwait(false);
+    }
+
+    private async Task<int> SendPendingCoreAsync(CancellationToken ct)
     {
         // Đẩy bản ghi đang chờ ghi xuống DB để không bỏ sót mã vừa quét.
         try

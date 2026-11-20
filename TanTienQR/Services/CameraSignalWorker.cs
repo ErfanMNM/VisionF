@@ -86,6 +86,7 @@ internal sealed class CameraSignalWorker : BackgroundService
     // tử chờ -> không bao giờ chạm giới hạn 512, không lo mất mã do
     // DropOldest.
     private int _inFlight;
+    private readonly ScanIntakeGate _intake;
 
     public CameraSignalWorker(
         Reader camera,
@@ -95,6 +96,7 @@ internal sealed class CameraSignalWorker : BackgroundService
         IOptions<CameraOptions> options,
         RuntimeCounters counters,
         ProductionOrderService po,
+        ScanIntakeGate intake,
         ILogger<CameraSignalWorker> logger)
     {
         _camera = camera;
@@ -104,7 +106,14 @@ internal sealed class CameraSignalWorker : BackgroundService
         _opt = options.Value;
         _counters = counters;
         _po = po;
+        _intake = intake;
         _logger = logger;
+    }
+
+    internal async Task DrainAsync(CancellationToken ct)
+    {
+        while (Volatile.Read(ref _inFlight) != 0)
+            await Task.Delay(25, ct).ConfigureAwait(false);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -391,7 +400,7 @@ internal sealed class CameraSignalWorker : BackgroundService
                 AppStateManager.SetCameraStatus(CameraStatus.Reconnecting);
                 break;
             case eReaderState.Received:
-                HandleReceived(data);
+                _intake.Dispatch(() => HandleReceived(data));
                 break;
         }
     }

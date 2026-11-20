@@ -19,6 +19,12 @@ public interface IScanRecordWriter
     /// </summary>
     /// <param name="cancellationToken">Token hủy.</param>
     Task FlushAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Xả dữ liệu, mở thử database và từ chối khi từng mất bản ghi hoặc writer đã dừng.
+    /// Dùng làm điều kiện bàn giao cập nhật; lỗi chỉ được xóa khi khởi động writer mới.
+    /// </summary>
+    Task VerifyHealthyAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>

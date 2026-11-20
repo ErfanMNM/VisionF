@@ -8,7 +8,7 @@
     "deploy": "wrangler deploy",
     "types": "wrangler types",
     "check": "tsc --noEmit",
-    "test": "node --test tests/integration.mjs",
+    "test": "node --test tests/integration.mjs tests/updates.mjs",
     "test:preview": "node tests/preview.mjs"
   },
   "devDependencies": {

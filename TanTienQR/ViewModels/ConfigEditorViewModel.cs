@@ -485,6 +485,12 @@ internal partial class ConfigEditorViewModel : ViewModelBase
 
         try
         {
+            if (ClassLibraryMT.Updates.UpdateProtocol.TryRequestRestart())
+            {
+                RequestApplicationShutdown();
+                return;
+            }
+
             if (!TryBuildRestartStartInfo(out var startInfo, out var errorMessage))
             {
                 ConfigMessageText = errorMessage;

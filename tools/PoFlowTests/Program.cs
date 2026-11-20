@@ -177,6 +177,51 @@ catch (PoServerException)
 }
 await svc.CancelProductionAsync();
 
+Console.WriteLine("\n[6] Khóa bảo trì cập nhật dùng chung với bắt đầu và khôi phục PO");
+Check("Máy rảnh vào bảo trì được", await svc.TryEnterUpdateMaintenanceAsync(CancellationToken.None));
+Check("Đang bảo trì không bắt đầu PO", !await svc.StartProductionAsync("PO-EXTRA-001"));
+svc.LeaveUpdateMaintenance();
+Check("Rời bảo trì bắt đầu PO được", await svc.StartProductionAsync("PO-EXTRA-001"));
+Check("PO đang chạy không được vào bảo trì", !await svc.TryEnterUpdateMaintenanceAsync(CancellationToken.None));
+var reloaded = new ProductionOrderService(client, store, history, new PoCodeCache());
+Check("PO Running chỉ còn trong DB vẫn chặn bảo trì",
+    !await reloaded.TryEnterUpdateMaintenanceAsync(CancellationToken.None));
+reloaded.HoldForUpdateHealthCheck();
+Check("Bản trial không tự khôi phục PO", !await reloaded.RestoreRunningOrderAsync());
+reloaded.LeaveUpdateMaintenance();
+Check("Sau commit khôi phục PO được", await reloaded.RestoreRunningOrderAsync());
+await svc.CancelProductionAsync();
+
+var diskRoot = Path.Combine(workDir, "maintenance-disk");
+var diskStore = new PoStore(diskRoot);
+var diskService = new ProductionOrderService(client, diskStore, new PoHistoryStore(diskRoot), new PoCodeCache());
+var diskOrder = new ProductionOrder { OrderNo = "PO-DISK", OrderQty = 1, CreatedUtc = DateTime.UtcNow };
+await diskStore.EnsurePoDbAsync(diskOrder, [new PoCode { Gtin = "G", Serial = "D1", Code = "/01/G/21/D1" }]);
+await diskStore.SetMetaAsync(diskOrder.OrderNo, diskOrder.CreatedUtc, PoStore.MetaStatus, ProductionOrderStatus.Running.ToString());
+Check("PO Running trong file local vẫn chặn khi RAM và lịch sử chưa khôi phục",
+    !await diskService.TryEnterUpdateMaintenanceAsync(CancellationToken.None));
+await diskStore.SetMetaAsync(diskOrder.OrderNo, diskOrder.CreatedUtc, PoStore.MetaStatus, ProductionOrderStatus.Downloaded.ToString());
+await diskStore.MarkScannedAsync(diskOrder.OrderNo, diskOrder.CreatedUtc, "G|D1");
+Check("PO đã quét dở cũng chặn bảo trì dù chưa có trạng thái Running",
+    !await diskService.TryEnterUpdateMaintenanceAsync(CancellationToken.None));
+
+for (var iteration = 0; iteration < 12; iteration++)
+{
+    var raceRoot = Path.Combine(workDir, "maintenance-race-" + iteration);
+    var raceStore = new PoStore(raceRoot);
+    var raceHistory = new PoHistoryStore(raceRoot);
+    var race = new ProductionOrderService(client, raceStore, raceHistory, new PoCodeCache());
+    await raceStore.EnsurePoDbAsync(new ProductionOrder
+    {
+        OrderNo = "PO-RACE", OrderQty = 1, CreatedUtc = DateTime.UtcNow
+    }, [new PoCode { Code = "/01/G/21/R1", Gtin = "G", Serial = "R1" }]);
+    var start = Task.Run(() => race.StartProductionAsync("PO-RACE"));
+    var maintenance = Task.Run(() => race.TryEnterUpdateMaintenanceAsync(CancellationToken.None));
+    await Task.WhenAll(start, maintenance);
+    Check($"Bắt đầu và bảo trì cạnh tranh #{iteration + 1}: chỉ một thao tác thành công",
+        start.Result != maintenance.Result);
+}
+
 Console.WriteLine($"\nKet qua: {(failures == 0 ? "TAT CA PASS" : failures + " FAIL")}");
 return failures == 0 ? 0 : 1;
 

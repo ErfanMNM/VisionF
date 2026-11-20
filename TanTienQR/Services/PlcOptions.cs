@@ -3,6 +3,7 @@ namespace TanTienQR.Services;
 // Cấu hình kết nối PLC Omron (đọc từ appsettings.json, mục "Plc").
 internal sealed class PlcOptions
 {
+    public bool Enabled { get; set; } = true;
     public string Ip { get; set; } = "127.0.0.1";
     public int Port { get; set; } = 9600;
     public byte RemoteNode { get; set; } = 0;   // Node PLC (DA1), thường là octet cuối IP

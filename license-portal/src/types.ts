@@ -1,6 +1,7 @@
 export interface Env {
   DB: D1Database;
   ASSETS: Fetcher;
+  UPDATE_BUCKET?: R2Bucket;
   // Worker secrets (wrangler secret put):
   LICENSE_PRIVATE_KEY_PKCS8: string; // base64 PKCS#8 RSA private key
   LICENSE_KEY_ID: string;           // 8 hex, khop voi app

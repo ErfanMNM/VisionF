@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:TanTienQR.ViewModels"
+             xmlns:services="using:TanTienQR.Services"
              xmlns:d="http://schemas.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="1440" d:DesignHeight="900"
@@ -242,7 +243,27 @@
 
         <!-- ==================== CỘT PHẢI ==================== -->
         <!-- Card 1 + Card 2 cao theo nội dung (Auto), Card 3 chiếm phần dư (*) -->
-        <Grid Grid.Column="1" RowDefinitions="Auto,Auto,*" RowSpacing="12">
+        <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <Grid RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="12">
+
+            <Border Grid.Row="2" Background="{StaticResource BgPanel}"
+                    BorderBrush="{StaticResource LineColor}" BorderThickness="1"
+                    CornerRadius="16" Padding="16,12" DataContext="{Binding Updates}"
+                    x:DataType="services:UpdateClient">
+                <StackPanel Spacing="7" IsEnabled="{Binding !IsBusy}">
+                    <TextBlock Classes="overline" Text="CẬP NHẬT PHẦN MỀM" />
+                    <TextBlock Text="{Binding CurrentVersion, StringFormat='Đang dùng: {0}'}" />
+                    <TextBlock Text="{Binding LastResult}" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding AvailableVersion, StringFormat='Bản mới: {0}'}" />
+                    <TextBlock Text="{Binding Status}" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding Notes}" TextWrapping="Wrap" MaxHeight="80" />
+                    <Button Content="Kiểm tra bản mới" Command="{Binding CheckCommand}" />
+                    <Button Content="Tải bản cập nhật" Command="{Binding DownloadCommand}"
+                            IsVisible="{Binding CanDownload}" />
+                    <Button Content="Cài đặt và khởi động lại" Command="{Binding InstallCommand}"
+                            IsVisible="{Binding CanInstall}" />
+                </StackPanel>
+            </Border>
 
             <!-- ===== Card 1: Thông tin sản xuất (chọn + chạy PO) ===== -->
             <Border Grid.Row="0"
@@ -483,7 +504,7 @@
             </Border>
 
             <!-- ===== Card 3: Sự kiện gần đây ===== -->
-            <Border Grid.Row="2"
+            <Border Grid.Row="3"
                     Background="{StaticResource BgPanel}"
                     BorderBrush="{StaticResource LineColor}"
                     BorderThickness="1"
@@ -526,5 +547,6 @@
                 </Grid>
             </Border>
         </Grid>
+        </ScrollViewer>
     </Grid>
 </UserControl>

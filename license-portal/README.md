@@ -1,6 +1,6 @@
 # TanTienQR — License Portal
 
-Web cấp license chỉ dùng Cloudflare — **không tốn 1 đồng server nào**.
+Web cấp license và phân phối bản cập nhật dùng Cloudflare Workers, D1 và R2. Chi phí phụ thuộc hạn mức và mức sử dụng của tài khoản.
 
 Portal đang triển khai: https://tantien-license-portal.okeynhat.workers.dev
 
@@ -311,3 +311,51 @@ Thông báo: OK
 | Workers Secrets | Không giới hạn |
 
 > Lưu DB: `npx wrangler d1 export tantien-license --remote --output=backup.sql`
+
+## 12. API phân phối bản cập nhật
+
+Worker bổ sung hai endpoint dùng HTTPS POST với `Content-Type: application/json`.
+Chứng thư được gửi trong body, không gửi trong URL hay cookie quản trị:
+
+```json
+{
+  "license": { "v": 1, "data": "<base64 payload>", "sig": "<base64 chữ ký>" },
+  "rid": "win-x64",
+  "channel": "stable"
+}
+```
+
+- `/api/updates/v1/check`: trả nguyên envelope manifest đã ký; HTTP 204 nếu chưa có phiên bản trên kênh.
+- `/api/updates/v1/download`: body như trên, thêm `"version": "1.2.3"`; trả ZIP theo nền tảng. Phiên bản phải còn là phiên bản hiện tại trên kênh, nếu khác trả HTTP 409 và ứng dụng kiểm tra lại.
+
+Chỉ nhận `win-x64`/`linux-x64` và `pilot`/`stable`. Mọi phản hồi có `Cache-Control: no-store`.
+Worker đối chiếu đúng `data` và `sig` đã cấp cho `TanTienQR` trong D1, kiểm tra ngày hết hạn bằng giờ server và trạng thái thu hồi ở mỗi lần check/tải.
+Không có bản ghi, đã xoá, hết hạn hoặc thu hồi đều trả HTTP 403; license cấp offline cần cấp lại qua portal để tải.
+TanTienQR tự kiểm tra chữ ký và HWID trên máy; API này không chứng minh phần cứng từ xa.
+Lỗi kho hay gói chưa sẵn sàng trả HTTP 503, không ghi nội dung license vào log.
+
+Bucket `tantien-updates` là riêng tư, chỉ truy cập qua binding `UPDATE_BUCKET`.
+Không bật `r2.dev` hay gắn custom domain công khai cho bucket này.
+Trước lần triển khai có R2 đầu tiên:
+
+```powershell
+npx wrangler whoami
+npx wrangler r2 bucket create tantien-updates
+npx wrangler d1 migrations apply tantien-license --remote
+npm run deploy
+```
+
+Giữ cấu trúc đối tượng:
+
+```text
+channels/pilot.json                  # {"version":"1.2.3"}
+channels/stable.json                 # {"version":"1.2.3"}
+releases/1.2.3/win-x64/manifest.json  # {"data":"<base64>","sig":"<base64>"}
+releases/1.2.3/win-x64/package.zip
+releases/1.2.3/linux-x64/manifest.json
+releases/1.2.3/linux-x64/package.zip
+```
+
+Đẩy đầy đủ cả hai gói và manifest trước khi cập nhật con trỏ kênh. Không ghi đè nội dung của phiên bản đã công bố.
+Đặt con trỏ thành `{}` bằng conditional PUT để rút bản lỗi an toàn khi có người phát hành đồng thời; ZIP cũ dù còn trong R2 cũng bị API từ chối tải. Con trỏ chưa tồn tại cũng được coi là kênh chưa phát hành.
+Kiểm thử API cục bộ bằng `npm run check` và `npm test`; fixture dùng khóa sinh tạm, D1/R2 cục bộ và không truy cập dữ liệu thật.

@@ -28,6 +28,7 @@ export async function createPortalFixture({ port = 0 } = {}) {
       compatibilityDate: '2026-11-11', compatibilityFlags: ['nodejs_compat_v2'],
       log: new Log(LogLevel.ERROR),
       d1Databases: { DB: 'local-test-license-db' },
+      r2Buckets: { UPDATE_BUCKET: 'local-test-update-bucket' },
       bindings: {
         APP_NAME: 'TanTienQR License Portal · Kiểm thử', DEFAULT_PRODUCT: 'TanTienQR',
         LICENSE_PRIVATE_KEY_PKCS8: privateKey.export({ type: 'pkcs8', format: 'der' }).toString('base64'),
@@ -57,7 +58,8 @@ export async function createPortalFixture({ port = 0 } = {}) {
     }
     await db.prepare('DELETE FROM signing_keys').run();
     await db.prepare('INSERT INTO signing_keys (key_id, public_key) VALUES (?, ?)').bind(keyId, spki.toString('base64')).run();
-    return { runtime, db, publicKey,
+    const bucket = await runtime.getR2Bucket('UPDATE_BUCKET');
+    return { runtime, db, bucket, publicKey,
       async dispose() {
         await runtime.dispose();
         await rm(temporaryRoot, { recursive: true, force: true });

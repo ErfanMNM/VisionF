@@ -135,8 +135,10 @@ public sealed class PoHttpServer : IDisposable
     private readonly SemaphoreSlim _throttle;
     private readonly HttpListener? _listener = new();
 
-    /// <summary>Các task đang chạy (vòng lặp accept + xử lý request).</summary>
+    /// <summary>Các task xử lý request; chỉ vòng lặp accept thêm phần tử.</summary>
     private readonly ConcurrentBag<Task> _tasks = [];
+    private Task _acceptLoop = Task.CompletedTask;
+    private bool _stopping;
 
     /// <summary>Cờ chống dispose 2 lần.</summary>
     private bool _disposed;
@@ -203,21 +205,16 @@ public sealed class PoHttpServer : IDisposable
     /// </summary>
     public void Start()
     {
-        if (_disposed)
-        {
-            return;
-        }
-
         lock (_startGate)
         {
-            if (_started)
-            {
-                return;
-            }
-
+            if (_disposed || _started || _stopping) return;
             _started = true;
+            StartCore();
         }
+    }
 
+    private void StartCore()
+    {
         if (!_opt.Enabled)
         {
             _state.SetStatus("Đã tắt (PoServer:Enabled = false).", isError: false);
@@ -277,31 +274,52 @@ public sealed class PoHttpServer : IDisposable
                 prefix, _opt.Port);
         }
 
-        _tasks.Add(Task.Run(() => AcceptLoopAsync(_cts.Token), CancellationToken.None));
+        _acceptLoop = Task.Run(() => AcceptLoopAsync(_cts.Token), CancellationToken.None);
     }
 
-    /// <summary>Dừng lắng nghe và giải phóng tài nguyên.</summary>
+    /// <summary>
+    /// Báo dừng lắng nghe. Dùng <see cref="StopAsync"/> nếu cần chắc chắn mọi thao tác ghi đã kết thúc.
+    /// </summary>
     public void Stop()
     {
-        try
+        lock (_startGate)
         {
-            _cts.Cancel();
-        }
-        catch (ObjectDisposedException)
-        {
-            // Đã dispose rồi.
-        }
+            if (_stopping) return;
+            _stopping = true;
+            try
+            {
+                _cts.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Đã dispose rồi.
+            }
 
-        try
-        {
-            _listener?.Stop();
-            _listener?.Close();
+            try
+            {
+                _listener?.Stop();
+                _listener?.Close();
+            }
+            catch (Exception ex) when (ex is ObjectDisposedException or HttpListenerException)
+            {
+                // Bỏ qua: shutdown bình thường.
+            }
+            _state.SetStatus("Đang chờ các yêu cầu nhận PO kết thúc…", isError: false);
         }
-        catch (Exception ex) when (ex is ObjectDisposedException or HttpListenerException)
-        {
-            // Bỏ qua: shutdown bình thường.
-        }
+    }
 
+    /// <summary>
+    /// Ngừng nhận request rồi đợi toàn bộ handler đã nhận kết thúc, kể cả rollback DB/file tạm.
+    /// Hủy token chỉ hủy việc chờ và ném lỗi; tuyệt đối không báo thành công khi còn handler.
+    /// </summary>
+    public async Task StopAsync(CancellationToken cancellationToken = default)
+    {
+        Stop();
+        Task accepting;
+        lock (_startGate) accepting = _acceptLoop;
+        await accepting.WaitAsync(cancellationToken).ConfigureAwait(false);
+        // Sau accept-loop, không task nào có thể thêm vào bag nữa.
+        await Task.WhenAll(_tasks.ToArray()).WaitAsync(cancellationToken).ConfigureAwait(false);
         _state.SetStatus("Đã dừng", isError: false);
     }
 
@@ -1090,14 +1108,14 @@ public sealed class PoHttpServer : IDisposable
     /// </summary>
     public void Dispose()
     {
-        if (_disposed)
+        lock (_startGate)
         {
-            return;
+            if (_disposed) return;
+            _disposed = true;
         }
 
-        _disposed = true;
-
-        Stop();
+        // Không dispose semaphore/CTS khi handler vẫn dùng chúng hoặc đang ghi DB.
+        StopAsync().GetAwaiter().GetResult();
 
         try
         {

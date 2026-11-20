@@ -18,6 +18,7 @@ internal sealed class PlcWriter
     private readonly PlcOptions _opt;
     private readonly RuntimeCounters _counters;
     private readonly ILogger<PlcWriter> _logger;
+    private readonly ScanIntakeGate _intake;
 
     // Chỉ cho phép 1 lệnh ghi chạy tại một thời điểm.
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -26,11 +27,13 @@ internal sealed class PlcWriter
         OmronPlc plc,
         IOptions<PlcOptions> options,
         RuntimeCounters counters,
+        ScanIntakeGate intake,
         ILogger<PlcWriter> logger)
     {
         _plc = plc;
         _opt = options.Value;
         _counters = counters;
+        _intake = intake;
         _logger = logger;
     }
 
@@ -41,7 +44,7 @@ internal sealed class PlcWriter
     public async Task<bool> WriteResultAsync(bool pass, CancellationToken ct)
     {
         var value = pass ? (short)1 : (short)0;
-        var result = await WriteAsync(_opt.ResultAddress, value, ct);
+        var result = await WriteAsync(_opt.ResultAddress, value, ct, readyWrite: false);
         _counters.AddResult(result.IsSuccess);
 
         if (!result.IsSuccess)
@@ -58,10 +61,10 @@ internal sealed class PlcWriter
     /// <summary>
     /// Ghi trạng thái Ready xuống PLC: 1 = sẵn sàng, 0 = chưa sẵn sàng.
     /// </summary>
-    public async Task WriteReadyAsync(int ready, CancellationToken ct)
+    public async Task<bool> WriteReadyAsync(int ready, CancellationToken ct)
     {
         var value = (short)(ready != 0 ? 1 : 0);
-        var result = await WriteAsync(_opt.ReadyAddress, value, ct);
+        var result = await WriteAsync(_opt.ReadyAddress, value, ct, readyWrite: true);
         _counters.AddHeartbeat(result.IsSuccess);
 
         if (!result.IsSuccess)
@@ -70,13 +73,18 @@ internal sealed class PlcWriter
                 "Ghi trạng thái Ready thất bại ({Address} = {Value}): {Code} - {Message}",
                 _opt.ReadyAddress, value, result.ErrorCode, result.Message);
         }
+
+        return result.IsSuccess;
     }
 
-    private async Task<PlcResult> WriteAsync(string address, short value, CancellationToken ct)
+    private async Task<PlcResult> WriteAsync(string address, short value, CancellationToken ct, bool readyWrite)
     {
         await _gate.WaitAsync(ct);
         try
         {
+            if (readyWrite && _intake.IsSuspended)
+                value = 0;
+
             // OmronPlc ghi đồng bộ (blocking I/O). Chạy trên thread pool để
             // không chặn luồng async của worker/heartbeat.
             var result = await Task.Run(() => _plc.WriteInt16(address, value), ct);

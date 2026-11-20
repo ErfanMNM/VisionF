@@ -22,18 +22,23 @@ internal sealed class PoServerWorker : BackgroundService
 {
     private readonly PoHttpServer _server;
     private readonly ILogger<PoServerWorker> _logger;
+    private readonly ScanIntakeGate _intake;
 
     public PoServerWorker(
         PoHttpServer server,
+        ScanIntakeGate intake,
         ILogger<PoServerWorker> logger)
     {
         _server = server;
+        _intake = intake;
         _logger = logger;
     }
 
     /// <inheritdoc/>
-    protected override Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        while (_intake.IsSuspended)
+            await Task.Delay(100, stoppingToken);
         // Bật listener. Mọi lỗi đã được PoHttpServer bắt và ghi log.
         _server.Start();
 
@@ -44,9 +49,7 @@ internal sealed class PoServerWorker : BackgroundService
                 _server.State.Status);
         }
 
-        // Không có việc gì để poll trong vòng lặp — listener tự chạy nền.
-        // Trả về Task đã hoàn tất để host không coi worker là "bị treo".
-        return Task.CompletedTask;
+        // Listener tự chạy nền; StopAsync chờ kết thúc toàn bộ request đã nhận.
     }
 
     /// <inheritdoc/>
@@ -54,11 +57,12 @@ internal sealed class PoServerWorker : BackgroundService
     {
         try
         {
-            _server.Stop();
+            await _server.StopAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Lỗi khi dừng HTTP server nhận PO.");
+            throw;
         }
 
         await base.StopAsync(cancellationToken).ConfigureAwait(false);

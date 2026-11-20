@@ -32,7 +32,8 @@ public sealed class SqliteLogWriter : IDisposable
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _worker;
     private readonly string _dbPath;
-    private bool _disposed;
+    private volatile bool _disposed;
+    private Exception? _writeFailure;
 
     /// <summary>Số bản ghi đã ghi thành công (dùng cho test/thống kê).</summary>
     private long _writtenCount;
@@ -58,7 +59,7 @@ public sealed class SqliteLogWriter : IDisposable
             FullMode = BoundedChannelFullMode.DropOldest,
             SingleReader = true,
             SingleWriter = false,
-        });
+        }, OnItemDropped);
 
         _worker = Task.Run(() => RunAsync(_cts.Token));
     }
@@ -72,15 +73,23 @@ public sealed class SqliteLogWriter : IDisposable
     /// <summary>Enqueue một bản ghi log kỹ thuật.</summary>
     public void Enqueue(AppLogEntry entry)
     {
-        if (_disposed) return;
-        _queue.Writer.TryWrite(entry);
+        if (_disposed)
+        {
+            RecordFailure(new ObjectDisposedException(nameof(SqliteLogWriter)));
+            return;
+        }
+        if (!_queue.Writer.TryWrite(entry)) RecordFailure(new IOException("Hàng đợi log đã đóng."));
     }
 
     /// <summary>Enqueue một thao tác người dùng.</summary>
     public void Enqueue(UserActionEntry entry)
     {
-        if (_disposed) return;
-        _queue.Writer.TryWrite(entry);
+        if (_disposed)
+        {
+            RecordFailure(new ObjectDisposedException(nameof(SqliteLogWriter)));
+            return;
+        }
+        if (!_queue.Writer.TryWrite(entry)) RecordFailure(new IOException("Hàng đợi log đã đóng."));
     }
 
     /// <summary>Chờ cho tới khi hàng đợi rỗng và dữ liệu đã nằm trong database.</summary>
@@ -95,6 +104,45 @@ public sealed class SqliteLogWriter : IDisposable
 
         await _queue.Writer.WriteAsync(request, cancellationToken).ConfigureAwait(false);
         await request.WaitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Xả log, mở thử database và từ chối nếu writer từng ghi lỗi hoặc tràn hàng đợi.
+    /// Khác FlushAsync thông thường, đây là điều kiện bắt buộc trước khi bàn giao cập nhật.
+    /// </summary>
+    public async Task VerifyHealthyAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfUnhealthy();
+        await FlushAsync(cancellationToken).ConfigureAwait(false);
+        ThrowIfUnhealthy();
+        try
+        {
+            await using var connection = await OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+            await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            RecordFailure(ex);
+            throw new IOException("Không xác minh được database log.", ex);
+        }
+        ThrowIfUnhealthy();
+    }
+
+    private void RecordFailure(Exception cause) => Interlocked.CompareExchange(ref _writeFailure, cause, null);
+
+    private void ThrowIfUnhealthy()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (Volatile.Read(ref _writeFailure) is { } cause)
+            throw new IOException("Writer log đã gặp lỗi hoặc mất dữ liệu. Hãy kiểm tra trước khi cập nhật.", cause);
+        if (_worker.IsCompleted) throw new IOException("Writer log đã dừng.");
+    }
+
+    private void OnItemDropped(object item)
+    {
+        RecordFailure(new IOException("Hàng đợi log đã tràn."));
+        if (item is FlushRequest request) request.Complete();
     }
 
     private async Task RunAsync(CancellationToken ct)
@@ -170,6 +218,7 @@ public sealed class SqliteLogWriter : IDisposable
             }
             catch (Exception ex)
             {
+                RecordFailure(ex);
                 // Worker không được chết vì lỗi ghi DB. Log ra stderr và tiếp tục.
                 SqliteDiagnostics.Error("Loi trong worker ghi log SQLite.", ex);
                 try
@@ -204,6 +253,7 @@ public sealed class SqliteLogWriter : IDisposable
         }
         catch (Exception ex)
         {
+            RecordFailure(ex);
             SqliteDiagnostics.Error("Khong flush duoc log con lai khi dong worker.", ex);
         }
     }
@@ -253,6 +303,7 @@ public sealed class SqliteLogWriter : IDisposable
         }
         catch (Exception ex)
         {
+            RecordFailure(ex);
             // Mất batch này cũng được: log kỹ thuật không quan trọng bằng việc app chạy ổn.
             SqliteDiagnostics.Error(
                 $"Ghi batch log SQLite that bai ({appLogs.Count + userActions.Count} ban ghi).", ex);

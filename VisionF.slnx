@@ -6,6 +6,11 @@
   <Project Path="ClassLibraryMT.Scans/ClassLibraryMT.Scans.csproj" />
   <Project Path="ClassLibraryMT.Po/ClassLibraryMT.Po.csproj" />
   <Project Path="ClassLibraryMT.PoServer/ClassLibraryMT.PoServer.csproj" />
+  <Project Path="ClassLibraryMT.Updates/ClassLibraryMT.Updates.csproj" />
+  <Project Path="tools/TanTienLauncher/TanTienLauncher.csproj" />
+  <Project Path="tools/UpdateTests/UpdateTests.csproj" />
+  <Project Path="tools/UpdateSafetyTests/UpdateSafetyTests.csproj" />
+  <Project Path="tools/UpdateSendTests/UpdateSendTests.csproj" />
   <Project Path="ClassLibraryMT.MesSimulator/ClassLibraryMT.MesSimulator.csproj" />
   <Project Path="TanTienQR/TanTienQR.csproj" />
   <Project Path="tools/LicenseTool/LicenseTool.csproj" />

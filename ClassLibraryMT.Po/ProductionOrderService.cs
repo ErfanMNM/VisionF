@@ -76,6 +76,7 @@ public sealed class ProductionOrderService
 
     /// <summary>Cờ dừng máy do phát hiện mã đã từng xuất hiện trong lịch sử.</summary>
     private volatile bool _halted;
+    private volatile bool _updateMaintenance;
 
     private ProductionOrder? _current;
     private ProductionOrderStatus _currentStatus = ProductionOrderStatus.Available;
@@ -137,6 +138,22 @@ public sealed class ProductionOrderService
                 return _current is not null && _currentStatus == ProductionOrderStatus.Running;
         }
     }
+
+    public async Task<bool> TryEnterUpdateMaintenanceAsync(CancellationToken ct)
+    {
+        using var mutationLock = await _store.AcquireMutationLockAsync(ct).ConfigureAwait(false);
+        if (_updateMaintenance || IsProductionRunning ||
+            await _store.GetUnfinishedOrderNoAsync(_history, ct).ConfigureAwait(false) is not null)
+            return false;
+
+        _updateMaintenance = true;
+        return true;
+    }
+
+    public void LeaveUpdateMaintenance() => _updateMaintenance = false;
+
+    // Chỉ gọi trước khi khởi động các worker để kiểm tra sức khỏe bản mới.
+    public void HoldForUpdateHealthCheck() => _updateMaintenance = true;
 
     /// <summary>
     /// True khi máy đã bị dừng do phát hiện mã trùng lịch sử.
@@ -297,6 +314,9 @@ public sealed class ProductionOrderService
             return false;
 
         using var mutationLock = await _store.AcquireMutationLockAsync(ct).ConfigureAwait(false);
+
+        if (_updateMaintenance)
+            return false;
 
         if (_halted)
         {
@@ -530,6 +550,9 @@ public sealed class ProductionOrderService
     public async Task<bool> RestoreRunningOrderAsync(CancellationToken ct = default)
     {
         using var mutationLock = await _store.AcquireMutationLockAsync(ct).ConfigureAwait(false);
+        if (_updateMaintenance)
+            return false;
+
         var run = await _history.GetRunningRunAsync(ct).ConfigureAwait(false);
         if (run is null)
         {

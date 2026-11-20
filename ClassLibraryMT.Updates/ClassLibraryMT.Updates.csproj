@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsAotCompatible>true</IsAotCompatible>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="TanTienLauncher" />
+    <InternalsVisibleTo Include="UpdateTests" />
+    <AssemblyMetadata Include="UpdatePublicKey" Value="$(UpdatePublicKey)" Condition="'$(UpdatePublicKey)' != ''" />
+  </ItemGroup>
+</Project>

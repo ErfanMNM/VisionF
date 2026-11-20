@@ -385,3 +385,6 @@ tmp-*/
 .wrangler/
 .dev.vars
 
+# Nhật ký, staging và bản sao rollback tại máy
+.tantien-updates/
+

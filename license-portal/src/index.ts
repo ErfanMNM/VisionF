@@ -2,6 +2,7 @@ import { createSession, clearSessionCookieHeader, getCookie, sessionCookieHeader
 import { audit, deleteRevokedLicense, issueLicense, renewLicense, revokeLicense, verifyStoredLicense } from './license';
 import { ApiError, listLicenseRequests, readRequestJson, requestText, submitLicenseRequest } from './requests';
 import type { Env } from './types';
+import { handleUpdateRequest } from './updates';
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -26,6 +27,8 @@ export default {
 async function handleApi(request: Request, env: Env, url: URL): Promise<Response> {
   const path = url.pathname;
   const method = request.method.toUpperCase();
+
+  if (path.startsWith('/api/updates/')) return handleUpdateRequest(request, env, path);
 
   // ---- API cong khai ----
   if (path === '/api/health') {

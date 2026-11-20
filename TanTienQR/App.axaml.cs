@@ -6,6 +6,10 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Media.Fonts;
 using ClassLibraryMT.Auth;
+using ClassLibraryMT.Logging;
+using ClassLibraryMT.Po;
+using ClassLibraryMT.Scans;
+using ClassLibraryMT.Updates;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -20,6 +24,7 @@ namespace TanTienQR;
 public partial class App : Application
 {
     private IHost? _host;
+    private Task? _seedTask;
 
     public override void Initialize()
     {
@@ -84,6 +89,11 @@ public partial class App : Application
             builder.Services.AddTanTienServices(builder.Configuration);
 
             _host = builder.Build();
+            if (UpdateProtocol.IsHealthCheck)
+            {
+                _host.Services.GetRequiredService<ScanIntakeGate>().SetSuspended(true);
+                _host.Services.GetRequiredService<ProductionOrderService>().HoldForUpdateHealthCheck();
+            }
 
             // Kiểm tra license TRƯỚC khi tạo cửa sổ: license hợp lệ là điều kiện
             // để app chuyển sang trạng thái Ready (D16 = 1).
@@ -122,7 +132,7 @@ public partial class App : Application
             // Tài khoản này bắt buộc đổi mật khẩu ở lần đăng nhập đầu tiên.
             // Chạy nền (fire-and-forget) để không chặn framework khởi tạo —
             // đăng nhập thật sự chỉ có thể xảy ra sau khi seed xong.
-            _ = EnsureSeedAdminAsync();
+            _seedTask = EnsureSeedAdminAsync();
 
             // ---- Bàn phím ảo: đăng ký singleton toàn cục ----
             // Mọi cửa sổ (kể cả hộp thoại con) dùng chung một bàn phím +
@@ -169,9 +179,133 @@ public partial class App : Application
             // Hiện cửa sổ ngay. Overlay đăng nhập đã bật sẵn trong
             // MainViewModel nên người dùng thấy màn hình đăng nhập ngay.
             mainWindow.Show();
+            mainWindow.IsEnabled = !UpdateProtocol.IsHealthCheck;
+            var updates = _host.Services.GetRequiredService<UpdateClient>();
+            updates.InstallRequested = version => ConfirmUpdateAsync(mainWindow, version);
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => _ = FinishUpdateStartupAsync(updates),
+                Avalonia.Threading.DispatcherPriority.Loaded);
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private async Task FinishUpdateStartupAsync(UpdateClient updates)
+    {
+        if (_host is null) return;
+        var trialPending = UpdateProtocol.IsHealthCheck;
+        try
+        {
+            if (UpdateProtocol.IsHealthCheck)
+            {
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(50));
+                if (_seedTask is not null) await _seedTask.WaitAsync(timeout.Token);
+                // Khởi động thử không đợi PLC/camera/MES, nhưng phải mở được dữ liệu tại máy.
+                if (!_host.Services.GetRequiredService<LicenseManager>().Current.Ok)
+                    throw new InvalidOperationException("Bản mới không xác minh được license tại máy.");
+                _ = await _host.Services.GetRequiredService<IUserService>().GetAllAsync(timeout.Token);
+                _ = await _host.Services.GetRequiredService<IScanRecordQuery>().GetAsync(pageSize: 1, cancellationToken: timeout.Token);
+                _ = await _host.Services.GetRequiredService<PoHistoryStore>().GetRunsAsync(timeout.Token);
+                await _host.Services.GetRequiredService<IScanRecordWriter>().VerifyHealthyAsync(timeout.Token);
+                await _host.Services.GetRequiredService<SqliteLogWriter>().VerifyHealthyAsync(timeout.Token);
+                if (!UpdateProtocol.TryReportHealthy() || !await UpdateProtocol.WaitForCommitAsync(timeout.Token))
+                    throw new InvalidOperationException("Launcher chưa xác nhận bản cập nhật.");
+                trialPending = false;
+                _host.Services.GetRequiredService<ProductionOrderService>().LeaveUpdateMaintenance();
+                _host.Services.GetRequiredService<ScanIntakeGate>().SetSuspended(false);
+                if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+                    desktop.MainWindow!.IsEnabled = true;
+            }
+            await updates.CheckAsync();
+        }
+        catch (Exception ex)
+        {
+            updates.Status = trialPending
+                ? "Khởi động thử thất bại, đang trở về phiên bản trước: " + ex.Message
+                : "Không hoàn tất kiểm tra cập nhật: " + ex.Message;
+            if (trialPending)
+                Environment.Exit(1);
+        }
+    }
+
+    private async Task ConfirmUpdateAsync(Window owner, string version)
+    {
+        if (_host is null || ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop)
+            throw new InvalidOperationException("Ứng dụng đang dừng.");
+        var updates = _host.Services.GetRequiredService<UpdateClient>();
+        updates.EnsureAdmin();
+        if (UpdateProtocol.LauncherSession is null)
+            throw new InvalidOperationException("Cần mở ứng dụng bằng TanTienLauncher trước khi cài cập nhật.");
+        var dialog = new Window
+        {
+            Title = "Xác nhận cập nhật", Width = 470, Height = 230,
+            CanResize = false, WindowStartupLocation = WindowStartupLocation.CenterOwner
+        };
+        var cancel = new Button { Content = "Để sau" };
+        var install = new Button { Content = "Dừng ứng dụng và cài đặt" };
+        cancel.Click += (_, _) => dialog.Close(false);
+        install.Click += (_, _) => dialog.Close(true);
+        dialog.Content = new StackPanel
+        {
+            Margin = new Thickness(24), Spacing = 18,
+            Children =
+            {
+                new TextBlock { Text = $"Cài phiên bản {version} và khởi động lại?\nChỉ thực hiện khi dây chuyền đã dừng.",
+                    TextWrapping = TextWrapping.Wrap },
+                new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 12,
+                    Children = { cancel, install } }
+            }
+        };
+        if (!await dialog.ShowDialog<bool>(owner)) return;
+        updates.EnsureAdmin();
+        owner.IsEnabled = false;
+        var host = _host;
+        var po = host.Services.GetRequiredService<ProductionOrderService>();
+        var intake = host.Services.GetRequiredService<ScanIntakeGate>();
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var stopping = false;
+        var enteredMaintenance = false;
+        try
+        {
+            await updates.VerifyInstallAuthorizationAsync(timeout.Token);
+            if (!await po.TryEnterUpdateMaintenanceAsync(timeout.Token))
+                throw new InvalidOperationException("Còn lệnh sản xuất đang chạy hoặc dở dang. Hãy hoàn tất hoặc hủy lệnh trước.");
+            enteredMaintenance = true;
+            intake.SetSuspended(true);
+            updates.Status = "Đang dừng an toàn và ghi hết dữ liệu…";
+            var plc = host.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<PlcOptions>>().Value;
+            if (plc.Enabled && !await host.Services.GetRequiredService<PlcWriter>().WriteReadyAsync(0, timeout.Token))
+                throw new InvalidOperationException("Chưa xác nhận được PLC Ready = 0. Đã hủy cài cập nhật.");
+            await host.Services.GetRequiredService<CameraSignalWorker>().DrainAsync(timeout.Token);
+            await host.Services.GetRequiredService<CheckeeSendWorker>().DrainAsync(timeout.Token);
+            await host.Services.GetRequiredService<IScanRecordWriter>().VerifyHealthyAsync(timeout.Token);
+            await host.Services.GetRequiredService<SqliteLogWriter>().VerifyHealthyAsync(timeout.Token);
+            stopping = true;
+            await host.StopAsync(timeout.Token);
+            await host.Services.GetRequiredService<IScanRecordWriter>().VerifyHealthyAsync(timeout.Token);
+            await host.Services.GetRequiredService<SqliteLogWriter>().VerifyHealthyAsync(timeout.Token);
+            host.Dispose();
+            _host = null;
+            UpdateProtocol.RequestInstall(version);
+            desktop.Shutdown();
+        }
+        catch
+        {
+            if (!stopping)
+            {
+                if (enteredMaintenance)
+                {
+                    intake.SetSuspended(false);
+                    po.LeaveUpdateMaintenance();
+                }
+                owner.IsEnabled = true;
+            }
+            else
+            {
+                // Đã dừng một phần host: đóng bản cũ, không bàn giao giao dịch thay tệp.
+                desktop.Shutdown(1);
+            }
+            throw;
+        }
     }
 
     /// <summary>

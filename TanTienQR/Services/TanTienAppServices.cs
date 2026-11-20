@@ -55,6 +55,7 @@ public static class TanTienAppServices
         // Đăng ký TRƯỚC CameraSignalWorker vì worker này cần
         // ProductionOrderService để gate mã quét theo PO đang chạy.
         services.AddProductionOrders(configuration);
+        services.AddSingleton<ScanIntakeGate>();
 
         // Cầu nối: cho luồng PO đọc lịch sử quét mã (chống trùng lịch sử
         // toàn cục). Đăng ký sau AddProductionOrders vì ProductionOrderService
@@ -102,6 +103,7 @@ public static class TanTienAppServices
             .Configure<IConfiguration>((o, cfg) =>
             {
                 o.Ip = ConfigReader.GetString(cfg, $"{PlcSectionName}:Ip", o.Ip);
+                o.Enabled = ConfigReader.GetBool(cfg, $"{PlcSectionName}:Enabled", o.Enabled);
                 o.Port = ConfigReader.GetInt(cfg, $"{PlcSectionName}:Port", o.Port);
                 o.RemoteNode = (byte)ConfigReader.GetInt(cfg, $"{PlcSectionName}:RemoteNode", o.RemoteNode);
                 o.LocalNode = (byte)ConfigReader.GetInt(cfg, $"{PlcSectionName}:LocalNode", o.LocalNode);
@@ -179,6 +181,10 @@ public static class TanTienAppServices
             .Configure<IConfiguration>((o, cfg) => o.BaseUrl = cfg["LicensePortal:BaseUrl"]?.Trim() ?? "");
         services.AddHttpClient<LicensePortalClient>(http => http.Timeout = TimeSpan.FromSeconds(30))
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+        services.AddHttpClient(nameof(UpdateClient), http => http.Timeout = Timeout.InfiniteTimeSpan)
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
+            .RemoveAllLoggers();
+        services.AddSingleton<UpdateClient>();
 
         // ---- Đọc/ghi file cấu hình (tab Cấu hình) ----
         // Base path của file cấu hình lấy từ chính nguồn cấu hình đang chạy

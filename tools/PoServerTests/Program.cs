@@ -1453,9 +1453,63 @@ using (var response = await safetyHttp.PostAsJsonAsync("api/po", new
 }
 
 // =====================================================================
-// [40] Tổng kết danh sách PO trong DB local
+// [40] Dừng server phải đợi handler nhận PO kết thúc
 // =====================================================================
-Console.WriteLine("\n[40] Tổng kết danh sách PO trong DB local");
+Console.WriteLine("\n[40] Dừng server phải đợi handler nhận PO kết thúc");
+var drainPort = FindFreePort();
+var drainRoot = Path.Combine(workDir, "drain-po");
+var drainStore = new PoStore(drainRoot);
+using (var drainServer = new PoHttpServer(Options.Create(new PoServerOptions
+{
+    Enabled = true, BindAddress = "127.0.0.1", Port = drainPort,
+    UploadTempDirectory = workDir, RequestTimeoutSeconds = 10,
+}), drainStore, logger))
+using (var drainHttp = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{drainPort}/") })
+using (var releaseHandler = new ManualResetEventSlim())
+{
+    var handlerEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    drainServer.PoReceived += (_, _) =>
+    {
+        handlerEntered.TrySetResult();
+        releaseHandler.Wait();
+    };
+    drainServer.Start();
+    var sending = drainHttp.PostAsJsonAsync("api/po", new
+    {
+        poName = "PO-DRAIN", orderQty = 1, codes = new[] { "DRAIN-CODE-1" },
+    });
+    try
+    {
+        await handlerEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        using var stopTimeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(150));
+        var cancelled = false;
+        try { await drainServer.StopAsync(stopTimeout.Token); }
+        catch (OperationCanceledException) { cancelled = true; }
+        Check("StopAsync ném khi hết thời gian, không báo đã dừng khi handler còn chạy", cancelled);
+        Check("Server còn báo đang drain khi handler chưa kết thúc", drainServer.State.Status.Contains("Đang chờ", StringComparison.Ordinal));
+
+        var completedStop = drainServer.StopAsync();
+        Check("Gọi StopAsync lần nữa vẫn đợi cùng handler", !completedStop.IsCompleted);
+        releaseHandler.Set();
+        await completedStop.WaitAsync(TimeSpan.FromSeconds(10));
+        Check("StopAsync hoàn tất sau khi handler ra hết", drainServer.State.Status == "Đã dừng");
+        Check("PO đã ghi trước khi dừng vẫn nguyên dữ liệu", (await drainStore.ListLocalOrdersAsync()).Single().TotalCodes == 1);
+        drainServer.Start();
+        Check("Không mở lại listener sau lúc dừng", drainServer.State.Status == "Đã dừng");
+    }
+    finally
+    {
+        releaseHandler.Set();
+        await drainServer.StopAsync().WaitAsync(TimeSpan.FromSeconds(10));
+        try { using var ignored = await sending; }
+        catch (HttpRequestException) { /* Stop listener có thể đóng response đã nhận. */ }
+    }
+}
+
+// =====================================================================
+// [41] Tổng kết danh sách PO trong DB local
+// =====================================================================
+Console.WriteLine("\n[41] Tổng kết danh sách PO trong DB local");
 
 foreach (var p in locals2(store).OrderBy(p => p.OrderNo))
 {

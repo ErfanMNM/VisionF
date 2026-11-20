@@ -378,13 +378,8 @@ internal sealed partial class CodeLookupViewModel : ViewModelBase, IDisposable
         {
             var ids = ErrorRows.Select(r => r.RecordId).ToList();
 
-            var reset = await _sendStore
-                .ResetToPendingAsync(ids)
-                .ConfigureAwait(true);
-
-            StatusMessage = $"Đã đưa {reset} mã về trạng thái chờ gửi. Đang gửi lại...";
-
-            var sent = await _sendWorker.SendPendingAsync().ConfigureAwait(true);
+            StatusMessage = "Đang đưa mã về trạng thái chờ và gửi lại...";
+            var (reset, sent) = await _sendWorker.ResendFailedAsync(ids).ConfigureAwait(true);
 
             StatusMessage = sent > 0
                 ? $"Đã gửi lại thành công {sent} mã."
@@ -439,6 +434,9 @@ internal sealed partial class CodeLookupViewModel : ViewModelBase, IDisposable
         // Event phát từ luồng I/O -> dispatch sang luồng UI.
         Avalonia.Threading.Dispatcher.UIThread.Post(async () =>
         {
+            if (_scanner.IsIntakeSuspended)
+                return;
+
             CodeInput = code;
             await LookupAsync().ConfigureAwait(true);
         });

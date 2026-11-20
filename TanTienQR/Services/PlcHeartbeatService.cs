@@ -34,6 +34,9 @@ internal sealed class PlcHeartbeatService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        if (!_opt.Enabled)
+            return;
+
         var interval = TimeSpan.FromMilliseconds(_opt.RefreshIntervalMs);
 
         // PeriodicTimer là BCL, không cần package thêm.

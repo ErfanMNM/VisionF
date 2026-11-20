@@ -51,6 +51,9 @@ public sealed class HandheldScannerService : IDisposable
 
     /// <summary>Cờ đã bắt đầu chưa.</summary>
     private bool _started;
+    private readonly ScanIntakeGate _intake;
+
+    internal bool IsIntakeSuspended => _intake.IsSuspended;
 
     /// <summary>Nội dung trạng thái (xem <see cref="StatusText"/>).</summary>
     private string? _statusText;
@@ -75,12 +78,15 @@ public sealed class HandheldScannerService : IDisposable
     /// </summary>
     /// <param name="options">Cấu hình kết nối.</param>
     /// <param name="logger">Logger kỹ thuật.</param>
+    /// <param name="intake">Cổng nhận mã dùng khi bảo trì.</param>
     public HandheldScannerService(
         IOptions<HandheldOptions> options,
-        ILogger<HandheldScannerService> logger)
+        ILogger<HandheldScannerService> logger,
+        ScanIntakeGate intake)
     {
         _opt = options.Value;
         _logger = logger;
+        _intake = intake;
     }
 
     /// <summary>
@@ -377,7 +383,7 @@ public sealed class HandheldScannerService : IDisposable
 
         try
         {
-            CodeReceived?.Invoke(code);
+            _intake.Dispatch(() => CodeReceived?.Invoke(code));
         }
         catch (Exception ex)
         {

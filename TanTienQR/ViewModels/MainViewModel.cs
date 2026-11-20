@@ -45,6 +45,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     private readonly ISessionContext _session;
     private readonly ILogger<MainViewModel> _logger;
     private readonly CancellationTokenSource _cts = new();
+    public UpdateClient Updates { get; }
 
     /// <summary>ViewModel đăng nhập (overlay trong MainWindow) — xem MainViewModel.Login.cs.</summary>
     private readonly LoginViewModel _login;
@@ -73,8 +74,10 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         LoginViewModel login,
         IUserActionLogger actionLog,
         ISessionContext session,
+        UpdateClient updates,
         ILogger<MainViewModel> logger)
     {
+        Updates = updates;
         _feed = feed;
         _license = license;
         _licensePortal = licensePortal;

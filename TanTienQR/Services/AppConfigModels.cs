@@ -40,6 +40,9 @@ public sealed class CameraConfig
     Description = "Kết nối FINS/UDP tới PLC. Được nạp một lần khi app khởi động.")]
 public sealed class PlcConfig
 {
+    [ConfigField("Bật PLC", Order = 0, RequiresRestart = true)]
+    [JsonPropertyName("Enabled")] public bool Enabled { get; set; } = true;
+
     [ConfigField("IP PLC", Order = 1, Placeholder = "VD: 192.168.1.10", RequiresRestart = true, Validation = "IpOrHost")]
     [JsonPropertyName("Ip")] public string Ip { get; set; } = "127.0.0.1";
 

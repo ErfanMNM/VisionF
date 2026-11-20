@@ -1,4 +1,6 @@
 using Avalonia;
+using System.Diagnostics;
+using ClassLibraryMT.Updates;
 
 namespace TanTienQR;
 
@@ -19,6 +21,21 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        // Lối tắt cũ vẫn đi qua launcher để phục hồi giao dịch chưa hoàn tất.
+        if (UpdateProtocol.LauncherSession is null && File.Exists(UpdateProtocol.GetLauncherPath(AppContext.BaseDirectory)))
+        {
+            var launcher = new ProcessStartInfo(UpdateProtocol.GetLauncherPath(AppContext.BaseDirectory))
+            {
+                WorkingDirectory = AppContext.BaseDirectory,
+                UseShellExecute = false,
+            };
+            foreach (var argument in args)
+                launcher.ArgumentList.Add(argument);
+            Process.Start(launcher);
+            return;
+        }
+
+        using var applicationLock = UpdateProtocol.AcquireApplicationLock();
         IsRestartChild = args.Any(a =>
             string.Equals(a, RestartMarkerArg, StringComparison.OrdinalIgnoreCase));
 
