@@ -344,6 +344,9 @@ td.mono { font-size: 12px; }
 .badge-expired { color: #8f2b2b; background: var(--danger-light); }
 .badge-revoked { color: #6b7785; background: #eef1f4; }
 
+.checkbox-row { display: flex; align-items: center; gap: 9px; margin: 12px 0; cursor: pointer; }
+.checkbox-row input { width: 18px; height: 18px; margin: 0; accent-color: #0b8f4a; }
+
 .row-actions { display: flex; gap: 6px; }
 
 .icon-btn {

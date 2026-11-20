@@ -9,7 +9,8 @@ public static class LicenseSigner
 {
     public static string Create(
         string privateKeyBase64, string hwidRaw, string customer, int daysValid,
-        string product = "DemoQR", string? keyId = null)
+        string product = "DemoQR", string? keyId = null,
+        IEnumerable<string>? features = null)
     {
         var hwid = HardwareId.Normalize(hwidRaw);
         if (hwid.Length != 32)
@@ -42,6 +43,7 @@ public static class LicenseSigner
         var kid = keyId ?? LicenseKeys.ComputeKeyId(Convert.ToBase64String(publicKey));
 
         var now = DateTime.UtcNow;
+        var normalizedFeatures = LicenseEntitlements.Normalize(features);
         var payload = new LicensePayload
         {
             Hwid = hwid,
@@ -50,6 +52,7 @@ public static class LicenseSigner
             ExpiresUtc = now.AddDays(daysValid),
             Product = product,
             KeyId = kid,
+            Features = normalizedFeatures.ToList(),
         };
         var json = JsonSerializer.Serialize(payload, LicenseJsonContext.Default.LicensePayload);
         var data = Encoding.UTF8.GetBytes(json);

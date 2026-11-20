@@ -18,6 +18,7 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private string customer = "";
     [ObservableProperty] private string product = "TanTienQR";
     [ObservableProperty] private int daysValid = 365;
+    [ObservableProperty] private bool printerEntitled;
     [ObservableProperty] private string licenseOutPath = "license.lic";
     [ObservableProperty] private string verifyPath = "";
     [ObservableProperty] private string statusMessage = "Sẵn sàng.";
@@ -210,7 +211,12 @@ public sealed partial class MainViewModel : ObservableObject
         {
             var outPath = string.IsNullOrWhiteSpace(LicenseOutPath) ? "license.lic" : LicenseOutPath;
             var productName = string.IsNullOrWhiteSpace(Product) ? "TanTienQR" : Product.Trim();
-            var lic = LicenseSigner.Create(_privateKeyText, HwidRaw, Customer.Trim(), DaysValid, productName);
+            var features = PrinterEntitled
+                ? new[] { LicenseFeatures.Printer }
+                : Array.Empty<string>();
+            var lic = LicenseSigner.Create(
+                _privateKeyText, HwidRaw, Customer.Trim(), DaysValid, productName,
+                features: features);
             await File.WriteAllTextAsync(outPath, lic, new UTF8Encoding(false));
             SetStatus($"Đã cấp license (product={productName}, kid={KeyId}, {new FileInfo(outPath).Length} bytes): {outPath}", true);
         }
@@ -247,7 +253,8 @@ public sealed partial class MainViewModel : ObservableObject
             SetStatus(
                 $"HỢP LỆ — Sản phẩm: {c.Payload.Product} · Khách hàng: {c.Payload.Customer} · " +
                 $"Hết hạn: {c.Payload.ExpiresUtc:dd/MM/yyyy} " +
-                $"(còn {c.DaysLeft} ngày) · Key: {c.Payload.KeyId} · Máy: {c.Payload.Hwid}",
+                $"(còn {c.DaysLeft} ngày) · Key: {c.Payload.KeyId} · Máy: {c.Payload.Hwid} · " +
+                $"Module: {(c.Payload.Features.Count == 0 ? "cơ bản" : string.Join(", ", c.Payload.Features))}",
                 true);
         else
             SetStatus("KHÔNG HỢP LỆ: " + c.Message, false);

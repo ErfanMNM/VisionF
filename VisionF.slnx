@@ -5,6 +5,7 @@
   <Project Path="ClassLibraryMT.Plc/ClassLibraryMT.Plc.csproj" />
   <Project Path="ClassLibraryMT.Scans/ClassLibraryMT.Scans.csproj" />
   <Project Path="ClassLibraryMT.Po/ClassLibraryMT.Po.csproj" />
+  <Project Path="ClassLibraryMT.Print/ClassLibraryMT.Print.csproj" />
   <Project Path="ClassLibraryMT.PoServer/ClassLibraryMT.PoServer.csproj" />
   <Project Path="ClassLibraryMT.Updates/ClassLibraryMT.Updates.csproj" />
   <Project Path="tools/TanTienLauncher/TanTienLauncher.csproj" />
@@ -22,6 +23,7 @@
   <Project Path="tools/PoFlowTests/PoFlowTests.csproj" />
   <Project Path="tools/ConfigTests/ConfigTests.csproj" />
   <Project Path="tools/ConfigUiTests/ConfigUiTests.csproj" />
+  <Project Path="tools/PrintTests/PrintTests.csproj" />
   <Project Path="tools/FullscreenNumpadTests/FullscreenNumpadTests.csproj" />
   <Project Path="tools/AccountsIconTests/AccountsIconTests.csproj" />
 </Solution>

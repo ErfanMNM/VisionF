@@ -48,4 +48,7 @@ public enum AppSection
     /// Truy xuất Sản xuất (Local): quản lý các lệnh sản xuất (PO) tại máy.
     /// </summary>
     ProductionOrders = 8,
+
+    /// <summary>Máy in: gửi mã từ PO, trạng thái và mức mực.</summary>
+    Print = 9,
 }

@@ -8,6 +8,7 @@ using ClassLibraryMT.Licensing;
 using ClassLibraryMT.Plc;
 using ClassLibraryMT.Po;
 using ClassLibraryMT.PoServer;
+using ClassLibraryMT.Print;
 using ClassLibraryMT.MesSimulator;
 using ClassLibraryMT.Scans;
 using Microsoft.Extensions.Configuration;
@@ -55,6 +56,8 @@ public static class TanTienAppServices
         // Đăng ký TRƯỚC CameraSignalWorker vì worker này cần
         // ProductionOrderService để gate mã quét theo PO đang chạy.
         services.AddProductionOrders(configuration);
+        services.AddPrinting(configuration);
+        services.AddSingleton<IPrintLicenseGate, PrinterLicenseGate>();
         services.AddSingleton<ScanIntakeGate>();
 
         // Cầu nối: cho luồng PO đọc lịch sử quét mã (chống trùng lịch sử
@@ -239,6 +242,7 @@ public static class TanTienAppServices
         services.AddSingleton<CodeLookupViewModel>();
         services.AddSingleton<ProductionInfoViewModel>();
         services.AddSingleton<ProductionOrdersViewModel>();
+        services.AddSingleton<PrintViewModel>();
 
         // ---- Bàn phím ảo cho máy cảm ứng ----
         // VM bàn phím là singleton để mọi cửa sổ dùng chung một trạng thái

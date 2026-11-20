@@ -12,6 +12,9 @@ public sealed class LicensePayload
     [JsonPropertyName("product")] public string Product { get; set; } = "DemoQR";
     // Id cua public key da dung de ky (8 ky tu hex). De app biet key nao da cap.
     [JsonPropertyName("kid")] public string KeyId { get; set; } = "";
+    // Quyen module duoc cap trong license. License cu khong co field nay
+    // van deserialize hop le va mac dinh khong co quyen module.
+    [JsonPropertyName("features")] public List<string> Features { get; set; } = [];
 }
 
 // File license.lic: {"v":1,"data":"<base64 json payload>","sig":"<base64 chu ky RSA>"}

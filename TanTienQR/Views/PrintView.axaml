@@ -1,0 +1,61 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:TanTienQR.ViewModels"
+             x:Class="TanTienQR.Views.PrintView"
+             x:DataType="vm:MainViewModel">
+    <Grid Margin="18,6,18,18" RowDefinitions="Auto,Auto,*" RowSpacing="12">
+        <StackPanel Spacing="3">
+            <TextBlock Classes="pageTitle" Text="Máy in" />
+            <TextBlock Classes="label" Text="Gửi mã từ PO đang chạy theo số lượng, theo dõi xác nhận và mức mực." />
+        </StackPanel>
+
+        <Border Grid.Row="1" Classes="panel" Padding="14" IsVisible="{Binding Print.CanUse}">
+            <Grid ColumnDefinitions="*,*,*,Auto" ColumnSpacing="14">
+                <StackPanel Spacing="3">
+                    <TextBlock Classes="label" Text="MÁY IN" />
+                    <TextBlock FontWeight="SemiBold" Text="{Binding Print.PrinterName}" />
+                    <TextBlock Classes="label" Text="{Binding Print.PrinterEndpoint}" />
+                    <TextBlock Classes="label" Text="{Binding Print.ConnectionText}" />
+                    <TextBlock Classes="label" Text="{Binding Print.PrinterStatusText}" TextWrapping="Wrap" />
+                    <TextBlock Classes="label" Text="{Binding Print.ModuleMessage}" TextWrapping="Wrap" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Spacing="3">
+                    <TextBlock Classes="label" Text="PO ĐANG CHẠY" />
+                    <TextBlock Text="{Binding Print.OrderText}" TextWrapping="Wrap" />
+                </StackPanel>
+                <StackPanel Grid.Column="2" Spacing="3">
+                    <TextBlock Classes="label" Text="MỰC" />
+                    <TextBlock Text="{Binding Print.InkText}" />
+                    <TextBlock Classes="label" Text="{Binding Print.QueueText}" TextWrapping="Wrap" />
+                </StackPanel>
+                <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Button Classes="soft" Content="Kết nối" Command="{Binding Print.ConnectCommand}" IsEnabled="{Binding Print.CanConnect}" />
+                    <Button Classes="soft" Content="Làm mới" Command="{Binding Print.RefreshCommand}" IsEnabled="{Binding Print.CanConnect}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="2" Classes="panel" Padding="18" IsVisible="{Binding Print.CanUse}">
+            <StackPanel Spacing="14">
+                <TextBlock Classes="sectionTitle" Text="GỬI DỮ LIỆU IN" />
+                <Grid ColumnDefinitions="Auto,120,Auto,*" ColumnSpacing="10">
+                    <TextBlock Classes="label" Text="SỐ LƯỢNG MÃ" VerticalAlignment="Center" />
+                    <NumericUpDown Grid.Column="1" Minimum="1" Maximum="1000" Value="{Binding Print.Quantity}" />
+                    <Button Grid.Column="2" Classes="primary" Content="Gửi mã vào máy in" Command="{Binding Print.SendCommand}" IsEnabled="{Binding !Print.IsBusy}" />
+                    <TextBlock Grid.Column="3" Classes="label" Text="Mã được ghi Đã gửi trước khi truyền; MFD|OK là đã nhận, BACK là xác nhận đã in." VerticalAlignment="Center" TextWrapping="Wrap" />
+                </Grid>
+                <Border Classes="device" Padding="12">
+                    <TextBlock Text="{Binding Print.StatusText}" TextWrapping="Wrap" />
+                </Border>
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="1" Grid.RowSpan="2" Classes="panel" Padding="20" IsVisible="{Binding !Print.CanUse}">
+            <StackPanel Spacing="10" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <TextBlock Classes="sectionTitle" Text="MÁY IN CHƯA ĐƯỢC MỞ KHÓA" HorizontalAlignment="Center" />
+                <TextBlock Classes="label" Text="{Binding Print.LicenseMessage}" TextWrapping="Wrap" MaxWidth="620" HorizontalAlignment="Center" TextAlignment="Center" />
+                <TextBlock Classes="label" Text="Nhập license có quyền printer để kết nối và gửi dữ liệu." HorizontalAlignment="Center" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>
