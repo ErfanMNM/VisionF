@@ -378,6 +378,38 @@ Check("Danh sach co PO hoan tat",
     localOnly.Any(p => p.OrderNo == "PO-SVC-001"));
 
 // ---------------------------------------------------------------
+// [10] PoActivationPolicy: worker chi chay khi co the goi duoc server
+// ---------------------------------------------------------------
+Console.WriteLine("\n[10] PoActivationPolicy: chan worker khi PoServer cung may tat");
+
+Check("Loopback: localhost", PoActivationPolicy.IsLoopbackBaseUrl("http://localhost:5080"));
+Check("Loopback: 127.0.0.1", PoActivationPolicy.IsLoopbackBaseUrl("http://127.0.0.1:5080"));
+Check("Loopback: 127.0.0.5 co path", PoActivationPolicy.IsLoopbackBaseUrl("http://127.0.0.5:5080/api"));
+Check("Loopback: IPv6 [::1]", PoActivationPolicy.IsLoopbackBaseUrl("http://[::1]:5080"));
+Check("Khong phai loopback: IP LAN",
+    !PoActivationPolicy.IsLoopbackBaseUrl("http://192.168.1.10:5080"));
+Check("Khong phai loopback: domain",
+    !PoActivationPolicy.IsLoopbackBaseUrl("https://mes.congty.vn"));
+Check("Khong phai loopback: rong / null / sai dinh dang",
+    !PoActivationPolicy.IsLoopbackBaseUrl("")
+    && !PoActivationPolicy.IsLoopbackBaseUrl(null)
+    && !PoActivationPolicy.IsLoopbackBaseUrl("abc"));
+
+var loopbackOptions = new PoOptions { BaseUrl = "http://127.0.0.1:5080", AutoActivate = true };
+var lanOptions = new PoOptions { BaseUrl = "http://10.0.0.30:5080", AutoActivate = true };
+
+Check("AutoActivate=false => khong chay",
+    !PoActivationPolicy.ShouldRun(new PoOptions { AutoActivate = false }, poServerEnabled: true));
+Check("PoServer tat + BaseUrl loopback => khong chay",
+    !PoActivationPolicy.ShouldRun(loopbackOptions, poServerEnabled: false));
+Check("PoServer bat + BaseUrl loopback => chay",
+    PoActivationPolicy.ShouldRun(loopbackOptions, poServerEnabled: true));
+Check("PoServer tat + BaseUrl LAN => chay",
+    PoActivationPolicy.ShouldRun(lanOptions, poServerEnabled: false));
+Check("PoServer bat + BaseUrl LAN => chay",
+    PoActivationPolicy.ShouldRun(lanOptions, poServerEnabled: true));
+
+// ---------------------------------------------------------------
 Console.WriteLine("\n========================================");
 Console.WriteLine($"  KET QUA: {passed} pass, {failed} fail");
 Console.WriteLine("========================================");

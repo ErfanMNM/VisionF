@@ -245,6 +245,13 @@ Section `Po` trong `TanTienQR/appsettings.json`:
 | `AutoActivate` | `true` | Bật/tắt worker gửi kích hoạt định kỳ |
 | `CodeSampleSize` | `100` | Số mã mẫu sinh cho mỗi PO (seed server) |
 
+> **Worker tự tạm dừng** khi `AutoActivate = true` nhưng cấu hình chắc chắn
+> thất bại: `PoServer:Enabled = false` **và** `BaseUrl` trỏ về loopback
+> (`localhost`, `127.x.x.x`, `::1`). Khi đó app chỉ ghi **một** dòng cảnh báo
+> lúc khởi động thay vì retry mỗi 2,5 giây. Bật PoServer cùng máy hoặc trỏ
+> `BaseUrl` tới server MES thật để worker chạy lại. Đổi cấu hình cần khởi động
+> lại app (`RequiresRestart`).
+
 > `DbRoot` chứa cả thư mục tháng (`{yyyy-MM}/`) và file `po-history.db`.
 
 Biến môi trường có tiền tố `TANTIEN_` cũng áp dụng, ví dụ:
@@ -331,7 +338,8 @@ curl -X POST http://127.0.0.1:5080/api/po -H "Content-Type: application/json" -d
    - PO bị đánh dấu `Cancelled`, không thể chạy lại, biến mất khỏi dropdown
      (vẫn hiện trong bảng quản lý với badge "Đã huỷ").
 8. **Kích hoạt**: worker nền tự gửi mã chưa kích hoạt mỗi 2500ms; có thể gửi
-   thủ công bằng nút **Gửi kích hoạt** trong tab.
+   thủ công bằng nút **Gửi kích hoạt** trong tab. Worker không chạy vòng lặp
+   khi `PoServer:Enabled = false` và `BaseUrl` là loopback (xem mục 5).
 9. **Dừng máy khi trùng lịch sử**: trước khi gửi mã lên server, từng mã được
    đối chiếu với lịch sử quét trong `logs/scans.db`. Nếu mã **đã từng quét**
    trong hệ thống → hệ thống **dừng máy** (xem mục 8).
