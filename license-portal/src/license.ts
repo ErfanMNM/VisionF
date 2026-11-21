@@ -320,6 +320,7 @@ export async function renewLicense(
   licenseKey: string,
   daysValid: number,
   actor: string,
+  featuresOverride?: unknown,
 ): Promise<IssueResult> {
   const row = await env.DB.prepare(
     'SELECT customer, product, hwid, features_json FROM licenses WHERE license_key = ?',
@@ -333,7 +334,9 @@ export async function renewLicense(
     product: row.product,
     note: `Gia hạn từ ${licenseKey}`,
     createdBy: actor,
-    features: JSON.parse(row.features_json ?? '[]'),
+    features: featuresOverride === undefined
+      ? JSON.parse(row.features_json ?? '[]')
+      : featuresOverride,
   });
   await revokeLicense(env, licenseKey, 'Thay thế bằng license gia hạn', actor);
   return result;

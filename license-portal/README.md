@@ -69,10 +69,15 @@ portal. Thao tác này tạo yêu cầu chờ xử lý, không tự cấp licens
 đưa tài khoản quản trị hay private key vào app.
 
 Trên portal, mở tab **Yêu cầu cấp license** và chọn **Cấp license** ở yêu cầu
-đang chờ. Biểu mẫu điền sẵn HWID, sản phẩm, khách hàng và ghi chú. HWID/sản
-phẩm được giữ cố định khi đang xử lý yêu cầu; bấm **Bỏ chọn yêu cầu** để quay
-về cấp thủ công. Sau khi cấp thành công, yêu cầu chuyển sang **Đã cấp**. Quản
-trị viên tải file `.lic` rồi gửi khách nhập vào TanTienQR như trước.
+đang chờ. Biểu mẫu điền sẵn HWID, sản phẩm, khách hàng và ghi chú. Chọn
+**Cấp quyền Máy in + gói bán kèm** nếu khách cần module máy in. HWID/sản phẩm
+được giữ cố định khi đang xử lý yêu cầu; bấm **Bỏ chọn yêu cầu** để quay về
+cấp thủ công. Sau khi cấp thành công, yêu cầu chuyển sang **Đã cấp**. Quản trị
+viên tải file `.lic` rồi gửi khách nhập vào TanTienQR như trước.
+
+Khi gia hạn license trong tab **Danh sách**, hộp thoại cho phép bật hoặc bỏ
+quyền **Máy in + gói bán kèm**. Mặc định giữ lựa chọn đang có; gia hạn từ
+license cơ bản có thể bật quyền máy in ngay tại đây.
 
 Trong tab **Danh sách**, license **Đã thu hồi** có thêm nút **Xoá**. Portal
 yêu cầu xác nhận trước khi xoá vĩnh viễn bản ghi; nhật ký thu hồi và xoá vẫn
@@ -198,11 +203,11 @@ Không truyền URL production cho `--live`: lệnh này gửi hai yêu cầu ki
 | POST | `/api/license-requests` | Công khai: nhận `{ hwid, product, customer?, contact?, note? }` từ app |
 | GET | `/api/license-requests` | Danh sách yêu cầu (`?status=pending\|issued\|all&limit=&offset=`), cần đăng nhập |
 | GET | `/api/licenses` | Danh sách (`?q=&product=&status=active\|expired\|revoked\|all&limit=&offset=`) |
-| POST | `/api/licenses` | Cấp license `{ customer, hwid, daysValid, product, note, requestId? }` |
+| POST | `/api/licenses` | Cấp license `{ customer, hwid, daysValid, product, note, requestId?, features? }` |
 | DELETE | `/api/licenses` | Xoá license đã thu hồi `{ licenseKey }`; chưa thu hồi trả `409`, không tồn tại trả `404` |
 | GET | `/api/licenses/download?key=` | Tải file `.lic` |
 | POST | `/api/licenses/revoke` | Thu hồi `{ licenseKey, reason }` |
-| POST | `/api/licenses/renew` | Gia hạn `{ licenseKey, daysValid }` |
+| POST | `/api/licenses/renew` | Gia hạn `{ licenseKey, daysValid, features? }`; nếu bỏ `features`, giữ quyền hiện có |
 | POST | `/api/licenses/verify` | Kiểm tra chữ ký `{ licenseKey }` |
 | GET | `/api/products` | Danh sách sản phẩm |
 | GET | `/api/audit` | Nhật ký 100 dòng gần nhất |

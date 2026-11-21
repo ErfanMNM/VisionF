@@ -149,6 +149,30 @@ test('Portal license với Workers và D1 cục bộ', async (suite) => {
       const request = await call('/api/license-requests', { method: 'POST', authenticated: false, body: { hwid: machine, product: 'TanTienQR' } });
       assert.equal(request.status, 200);
       assert.notEqual(request.data.requestId, requestId);
+
+      const upgraded = await call('/api/licenses/renew', { method: 'POST', body: {
+        licenseKey: result.data.licenseKey, daysValid: 60, features: ['printer'],
+      } });
+      assert.equal(upgraded.status, 200);
+      const upgradedPayload = Buffer.from(upgraded.data.licenseFile.data, 'base64');
+      assert.deepEqual(JSON.parse(upgradedPayload.toString()).features, ['printer']);
+      assert.equal(verify('RSA-SHA256', upgradedPayload, fixture.publicKey,
+        Buffer.from(upgraded.data.licenseFile.sig, 'base64')), true);
+      assert.equal((await db.prepare('SELECT revoked_at FROM licenses WHERE license_key = ?')
+        .bind(result.data.licenseKey).first()).revoked_at !== null, true);
+
+      const extended = await call('/api/licenses/renew', { method: 'POST', body: {
+        licenseKey: upgraded.data.licenseKey, daysValid: 90,
+      } });
+      assert.equal(extended.status, 200);
+      assert.deepEqual(JSON.parse(Buffer.from(extended.data.licenseFile.data, 'base64').toString()).features, ['printer']);
+
+      const invalidUpgrade = await call('/api/licenses/renew', { method: 'POST', body: {
+        licenseKey: extended.data.licenseKey, daysValid: 30, features: ['unknown-feature'],
+      } });
+      assert.equal(invalidUpgrade.status, 400);
+      assert.equal((await db.prepare('SELECT revoked_at FROM licenses WHERE license_key = ?')
+        .bind(extended.data.licenseKey).first()).revoked_at, null);
     });
   } finally {
     await fixture.dispose();

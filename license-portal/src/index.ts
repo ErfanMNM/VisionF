@@ -292,7 +292,7 @@ async function handleRevoke(request: Request, env: Env, user: string): Promise<R
 }
 
 async function handleRenew(request: Request, env: Env, user: string): Promise<Response> {
-  let body: { licenseKey?: string; daysValid?: number };
+  let body: { licenseKey?: string; daysValid?: number; features?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -303,7 +303,7 @@ async function handleRenew(request: Request, env: Env, user: string): Promise<Re
   if (!key) return json({ error: 'Thiếu license key.' }, 400);
 
   try {
-    const result = await renewLicense(env, key, Number(body.daysValid ?? 30), user);
+    const result = await renewLicense(env, key, Number(body.daysValid ?? 30), user, body.features);
     return json({
       ok: true,
       licenseKey: result.licenseKey,

@@ -9,6 +9,7 @@ let selectedRequest = null;
 let issueBusy = false;
 let requestSelectionBusy = false;
 let requestRows = new Map();
+let licenseRows = new Map();
 let requestsLoadSequence = 0;
 let licensesLoadSequence = 0;
 
@@ -288,6 +289,7 @@ async function loadLicenses() {
 
 function renderLicenses(licenses) {
   const body = $('#licenses-body');
+  licenseRows = new Map((licenses || []).map((license) => [license.license_key, license]));
 
   if (!licenses || licenses.length === 0) {
     body.innerHTML = '<tr><td colspan="8" class="empty-cell">Không có license nào.</td></tr>';
@@ -337,6 +339,15 @@ function renderLicenses(licenses) {
   }).join('');
 }
 
+function hasPrinterEntitlement(license) {
+  try {
+    return JSON.parse(license?.features_json || '[]')
+      .some((feature) => typeof feature === 'string' && feature.toLowerCase() === 'printer');
+  } catch {
+    return false;
+  }
+}
+
 $('#licenses-body').addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-act]');
   if (!btn) return;
@@ -346,11 +357,13 @@ $('#licenses-body').addEventListener('click', (e) => {
   if (act === 'download') {
     window.location.href = '/api/licenses/download?key=' + encodeURIComponent(key);
   } else if (act === 'renew') {
+    const license = licenseRows.get(key);
     openModal({
       title: 'Gia hạn license',
       text: 'Cấp license mới cho máy ' + key + '. License cũ sẽ bị thu hồi.',
       mode: 'renew',
       key,
+      printerEntitled: hasPrinterEntitlement(license),
     });
   } else if (act === 'revoke') {
     openModal({
@@ -502,7 +515,7 @@ let modalState = null;
 let modalBusy = false;
 let modalReturnFocus = null;
 
-function openModal({ title, text, mode, key }) {
+function openModal({ title, text, mode, key, printerEntitled = false }) {
   if (modalBusy) return;
   modalReturnFocus = document.activeElement;
   modalState = { mode, key };
@@ -514,21 +527,27 @@ function openModal({ title, text, mode, key }) {
   const reasonInput = $('#modal-reason');
   const daysLabel = $('#modal-days-label');
   const daysInput = $('#modal-days');
+  const printerRow = $('#modal-feature-printer-row');
+  const printerCheckbox = $('#modal-feature-printer');
 
   if (mode === 'revoke') {
     show(reasonLabel); show(reasonInput);
     hide(daysLabel); hide(daysInput);
+    hide(printerRow);
     reasonInput.value = '';
     setText('#modal-confirm', 'Thu hồi');
     $('#modal-confirm').className = 'btn btn-danger';
   } else if (mode === 'delete') {
     hide(reasonLabel); hide(reasonInput);
     hide(daysLabel); hide(daysInput);
+    hide(printerRow);
     setText('#modal-confirm', 'Xoá vĩnh viễn');
     $('#modal-confirm').className = 'btn btn-danger';
   } else {
     hide(reasonLabel); hide(reasonInput);
     show(daysLabel); show(daysInput);
+    show(printerRow);
+    printerCheckbox.checked = printerEntitled;
     daysInput.value = '30';
     setText('#modal-confirm', 'Gia hạn');
     $('#modal-confirm').className = 'btn btn-primary';
@@ -561,6 +580,7 @@ $('#modal-confirm').addEventListener('click', async () => {
   $('#modal-cancel').disabled = true;
   $('#modal-reason').disabled = true;
   $('#modal-days').disabled = true;
+  $('#modal-feature-printer').disabled = true;
   $('#logout-btn').disabled = true;
 
   try {
@@ -582,7 +602,11 @@ $('#modal-confirm').addEventListener('click', async () => {
     } else {
       const data = await api('/api/licenses/renew', {
         method: 'POST',
-        body: { licenseKey: state.key, daysValid: Number($('#modal-days').value) },
+        body: {
+          licenseKey: state.key,
+          daysValid: Number($('#modal-days').value),
+          features: $('#modal-feature-printer').checked ? ['printer'] : [],
+        },
       });
       lastIssued = { licenseKey: data.licenseKey, licenseText: data.licenseText };
       setText('#result-key', data.licenseKey);
@@ -602,6 +626,7 @@ $('#modal-confirm').addEventListener('click', async () => {
     $('#modal-cancel').disabled = false;
     $('#modal-reason').disabled = false;
     $('#modal-days').disabled = false;
+    $('#modal-feature-printer').disabled = false;
     updateIssueControls();
   }
 });
