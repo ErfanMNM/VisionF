@@ -412,6 +412,7 @@ internal static class Program
             ("CodeLookup", "ShowCodeLookupTabCommand", "CodeLookupView"),
             ("Accounts", "ShowAccountsTabCommand", "AccountsView"),
             ("Dev", "ShowDevTabCommand", "DevView"),
+            ("About", "ShowAboutTabCommand", "AboutView"),
         };
 
         foreach (var tab in tabs)
@@ -463,7 +464,7 @@ internal static class Program
             return win;
         });
 
-        // ============ 7. Overlay license panel ============
+        // ============ 7. Popup cửa sổ ============
         AuditOverlays(mainWindow, mainVm);
 
         try
@@ -535,21 +536,6 @@ internal static class Program
 
     private static void AuditOverlays(Window mainWindow, object mainVm)
     {
-        try
-        {
-            RunWithTimeout("overlay:license", 8000, () =>
-            {
-                Reflect.ExecuteCommand(mainVm, "ToggleLicensePanelCommand");
-                Pump(700);
-            });
-
-            CaptureWindow(mainWindow, "MainWindow__LicensePanel", "LicensePanel");
-        }
-        catch (Exception ex)
-        {
-            Notes.Add("Overlay license panel: " + ex.Message);
-        }
-
         // Menu cửa sổ (popup hamburger)
         try
         {

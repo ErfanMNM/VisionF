@@ -413,8 +413,8 @@ catch (Exception ex)
     Check("ConfigView tao duoc va render", false, ex.Message);
 }
 
-// [9] Card cập nhật dùng MainViewModel thật, không khởi động host hoặc thiết bị.
-Console.WriteLine("\n[9] Card cập nhật render và bind off-screen");
+// [9] Tab Giới thiệu dùng MainViewModel thật, không khởi động host hoặc thiết bị.
+Console.WriteLine("\n[9] Tab Giới thiệu render và bind off-screen");
 try
 {
     var appAssembly = typeof(TanTienQR.App).Assembly;
@@ -427,20 +427,25 @@ try
         "Giữ nguyên cấu hình, license, người dùng và lịch sử sản xuất.");
     updateType.GetProperty("CanDownload")!.SetValue(updates, true);
     updateType.GetProperty("CanInstall")!.SetValue(updates, true);
-    var info = new InfoView { DataContext = mainVm };
-    var window = new Window { Width = 1360, Height = 820, Content = info };
+    var about = new AboutView { DataContext = mainVm };
+    var window = new Window { Width = 1360, Height = 820, Content = about };
     window.Show();
     Dispatcher.UIThread.RunJobs();
 
-    var text = info.GetVisualDescendants().OfType<TextBlock>().ToList();
-    Check("InfoView hiển thị card cập nhật", text.Any(block => block.Text == "CẬP NHẬT PHẦN MỀM"));
+    Check("View thật render được (không lỗi XAML)", CountVisuals(about) > 50);
+
+    var text = about.GetVisualDescendants().OfType<TextBlock>().ToList();
+    Check("AboutView hiển thị giấy phép", text.Any(block => block.Text == "GIẤY PHÉP SỬ DỤNG"));
+    Check("AboutView hiển thị mã máy (HWID)", text.Any(block => block.Text == "MÃ MÁY (HWID)"));
+    Check("AboutView hiển thị card cập nhật", text.Any(block => block.Text == "CẬP NHẬT PHẦN MỀM"));
     Check("Card bind phiên bản mới", text.Any(block => block.Text == "Bản mới: 1.2.3"));
     Check("Card bind trạng thái tiếng Việt", text.Any(block => block.Text?.StartsWith("Gói đã được xác minh.") == true));
-    var updateButtons = info.GetVisualDescendants().OfType<Button>().Where(button =>
+    var updateButtons = about.GetVisualDescendants().OfType<Button>().Where(button =>
         button.Content is string content && content is "Kiểm tra bản mới" or "Tải bản cập nhật" or "Cài đặt và khởi động lại").ToList();
     Check("Card có ba nút cập nhật với command thật", updateButtons.Count == 3 && updateButtons.All(button => button.Command is not null));
     Check("Các nút cập nhật có kích thước trong cột bên phải", updateButtons.All(button =>
-        button.Bounds.Width is > 0 and <= 320 && button.Bounds.Height > 0));
+        button.Bounds.Width is > 0 and <= 640 && button.Bounds.Height > 0),
+        string.Join(", ", updateButtons.Select(button => $"{button.Content}={button.Bounds.Width:0}x{button.Bounds.Height:0}")));
     var installButton = updateButtons.Single(button => (string)button.Content! == "Cài đặt và khởi động lại");
     Check("Cài đặt truy cập được qua ScrollViewer", installButton.GetVisualAncestors().OfType<ScrollViewer>().Any());
 
@@ -449,7 +454,7 @@ try
     Dispatcher.UIThread.RunJobs();
     installButton.BringIntoView();
     Dispatcher.UIThread.RunJobs();
-    Check("Card vẫn bố trí được trên cửa sổ nhỏ", installButton.Bounds.Width is > 0 and <= 320);
+    Check("Card vẫn bố trí được trên cửa sổ nhỏ", installButton.Bounds.Width is > 0 and <= 520);
     updateType.GetProperty("IsBusy")!.SetValue(updates, true);
     Dispatcher.UIThread.RunJobs();
     Check("Đang tải/cài thì khóa các nút cập nhật", updateButtons.All(button => !button.IsEffectivelyEnabled));
@@ -461,7 +466,7 @@ try
 }
 catch (Exception ex)
 {
-    Check("InfoView card cập nhật tạo được và render", false, ex.ToString());
+    Check("AboutView tạo được và render", false, ex.ToString());
 }
 
 static int CountVisuals(Control root)

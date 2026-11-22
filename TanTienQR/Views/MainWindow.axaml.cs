@@ -220,6 +220,7 @@ public partial class MainWindow : Window
         vm.RegisterTabHost(TanTienQR.Models.AppSection.CodeLookup, CodeLookupTab);
         vm.RegisterTabHost(TanTienQR.Models.AppSection.ProductionOrders, ProductionOrdersTab);
         vm.RegisterTabHost(TanTienQR.Models.AppSection.Print, PrintTab);
+        vm.RegisterTabHost(TanTienQR.Models.AppSection.About, AboutTab);
     }
 
     protected override void OnClosed(EventArgs e)

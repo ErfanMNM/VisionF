@@ -197,15 +197,13 @@ internal static class AuditRunner
         await AuditTabAsync("ProductionView", mainVm, mainWindow, "70_production", "ShowProductionTabCommand", "IsProductionVisible");
         await AuditTabAsync("AccountsView", mainVm, mainWindow, "80_accounts", "ShowAccountsTabCommand", "IsAccountsVisible");
         await AuditTabAsync("DevView", mainVm, mainWindow, "90_dev", "ShowDevTabCommand", "IsDevVisible");
+        await AuditTabAsync("AboutView", mainVm, mainWindow, "95_about", "ShowAboutTabCommand", "IsAboutVisible");
 
         // ---- 5. Các hộp thoại ----
         AuditDialogs(mainVm, mainWindow, provider);
 
         // ---- 6. Bàn phím ảo ----
         AuditVirtualKeyboard(mainVm, mainWindow);
-
-        // ---- 7. Popup license mini ----
-        AuditLicensePopup(mainVm, mainWindow);
 
         mainWindow.Close();
         AuditSandbox.Log("Audit hoan tat.");
@@ -507,77 +505,6 @@ internal static class AuditRunner
             BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
 
         prop?.SetValue(host, true);
-    }
-
-    // =====================================================================
-    //  Popup license mini
-    // =====================================================================
-
-    private static void AuditLicensePopup(object mainVm, Window mainWindow)
-    {
-        try
-        {
-            SetProp(mainVm, "IsLicensePanelOpen", true);
-            AuditCapture.Settle(700);
-
-            var popup = mainWindow.GetVisualDescendants()
-                .OfType<Avalonia.Controls.Primitives.Popup>()
-                .FirstOrDefault(p => p.IsOpen);
-
-            if (popup is null)
-            {
-                Limitations.Add(
-                    "Popup license (overlay trong MainWindow) không mở được trong headless " +
-                    "(IsOpen = false) — không audit được.");
-                SetProp(mainVm, "IsLicensePanelOpen", false);
-                return;
-            }
-
-            var child = popup.Child;
-            if (child is null)
-            {
-                Limitations.Add("Popup license mở được nhưng không có nội dung con.");
-                return;
-            }
-
-            // Popup là vật con cửa sổ riêng -> cần layout thủ công trước khi render.
-            child.Measure(new Size(4000, 4000));
-            child.Arrange(new Rect(child.DesiredSize));
-            AuditCapture.Settle(400);
-
-            var png = Path.Combine(AuditSandbox.ShotsDir, "160_license_popup.png");
-            if (!AuditCapture.SavePng(child, png, out var err))
-            {
-                Limitations.Add($"Không render được popup license: {err}");
-                return;
-            }
-
-            var node = AuditTree.Dump(child);
-            var findings = AuditTree.Analyze(node, child.Bounds.Width, child.Bounds.Height);
-            AuditTree.Save(node, Path.Combine(AuditSandbox.DumpDir, "160_license_popup.json"));
-
-            Reports.Add(new AuditViewReport
-            {
-                View = "LicensePopup (overlay MainWindow)",
-                Screenshot = "160_license_popup.png",
-                Dump = "160_license_popup.json",
-                WindowWidth = Math.Round(child.Bounds.Width, 1),
-                WindowHeight = Math.Round(child.Bounds.Height, 1),
-                Findings = findings,
-            });
-
-            Console.WriteLine(
-                $"  [OK] LicensePopup           {child.Bounds.Width}x{child.Bounds.Height} " +
-                $"-> 160_license_popup.png ({findings.Count})");
-
-            SetProp(mainVm, "IsLicensePanelOpen", false);
-            AuditCapture.Settle(250);
-        }
-        catch (Exception ex)
-        {
-            Limitations.Add("Lỗi khi audit popup license: " + ex.Message);
-            AuditSandbox.Log("License popup audit failed: " + ex);
-        }
     }
 
     // =====================================================================

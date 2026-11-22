@@ -77,6 +77,7 @@ internal partial class MainViewModel
     [NotifyPropertyChangedFor(nameof(IsCodeLookupVisible))]
     [NotifyPropertyChangedFor(nameof(IsProductionOrdersVisible))]
     [NotifyPropertyChangedFor(nameof(IsPrintVisible))]
+    [NotifyPropertyChangedFor(nameof(IsAboutVisible))]
     [NotifyPropertyChangedFor(nameof(IsMoreActive))]
     [NotifyPropertyChangedFor(nameof(PageTitle))]
     [NotifyPropertyChangedFor(nameof(PageSubtitle))]
@@ -133,6 +134,14 @@ internal partial class MainViewModel
 
     public bool IsPrintVisible => CurrentSection == AppSection.Print;
 
+    /// <summary>
+    /// True khi đang ở tab Giới thiệu (phiên bản, license, cập nhật).
+    ///
+    /// Mọi vai trò đều xem được — tab chỉ hiển thị thông tin, không mở
+    /// thêm quyền mới trong <c>ClassLibraryMT.Auth</c>.
+    /// </summary>
+    public bool IsAboutVisible => CurrentSection == AppSection.About;
+
     public bool CanUsePrinter => LicenseEntitlements.HasFeature(_license.Current, LicenseFeatures.Printer);
 
     /// <summary>Tiêu đề trên thanh header, đổi theo tab.</summary>
@@ -147,6 +156,7 @@ internal partial class MainViewModel
         AppSection.CodeLookup => "Tra cứu mã",
         AppSection.ProductionOrders => "Truy xuất Sản xuất (Local)",
         AppSection.Print => "Máy in",
+        AppSection.About => "Giới thiệu",
         _ => "Thông tin",
     };
 
@@ -162,6 +172,7 @@ internal partial class MainViewModel
         AppSection.CodeLookup => "Tra cứu mã đã quét qua hệ thống — nhập tay hoặc quét bằng handheld cầm tay",
         AppSection.ProductionOrders => "Quản lý lệnh sản xuất (PO) tải từ server — bắt đầu / hoàn tất sản xuất",
         AppSection.Print => "Gửi mã từ PO vào máy in và theo dõi xác nhận, mực, lỗi",
+        AppSection.About => "Phiên bản phần mềm, giấy phép sử dụng và cập nhật",
         _ => "Nhận tín hiệu camera và gửi kết quả xuống PLC Omron (D12 = kết quả, D16 = Ready)",
     };
 
@@ -215,6 +226,7 @@ internal partial class MainViewModel
         OnPropertyChanged(nameof(IsProductionOrdersVisible));
         OnPropertyChanged(nameof(CanUsePrinter));
         OnPropertyChanged(nameof(IsPrintVisible));
+        OnPropertyChanged(nameof(IsAboutVisible));
     }
 
     // ---------- Lệnh chuyển tab ----------
@@ -366,6 +378,19 @@ internal partial class MainViewModel
     {
         SwitchTo(AppSection.Print, "Máy in");
         if (CanUsePrinter) Print.RefreshCommand.Execute(null);
+    }
+
+    /// <summary>
+    /// Chuyển sang tab Giới thiệu (phiên bản, license, cập nhật phần mềm).
+    /// </summary>
+    [RelayCommand]
+    private void ShowAboutTab()
+    {
+        SwitchTo(AppSection.About, "Giới thiệu");
+
+        // Phiên bản hiện tại và trạng thái license có thể đổi sau khi cập nhật
+        // hoặc nhập license mới -> làm mới khi mở tab.
+        RefreshLicenseInfo();
     }
 
     /// <summary>

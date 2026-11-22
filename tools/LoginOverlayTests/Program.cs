@@ -258,7 +258,7 @@ Check("WindowState = FullScreen", mainWindow.WindowState == WindowState.FullScre
 Console.WriteLine("\n[4] Tab lazy: chi InfoView dung san");
 
 var tabHosts = mainWindow.GetVisualDescendants().OfType<LazyTabHost>().ToList();
-Check("Co 9 LazyTabHost", tabHosts.Count == 9, "count=" + tabHosts.Count);
+Check("Co 11 LazyTabHost", tabHosts.Count == 11, "count=" + tabHosts.Count);
 
 var createdHosts = tabHosts.Where(h => h.IsCreated).ToList();
 Check("Chi 1 tab duoc dung san (Info)",

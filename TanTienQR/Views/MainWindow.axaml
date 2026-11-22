@@ -143,8 +143,8 @@
                               Data="{StaticResource Icon.Power}" />
                     </Button>
 
-                    <!-- Nút ? mở nhanh thông tin license -->
-                    <Button x:Name="LicenseInfoButton"
+                    <!-- Nút ? mở nhanh tab Giới thiệu (license + cập nhật) -->
+                    <Button x:Name="AboutButton"
                             Width="44" Height="44"
                             MinWidth="0" MinHeight="0"
                             Padding="0"
@@ -159,8 +159,8 @@
                             HorizontalContentAlignment="Center"
                             VerticalContentAlignment="Center"
                             VerticalAlignment="Center"
-                            ToolTip.Tip="Thông tin license"
-                            Command="{Binding ToggleLicensePanelCommand}" />
+                            ToolTip.Tip="Giới thiệu · License &amp; cập nhật"
+                            Command="{Binding ShowAboutTabCommand}" />
 
                     <!-- Menu cửa sổ (custom chrome): gộp thu nhỏ / phóng to / tắt vào 1 nút -->
                     <Button x:Name="WindowMenuButton"
@@ -448,148 +448,25 @@
                                     <TextBlock Text="Dev" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
-                        </StackPanel>
-                    </Border>
-                </Popup>
-
-                <!-- Hộp thoại license thu gọn (overlay, không chiếm layout) -->
-                <Popup PlacementTarget="{Binding #LicenseInfoButton}"
-                       Placement="BottomEdgeAlignedRight"
-                       VerticalOffset="10"
-                       IsOpen="{Binding IsLicensePanelOpen, Mode=TwoWay}"
-                       IsLightDismissEnabled="True"
-                       Topmost="True">
-                    <Border Width="300"
-                            Padding="16"
-                            CornerRadius="14"
-                            Background="{StaticResource BgPanel}"
-                            BorderBrush="{StaticResource LineColor}"
-                            BorderThickness="1"
-                            BoxShadow="0 12 32 0 #33000000">
-                        <StackPanel Spacing="12">
-                            <!-- Tiêu đề + nút đóng -->
-                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
-                                <Border Width="32" Height="32"
-                                        CornerRadius="10"
-                                        Background="{StaticResource AccentSoft}"
-                                        VerticalAlignment="Center">
-                                    <TextBlock Text="◈"
-                                               FontSize="15"
-                                               FontWeight="Bold"
-                                               Foreground="{StaticResource Accent}"
-                                               HorizontalAlignment="Center"
-                                               VerticalAlignment="Center" />
-                                </Border>
-                                <StackPanel Grid.Column="1" Spacing="1" VerticalAlignment="Center">
-                                    <TextBlock Text="Giấy phép sử dụng"
-                                               FontSize="13"
-                                               FontWeight="Bold"
-                                               Foreground="{StaticResource TextPrimary}" />
-                                    <TextBlock Text="Trạng thái bản quyền phần mềm"
-                                               FontSize="10"
-                                               Foreground="{StaticResource TextMuted}" />
+                            <Border Height="1" Margin="12,6"
+                                    Background="{StaticResource LineColor}" />
+                            <Button Classes="menubtn"
+                                    Classes.active="{Binding IsAboutVisible}"
+                                    Command="{Binding ShowAboutTabCommand}"
+                                    Click="OnMoreItemClick">
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <Path Width="16" Height="16" Stretch="Uniform"
+                                          Stroke="{StaticResource TextMuted}" StrokeThickness="1.9"
+                                          StrokeLineCap="Round" StrokeJoin="Round"
+                                          VerticalAlignment="Center"
+                                          Data="{StaticResource Icon.InfoCircle}" />
+                                    <TextBlock Text="Giới thiệu" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
                                 </StackPanel>
-                                <Button Grid.Column="2"
-                                        Width="28" Height="28"
-                                        CornerRadius="14"
-                                        Padding="0"
-                                        Background="Transparent"
-                                        BorderBrush="Transparent"
-                                        Foreground="{StaticResource TextMuted}"
-                                        FontSize="12"
-                                        FontWeight="Bold"
-                                        Content="✕"
-                                        VerticalAlignment="Center"
-                                        ToolTip.Tip="Đóng"
-                                        Command="{Binding ToggleLicensePanelCommand}" />
-                            </Grid>
-
-                            <!-- Trạng thái + thời hạn -->
-                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                <Border Classes="badge"
-                                        Classes.running="{Binding IsLicenseRunning}"
-                                        Classes.warning="{Binding IsLicenseWarning}"
-                                        Classes.fault="{Binding IsLicenseFault}">
-                                    <TextBlock Text="{Binding LicenseStatusText}" />
-                                </Border>
-                                <TextBlock FontSize="11"
-                                           Foreground="{StaticResource TextMuted}"
-                                           VerticalAlignment="Center"
-                                           Text="{Binding LicenseDaysLeftText}" />
-                            </StackPanel>
-
-                            <!-- Thông tin chi tiết -->
-                            <Border Classes="device" Padding="12">
-                                <Grid RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="8">
-                                    <Grid ColumnDefinitions="86,*" ColumnSpacing="10">
-                                        <TextBlock Classes="label" FontSize="10" Text="KHÁCH HÀNG" VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="1" FontSize="12" FontWeight="SemiBold"
-                                                   Foreground="{StaticResource TextPrimary}"
-                                                   TextTrimming="CharacterEllipsis"
-                                                   ToolTip.Tip="{Binding LicenseCustomerText}"
-                                                   Text="{Binding LicenseCustomerText}" />
-                                    </Grid>
-                                    <Grid Grid.Row="1" ColumnDefinitions="86,*" ColumnSpacing="10">
-                                        <TextBlock Classes="label" FontSize="10" Text="HẾT HẠN" VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="1" Classes="mono" FontSize="12"
-                                                   Foreground="{StaticResource TextPrimary}"
-                                                   Text="{Binding LicenseExpiryText}" />
-                                    </Grid>
-                                    <Grid Grid.Row="2" ColumnDefinitions="86,*" ColumnSpacing="10">
-                                        <TextBlock Classes="label" FontSize="10" Text="GÓI MODULE" VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="1" FontSize="11" Foreground="{StaticResource TextPrimary}"
-                                                   TextWrapping="Wrap" Text="{Binding LicenseModulesText}" />
-                                    </Grid>
-                                    <Grid Grid.Row="3" ColumnDefinitions="86,*,Auto" ColumnSpacing="10">
-                                        <TextBlock Classes="label" FontSize="10" Text="MÃ MÁY" VerticalAlignment="Top" />
-                                        <TextBlock Grid.Column="1" Classes="mono" FontSize="10"
-                                                   Foreground="{StaticResource TextMuted}"
-                                                   TextWrapping="Wrap"
-                                                   Text="{Binding HwidText}" />
-                                        <Button Grid.Column="2"
-                                                Classes="chip"
-                                                MinHeight="24"
-                                                MinWidth="0"
-                                                Padding="10,0"
-                                                FontSize="10"
-                                                VerticalAlignment="Top"
-                                                Content="Sao chép"
-                                                ToolTip.Tip="Sao chép mã máy (HWID) vào clipboard"
-                                                Command="{Binding CopyHwidCommand}" />
-                                    </Grid>
-                                </Grid>
-                            </Border>
-
-                            <!-- Cảnh báo khi license lỗi -->
-                            <Border Padding="10"
-                                    CornerRadius="9"
-                                    Background="{StaticResource DangerSoft}"
-                                    BorderBrush="{StaticResource Danger}"
-                                    BorderThickness="1"
-                                    IsVisible="{Binding !IsLicenseValid}">
-                                <TextBlock Text="{Binding LicenseMessageText}"
-                                           FontSize="11"
-                                           Foreground="{StaticResource Danger}"
-                                           TextWrapping="Wrap"
-                                           MaxLines="3"
-                                           TextTrimming="CharacterEllipsis" />
-                            </Border>
-
-                            <!-- Hành động -->
-                            <Button HorizontalAlignment="Stretch"
-                                    MinHeight="40"
-                                    CornerRadius="10"
-                                    Background="{StaticResource Accent}"
-                                    BorderBrush="{StaticResource Accent}"
-                                    BorderThickness="1"
-                                    Foreground="White"
-                                    FontSize="12"
-                                    FontWeight="SemiBold"
-                                    Content="Quản lý license..."
-                                    Command="{Binding ShowLicenseWindowCommand}" />
+                            </Button>
                         </StackPanel>
                     </Border>
                 </Popup>
+
             </Grid>
 
         <!-- ===== Nội dung: sidebar + vùng tab ===== -->
@@ -663,13 +540,13 @@
                         </Border>
                     </StackPanel>
 
-                    <!-- Gợi ý: license quản lý qua nút "?" trên thanh trên cùng -->
+                    <!-- Gợi ý: license và cập nhật nằm trong tab Giới thiệu -->
                     <TextBlock Grid.Row="2"
                                VerticalAlignment="Bottom"
                                Classes="label"
                                FontSize="12"
                                TextWrapping="Wrap"
-                               Text="Nhấn dấu ? ở góc trên bên phải để xem thông tin license." />
+                               Text="Mở tab Giới thiệu (dấu ? hoặc menu Thêm) để xem license và cập nhật phần mềm." />
                 </Grid>
             </Border>
 
@@ -709,6 +586,9 @@
                 <views:LazyTabHost x:Name="PrintTab"
                                    IsVisible="{Binding IsPrintVisible}"
                                    Factory="{x:Static views:LazyTabFactories.Print}" />
+                <views:LazyTabHost x:Name="AboutTab"
+                                   IsVisible="{Binding IsAboutVisible}"
+                                   Factory="{x:Static views:LazyTabFactories.About}" />
             </Grid>
         </Grid>
 

@@ -44,4 +44,7 @@ public static class LazyTabFactories
     public static Func<Control> ProductionOrders => static () => new ProductionOrdersView();
 
     public static Func<Control> Print => static () => new PrintView();
+
+    /// <summary>Tab Giới thiệu (phiên bản, license, cập nhật — dựng khi mở tab).</summary>
+    public static Func<Control> About => static () => new AboutView();
 }

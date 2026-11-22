@@ -51,4 +51,9 @@ public enum AppSection
 
     /// <summary>Máy in: gửi mã từ PO, trạng thái và mức mực.</summary>
     Print = 9,
+
+    /// <summary>
+    /// Giới thiệu: phiên bản phần mềm, giấy phép sử dụng và cập nhật.
+    /// </summary>
+    About = 10,
 }
