@@ -28,6 +28,7 @@ public sealed class G10PrinterClient : IPrinterClient
     public string PrinterId => _options.Id;
     public PrinterStatusSnapshot Status => _status;
     public event Func<string, Task>? PrintConfirmed;
+    public event Action<PrinterCommandLog>? CommandObserved;
 
     public async Task ConnectAsync(CancellationToken ct = default)
     {
@@ -95,7 +96,9 @@ public sealed class G10PrinterClient : IPrinterClient
         try
         {
             await ConnectAsync(ct).ConfigureAwait(false);
-            var response = await SendCommandAsync($"MFD|POD01:{code}", "MFD", ct).ConfigureAwait(false);
+            // MFD|MFD_NAME:data — ':' ',' '|' là ký tự điều khiển của frame, phải escape.
+            var frame = $"MFD|{_options.MfdName}:{EscapeMfdData(code)}";
+            var response = await SendCommandAsync(frame, "MFD", ct).ConfigureAwait(false);
             return new PrinterSendResult(code, response.StartsWith("MFD|OK", StringComparison.OrdinalIgnoreCase), response);
         }
         finally { _io.Release(); }
@@ -127,14 +130,25 @@ public sealed class G10PrinterClient : IPrinterClient
         int? timeoutMs = null)
     {
         if (_stream is null) throw new IOException("Máy in chưa kết nối.");
-        await _stream.WriteAsync(Encoding.ASCII.GetBytes(command + "\r\n"), ct).ConfigureAwait(false);
+        // Máy G10 nhận lệnh thô, không có CRLF; chỉ phản hồi mới kết thúc bằng CRLF.
+        await _stream.WriteAsync(Encoding.ASCII.GetBytes(command), ct).ConfigureAwait(false);
         await _stream.FlushAsync(ct).ConfigureAwait(false);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(timeoutMs ?? _timeoutMs);
         while (true)
         {
             var line = await _responses.Reader.ReadAsync(timeout.Token).ConfigureAwait(false);
-            if (line.StartsWith(expectedPrefix, StringComparison.OrdinalIgnoreCase)) return line;
+            if (!line.StartsWith(expectedPrefix, StringComparison.OrdinalIgnoreCase)) continue;
+
+            var accepted = line.StartsWith(expectedPrefix + "|OK", StringComparison.OrdinalIgnoreCase)
+                           || line.StartsWith("OK", StringComparison.OrdinalIgnoreCase);
+            var observers = CommandObserved;
+            if (observers is not null)
+            {
+                try { observers(new PrinterCommandLog(DateTimeOffset.Now, command, line, accepted)); }
+                catch { /* Lịch sử UI không được làm lỗi luồng gửi lệnh. */ }
+            }
+            return line;
         }
     }
 
@@ -152,10 +166,16 @@ public sealed class G10PrinterClient : IPrinterClient
                 while (true)
                 {
                     var text = buffer.ToString();
-                    var end = text.IndexOf("\r\n", StringComparison.Ordinal);
-                    if (end < 0) break;
+                    // GFILE kết thúc bằng chuỗi literal "\r\n", các lệnh khác dùng CRLF thật.
+                    var realEnd = text.IndexOf("\r\n", StringComparison.Ordinal);
+                    var literalEnd = text.IndexOf("\\r\\n", StringComparison.Ordinal);
+                    int end, skip;
+                    if (realEnd >= 0 && (literalEnd < 0 || realEnd <= literalEnd)) { end = realEnd; skip = 2; }
+                    else if (literalEnd >= 0) { end = literalEnd; skip = 4; }
+                    else break;
+
                     var line = text[..end].Trim();
-                    buffer.Remove(0, end + 2);
+                    buffer.Remove(0, end + skip);
                     if (line.StartsWith("BACK", StringComparison.OrdinalIgnoreCase))
                     {
                         var handlers = PrintConfirmed;
@@ -180,10 +200,26 @@ public sealed class G10PrinterClient : IPrinterClient
     }
 
     private static Channel<string> NewResponseChannel() => Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
+
+    /// <summary>
+    /// Escape dữ liệu theo tài liệu Network port communication protocol.
+    /// PDF in dạng \\\\ do bị escape thêm khi dịch; trên dây máy nhận 2 dấu '\'
+    /// trước ký tự đặc biệt. Ví dụ ':' → '\\:' (hai backslash + colon).
+    /// </summary>
+    private static string EscapeMfdData(string value) => value
+        .Replace("\\", "\\\\\\\\", StringComparison.Ordinal)
+        .Replace(":", "\\\\:", StringComparison.Ordinal)
+        .Replace(",", "\\\\,", StringComparison.Ordinal)
+        .Replace("|", "\\\\|", StringComparison.Ordinal);
+
     private static int? ParseInt(string raw)
     {
         var value = raw.Contains('|') ? raw[(raw.IndexOf('|') + 1)..] : raw;
-        return int.TryParse(value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var result) ? result : null;
+        value = value.Trim();
+        // STATUS/CSTATUS trả về "0,1" / "0,3131": legacy chỉ đọc số trước dấu phẩy.
+        var comma = value.IndexOf(',');
+        if (comma >= 0) value = value[..comma].Trim();
+        return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var result) ? result : null;
     }
     private static (double?, double?) ParseInk(string raw)
     {

@@ -551,6 +551,25 @@
                                 </StackPanel>
                             </Grid>
                         </Border>
+
+                        <!-- Máy in G10: tự kết nối, LED chớp khi mất kết nối -->
+                        <Border Classes="deviceCard {Binding Print.PrinterCardClass}" Padding="12,16">
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                                <Grid Width="10" Height="10" VerticalAlignment="Center">
+                                    <Ellipse Classes="ledHalo"
+                                             Classes.warn="{Binding !Print.IsPrinterConnected}"
+                                             Classes.blink="{Binding Print.IsPrinterBlinking}" />
+                                    <Ellipse Classes="led"
+                                             Classes.on="{Binding Print.IsPrinterConnected}"
+                                             Classes.warn="{Binding !Print.IsPrinterConnected}"
+                                             Classes.blink="{Binding Print.IsPrinterBlinking}" />
+                                </Grid>
+                                <StackPanel Grid.Column="1" Spacing="2">
+                                    <TextBlock Classes="deviceTitle" Text="Máy in G10" />
+                                    <TextBlock Classes="deviceStatus" Text="{Binding Print.ConnectionText}" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
                     </StackPanel>
 
                     <!-- Gợi ý: license và cập nhật nằm trong tab Giới thiệu -->

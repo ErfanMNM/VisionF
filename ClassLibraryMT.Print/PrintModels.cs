@@ -25,7 +25,7 @@ public sealed class PrintOptions
     public bool Enabled { get; set; }
     public string DefaultPrinterId { get; set; } = "g10-1";
     public int BatchSize { get; set; } = 100;
-    public int ResponseTimeoutMs { get; set; } = 1500;
+    public int ResponseTimeoutMs { get; set; } = 5000;
     public int ReconcileIntervalMs { get; set; } = 2500;
     public List<PrinterOptions> Printers { get; set; } = [];
 }
@@ -34,6 +34,8 @@ public sealed class PrinterOptions
 {
     public string Id { get; set; } = "g10-1";
     public string Name { get; set; } = "Máy in G10";
+    /// <summary>Tên thông tin network port (MFD_NAME) đã cấu hình trên máy in.</summary>
+    public string MfdName { get; set; } = "POD01";
     public string Protocol { get; set; } = "G10Tcp";
     public string Ip { get; set; } = "192.168.0.3";
     public int Port { get; set; } = 6007;
@@ -76,6 +78,13 @@ public sealed class PrintQueueItem
 
 public sealed record PrinterSendResult(string Code, bool Accepted, string Response);
 
+/// <summary>Một dòng lệnh G10 đã gửi kèm phản hồi, dùng để hiển thị lịch sử trên UI.</summary>
+public sealed record PrinterCommandLog(
+    DateTimeOffset At,
+    string Command,
+    string Response,
+    bool Accepted);
+
 /// <summary>Kết quả của một lệnh điều khiển máy in (START/STOP/CLR/RESET/…).</summary>
 public sealed record PrinterCommandResult(bool Ok, string Command, string Response, string Message);
 
@@ -88,6 +97,9 @@ public interface IPrinterClient : IAsyncDisposable
     Task DisconnectAsync(CancellationToken ct = default);
     Task<PrinterStatusSnapshot> RefreshStatusAsync(CancellationToken ct = default);
     Task<PrinterSendResult> SendCodeAsync(string code, CancellationToken ct = default);
+
+    /// <summary>Sinh ra mỗi khi có lệnh G10 và phản hồi tương ứng.</summary>
+    event Action<PrinterCommandLog>? CommandObserved;
 
     /// <summary>
     /// Gửi một lệnh điều khiển thô (START, STOP, CLR, …) và đợi phản hồi có prefix tương ứng.

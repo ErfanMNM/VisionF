@@ -183,28 +183,31 @@ public sealed class PrintConfig
     [ConfigField("Bật module máy in", Order = 1, RequiresRestart = true)]
     [JsonPropertyName("Enabled")] public bool Enabled { get; set; }
 
-    [ConfigField("Mã máy in mặc định", Order = 2, Required = true, RequiresRestart = true)]
+    [ConfigField("MFD_NAME trên máy in", Order = 2, Required = true, RequiresRestart = true)]
+    [JsonPropertyName("MfdName")] public string MfdName { get; set; } = "POD01";
+
+    [ConfigField("Mã máy in mặc định", Order = 3, Required = true, RequiresRestart = true)]
     [JsonPropertyName("DefaultPrinterId")] public string DefaultPrinterId { get; set; } = "g10-1";
 
-    [ConfigField("Tên máy in", Order = 3, Required = true, RequiresRestart = true)]
+    [ConfigField("Tên máy in", Order = 4, Required = true, RequiresRestart = true)]
     [JsonPropertyName("PrinterName")] public string PrinterName { get; set; } = "Máy in G10";
 
-    [ConfigField("IP máy in", Order = 4, Validation = "IpOrHost", RequiresRestart = true)]
-    [JsonPropertyName("Ip")] public string Ip { get; set; } = "192.168.0.3";
+    [ConfigField("IP máy in", Order = 5, Validation = "IpOrHost", RequiresRestart = true)]
+    [JsonPropertyName("Ip")] public string Ip { get; set; } = "192.168.10.2";
 
-    [ConfigField("Port TCP", Order = 5, Min = 1, Max = 65535, RequiresRestart = true)]
+    [ConfigField("Port TCP", Order = 6, Min = 1, Max = 65535, RequiresRestart = true)]
     [JsonPropertyName("Port")] public int Port { get; set; } = 6007;
 
-    [ConfigField("Số mã tối đa / lần gửi", Order = 6, Min = 1, Max = 1000, RequiresRestart = true)]
+    [ConfigField("Số mã tối đa / lần gửi", Order = 7, Min = 1, Max = 1000, RequiresRestart = true)]
     [JsonPropertyName("BatchSize")] public int BatchSize { get; set; } = 100;
 
-    [ConfigField("Dung lượng buffer máy in", Order = 7, Min = 1, Max = 1000, RequiresRestart = true)]
+    [ConfigField("Dung lượng buffer máy in", Order = 8, Min = 1, Max = 1000, RequiresRestart = true)]
     [JsonPropertyName("BufferCapacity")] public int BufferCapacity { get; set; } = 100;
 
-    [ConfigField("Timeout phản hồi (ms)", Order = 8, Min = 250, Max = 30000, RequiresRestart = true)]
-    [JsonPropertyName("ResponseTimeoutMs")] public int ResponseTimeoutMs { get; set; } = 1500;
+    [ConfigField("Timeout phản hồi (ms)", Order = 9, Min = 250, Max = 30000, RequiresRestart = true)]
+    [JsonPropertyName("ResponseTimeoutMs")] public int ResponseTimeoutMs { get; set; } = 5000;
 
-    [ConfigField("Chu kỳ đối soát (ms)", Order = 9, Min = 1000, Max = 60000, RequiresRestart = true)]
+    [ConfigField("Chu kỳ đối soát (ms)", Order = 10, Min = 1000, Max = 60000, RequiresRestart = true)]
     [JsonPropertyName("ReconcileIntervalMs")] public int ReconcileIntervalMs { get; set; } = 2500;
 }
 

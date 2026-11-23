@@ -59,6 +59,8 @@ public static class TanTienAppServices
         services.AddProductionOrders(configuration);
         services.AddPrinting(configuration);
         services.AddSingleton<IPrintLicenseGate, PrinterLicenseGate>();
+        services.AddSingleton<PrinterMonitorService>();
+        services.AddHostedService(sp => sp.GetRequiredService<PrinterMonitorService>());
         services.AddSingleton<ScanIntakeGate>();
 
         // Cầu nối: cho luồng PO đọc lịch sử quét mã (chống trùng lịch sử

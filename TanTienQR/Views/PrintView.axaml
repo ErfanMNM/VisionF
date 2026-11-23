@@ -84,9 +84,25 @@
                            Text="Gửi mã từ PO đang chạy theo số lượng, theo dõi xác nhận và mức mực." />
             </StackPanel>
 
-            <Border Grid.Column="2" Classes="pill" VerticalAlignment="Center"
+            <!-- Trạng thái máy in: LED + viền giống camera/PLC ở sidebar. -->
+            <Border Grid.Column="2" Classes="deviceCard {Binding Print.PrinterCardClass}"
+                    Padding="12,10" MinWidth="300" VerticalAlignment="Center"
                     IsVisible="{Binding Print.CanUse}">
-                <TextBlock Classes="mono" FontSize="11" Text="{Binding Print.ConnectionText}" />
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                    <Grid Width="10" Height="10" VerticalAlignment="Center">
+                        <Ellipse Classes="ledHalo"
+                                 Classes.warn="{Binding !Print.IsPrinterConnected}"
+                                 Classes.blink="{Binding Print.IsPrinterBlinking}" />
+                        <Ellipse Classes="led"
+                                 Classes.on="{Binding Print.IsPrinterConnected}"
+                                 Classes.warn="{Binding !Print.IsPrinterConnected}"
+                                 Classes.blink="{Binding Print.IsPrinterBlinking}" />
+                    </Grid>
+                    <StackPanel Grid.Column="1" Spacing="2">
+                        <TextBlock Classes="deviceTitle" Text="Máy in G10" />
+                        <TextBlock Classes="deviceStatus" Text="{Binding Print.ConnectionText}" />
+                    </StackPanel>
+                </Grid>
             </Border>
         </Grid>
 
@@ -121,7 +137,7 @@
                                       StrokeLineCap="Round"
                                       StrokeJoin="Round"
                                       Data="{StaticResource Icon.Link}" />
-                                <TextBlock Text="Kết nối" />
+                                <TextBlock Text="Kết nối lại" />
                             </StackPanel>
                         </Button>
                         <Button Classes="chip"
@@ -203,7 +219,7 @@
         <Border Grid.Row="2" Classes="panel" Padding="18" IsVisible="{Binding Print.CanUse}">
             <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="12">
 
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="12">
                     <StackPanel Spacing="3">
                         <TextBlock Classes="overline" Text="ĐIỀU KHIỂN MÁY IN" />
                         <TextBlock Classes="label" FontSize="11"
@@ -220,7 +236,7 @@
                 </Grid>
 
                 <!-- Nút Bật in / Tạm dừng đổi theo trạng thái máy in. -->
-                <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="8">
+                <WrapPanel Grid.Row="1" Orientation="Horizontal" ItemSpacing="8" LineSpacing="8">
                     <Button Classes="primary"
                             IsVisible="{Binding !Print.IsPrinting}"
                             IsEnabled="{Binding Print.CanConnect}"
@@ -313,7 +329,7 @@
                     </Button>
                 </WrapPanel>
 
-                <TextBlock Classes="label" FontSize="12" TextWrapping="Wrap"
+                <TextBlock Grid.Row="2" Classes="label" FontSize="12" TextWrapping="Wrap"
                            IsVisible="{Binding Print.HasControlMessage}"
                            Text="{Binding Print.ControlMessage}" />
             </Grid>
@@ -380,47 +396,52 @@
                 </Grid>
             </Border>
 
-            <!-- Huong dan -->
+            <!-- Lịch sử lệnh G10: hiển thị bên phải, cập nhật tự động từ worker. -->
             <Border Grid.Column="1" Classes="panel" Padding="18">
-                <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="14">
+                <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10">
 
                     <StackPanel Grid.Row="0" Spacing="3">
-                        <TextBlock Classes="overline" Text="QUY TRÌNH GỬI LỆNH" />
+                        <TextBlock Classes="overline" Text="LỊCH SỬ LỆNH" />
                         <TextBlock Classes="label" FontSize="12" TextWrapping="Wrap"
-                                   Text="Trình tự trạng thái của mỗi mã khi truyền sang máy in." />
+                                   Text="Lệnh gửi máy in và phản hồi gần nhất (tối đa 50 dòng)." />
                     </StackPanel>
 
-                    <StackPanel Grid.Row="1" Spacing="12">
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
-                            <Border Grid.Column="0" Classes="stepNo">
-                                <TextBlock Text="1" />
-                            </Border>
-                            <TextBlock Grid.Column="1" Classes="stepText"
-                                       Text="Mã được ghi trạng thái “Đã gửi” trước khi truyền sang máy in." />
-                        </Grid>
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
-                            <Border Grid.Column="0" Classes="stepNo">
-                                <TextBlock Text="2" />
-                            </Border>
-                            <TextBlock Grid.Column="1" Classes="stepText"
-                                       Text="MFD|OK: máy in xác nhận đã nhận lệnh in." />
-                        </Grid>
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
-                            <Border Grid.Column="0" Classes="stepNo">
-                                <TextBlock Text="3" />
-                            </Border>
-                            <TextBlock Grid.Column="1" Classes="stepText"
-                                       Text="BACK: máy in xác nhận đã in xong." />
-                        </Grid>
-                    </StackPanel>
+                    <Button Grid.Row="1" Classes="chip" HorizontalAlignment="Left"
+                            IsEnabled="{Binding Print.HasCommandHistory}"
+                            Command="{Binding Print.ClearHistoryCommand}">
+                        <TextBlock Text="Xóa lịch sử" />
+                    </Button>
 
-                    <Panel Grid.Row="2" />
+                    <ListBox Grid.Row="2"
+                             ItemsSource="{Binding Print.CommandHistory}"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Spacing="2" Margin="0,0,0,8">
+                                    <TextBlock Classes="mono" FontSize="12"
+                                               Text="{Binding Command}" />
+                                    <TextBlock FontSize="11" TextWrapping="Wrap"
+                                               Foreground="{StaticResource TextPrimary}"
+                                               Text="{Binding Response}" />
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <TextBlock Classes="mono" FontSize="10"
+                                                   Foreground="{StaticResource TextMuted}"
+                                                   Text="{Binding At, StringFormat='HH:mm:ss'}" />
+                                        <TextBlock Classes="mono" FontSize="10"
+                                                   Foreground="{StaticResource TextMuted}"
+                                                   Text="{Binding Accepted, StringFormat='OK={0}'}" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
 
-                    <StackPanel Grid.Row="3" Spacing="10">
-                        <Border Classes="divider" />
-                        <TextBlock Classes="label" FontSize="11" TextWrapping="Wrap"
-                                   Text="Chỉ gửi khi dây chuyền đã sẵn sàng. Mã vượt quá sức chứa buffer sẽ được ghi lần lượt theo hàng đợi." />
-                    </StackPanel>
+                    <TextBlock Grid.Row="2" Classes="label" FontSize="12"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               IsVisible="{Binding !Print.HasCommandHistory}"
+                               Text="Chưa có lệnh nào. Worker sẽ ghi lệnh khi tự kết nối máy in." />
                 </Grid>
             </Border>
         </Grid>
