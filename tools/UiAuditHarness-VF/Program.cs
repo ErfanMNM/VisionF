@@ -409,6 +409,7 @@ internal static class Program
             ("PlcSettings", "ShowPlcSettingsTabCommand", "PlcSettingsView"),
             ("History", "ShowHistoryTabCommand", "HistoryView"),
             ("ProductionOrders", "ShowProductionOrdersTabCommand", "ProductionOrdersView"),
+            ("Print", "ShowPrintTabCommand", "PrintView"),
             ("CodeLookup", "ShowCodeLookupTabCommand", "CodeLookupView"),
             ("Accounts", "ShowAccountsTabCommand", "AccountsView"),
             ("Dev", "ShowDevTabCommand", "DevView"),

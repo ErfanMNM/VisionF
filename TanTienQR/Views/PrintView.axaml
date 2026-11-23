@@ -1,60 +1,346 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:TanTienQR.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1040" d:DesignHeight="700"
              x:Class="TanTienQR.Views.PrintView"
              x:DataType="vm:MainViewModel">
-    <Grid Margin="18,6,18,18" RowDefinitions="Auto,Auto,*" RowSpacing="12">
-        <StackPanel Spacing="3">
-            <TextBlock Classes="pageTitle" Text="Máy in" />
-            <TextBlock Classes="label" Text="Gửi mã từ PO đang chạy theo số lượng, theo dõi xác nhận và mức mực." />
-        </StackPanel>
 
-        <Border Grid.Row="1" Classes="panel" Padding="14" IsVisible="{Binding Print.CanUse}">
-            <Grid ColumnDefinitions="*,*,*,Auto" ColumnSpacing="14">
-                <StackPanel Spacing="3">
-                    <TextBlock Classes="label" Text="MÁY IN" />
-                    <TextBlock FontWeight="SemiBold" Text="{Binding Print.PrinterName}" />
-                    <TextBlock Classes="label" Text="{Binding Print.PrinterEndpoint}" />
-                    <TextBlock Classes="label" Text="{Binding Print.ConnectionText}" />
-                    <TextBlock Classes="label" Text="{Binding Print.PrinterStatusText}" TextWrapping="Wrap" />
-                    <TextBlock Classes="label" Text="{Binding Print.ModuleMessage}" TextWrapping="Wrap" />
-                </StackPanel>
-                <StackPanel Grid.Column="1" Spacing="3">
-                    <TextBlock Classes="label" Text="PO ĐANG CHẠY" />
-                    <TextBlock Text="{Binding Print.OrderText}" TextWrapping="Wrap" />
-                </StackPanel>
-                <StackPanel Grid.Column="2" Spacing="3">
-                    <TextBlock Classes="label" Text="MỰC" />
-                    <TextBlock Text="{Binding Print.InkText}" />
-                    <TextBlock Classes="label" Text="{Binding Print.QueueText}" TextWrapping="Wrap" />
-                </StackPanel>
-                <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <Button Classes="soft" Content="Kết nối" Command="{Binding Print.ConnectCommand}" IsEnabled="{Binding Print.CanConnect}" />
-                    <Button Classes="soft" Content="Làm mới" Command="{Binding Print.RefreshCommand}" IsEnabled="{Binding Print.CanConnect}" />
-                </StackPanel>
-            </Grid>
-        </Border>
+    <UserControl.Styles>
+        <!-- Gia tri trong cac o thong tin: cung co chu voi cac tab khac. -->
+        <Style Selector="TextBlock.infoValue">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style Selector="TextBlock.infoValue.strong">
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="Border.divider">
+            <Setter Property="Height" Value="1" />
+            <Setter Property="Background" Value="{StaticResource LineColor}" />
+        </Style>
+        <!-- O thong tin nho (PO / trang thai / muc / hang doi) -->
+        <Style Selector="Border.stat">
+            <Setter Property="Background" Value="{StaticResource BgRaised}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineColor}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="14,12" />
+        </Style>
+        <!-- So thu tu trong phan huong dan -->
+        <Style Selector="Border.stepNo">
+            <Setter Property="Width" Value="22" />
+            <Setter Property="Height" Value="22" />
+            <Setter Property="CornerRadius" Value="11" />
+            <Setter Property="Background" Value="{StaticResource AccentSoft}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineAccent}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+        </Style>
+        <Style Selector="Border.stepNo TextBlock">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="{StaticResource Accent}" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBlock.stepText">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+    </UserControl.Styles>
 
-        <Border Grid.Row="2" Classes="panel" Padding="18" IsVisible="{Binding Print.CanUse}">
+    <!-- Tab May in: thong tin may in + PO + muc/hang doi o tren, form gui
+         lenh va huong dan o duoi. Hai cot duoi cung chieu cao (Grid *),
+         khong con mang trang trong o card nhu ban cu. -->
+    <Grid Margin="18,6,18,18" RowDefinitions="Auto,Auto,*" RowSpacing="14">
+
+        <!-- Tieu de -->
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+            <Border Grid.Column="0"
+                    Width="42" Height="42"
+                    CornerRadius="14"
+                    Background="{StaticResource AccentSoft}"
+                    BorderBrush="{StaticResource LineAccent}"
+                    BorderThickness="1"
+                    VerticalAlignment="Center">
+                <Path Width="20" Height="20"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center"
+                      Stretch="Uniform"
+                      Stroke="{StaticResource Accent}"
+                      StrokeThickness="1.9"
+                      StrokeLineCap="Round"
+                      StrokeJoin="Round"
+                      Data="{StaticResource Icon.Print}" />
+            </Border>
+
+            <StackPanel Grid.Column="1" Spacing="4">
+                <TextBlock Classes="pageTitle" Text="Máy in" />
+                <TextBlock Classes="label"
+                           Text="Gửi mã từ PO đang chạy theo số lượng, theo dõi xác nhận và mức mực." />
+            </StackPanel>
+
+            <Border Grid.Column="2" Classes="pill" VerticalAlignment="Center"
+                    IsVisible="{Binding Print.CanUse}">
+                <TextBlock Classes="mono" FontSize="11" Text="{Binding Print.ConnectionText}" />
+            </Border>
+        </Grid>
+
+        <!-- May in dang dung -->
+        <Border Grid.Row="1" Classes="panel" Padding="18" IsVisible="{Binding Print.CanUse}">
             <StackPanel Spacing="14">
-                <TextBlock Classes="sectionTitle" Text="GỬI DỮ LIỆU IN" />
-                <Grid ColumnDefinitions="Auto,120,Auto,*" ColumnSpacing="10">
-                    <TextBlock Classes="label" Text="SỐ LƯỢNG MÃ" VerticalAlignment="Center" />
-                    <NumericUpDown Grid.Column="1" Minimum="1" Maximum="1000" Value="{Binding Print.Quantity}" />
-                    <Button Grid.Column="2" Classes="primary" Content="Gửi mã vào máy in" Command="{Binding Print.SendCommand}" IsEnabled="{Binding !Print.IsBusy}" />
-                    <TextBlock Grid.Column="3" Classes="label" Text="Mã được ghi Đã gửi trước khi truyền; MFD|OK là đã nhận, BACK là xác nhận đã in." VerticalAlignment="Center" TextWrapping="Wrap" />
+
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                    <StackPanel Spacing="3">
+                        <TextBlock Classes="overline" Text="MÁY IN ĐANG DÙNG" />
+                        <TextBlock Classes="sectionTitle" Text="{Binding Print.PrinterName}" />
+                        <TextBlock Classes="mono"
+                                   FontSize="11"
+                                   Foreground="{StaticResource TextMuted}"
+                                   Text="{Binding Print.PrinterEndpoint}" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1"
+                                Orientation="Horizontal"
+                                Spacing="8"
+                                VerticalAlignment="Center">
+                        <Button Classes="soft"
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center"
+                                IsEnabled="{Binding Print.CanConnect}"
+                                Command="{Binding Print.ConnectCommand}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Path Width="15" Height="15"
+                                      Stretch="Uniform"
+                                      Stroke="{StaticResource TextPrimary}"
+                                      StrokeThickness="1.9"
+                                      StrokeLineCap="Round"
+                                      StrokeJoin="Round"
+                                      Data="{StaticResource Icon.Link}" />
+                                <TextBlock Text="Kết nối" />
+                            </StackPanel>
+                        </Button>
+                        <Button Classes="chip"
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center"
+                                IsEnabled="{Binding Print.CanConnect}"
+                                Command="{Binding Print.RefreshCommand}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Path Width="15" Height="15"
+                                      Stretch="Uniform"
+                                      Stroke="{StaticResource TextPrimary}"
+                                      StrokeThickness="1.9"
+                                      StrokeLineCap="Round"
+                                      StrokeJoin="Round"
+                                      Data="{StaticResource Icon.Refresh}" />
+                                <TextBlock Text="Làm mới" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
                 </Grid>
-                <Border Classes="device" Padding="12">
-                    <TextBlock Text="{Binding Print.StatusText}" TextWrapping="Wrap" />
+
+                <Border Classes="divider" />
+
+                <!-- 4 o thong tin cung nhip: nhan nho tren, gia tri duoi. -->
+                <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="12">
+                    <Border Grid.Column="0" Classes="stat">
+                        <StackPanel Spacing="4">
+                            <TextBlock Classes="fieldLabel" Text="PO ĐANG CHẠY" />
+                            <TextBlock Classes="infoValue strong" Text="{Binding Print.OrderText}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="1" Classes="stat">
+                        <StackPanel Spacing="4">
+                            <TextBlock Classes="fieldLabel" Text="TRẠNG THÁI MÁY IN" />
+                            <TextBlock Classes="infoValue" Text="{Binding Print.PrinterStatusText}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="2" Classes="stat">
+                        <StackPanel Spacing="4">
+                            <TextBlock Classes="fieldLabel" Text="MỰC" />
+                            <TextBlock Classes="mono infoValue strong" Text="{Binding Print.InkText}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="3" Classes="stat">
+                        <StackPanel Spacing="4">
+                            <TextBlock Classes="fieldLabel" Text="HÀNG ĐỢI IN" />
+                            <TextBlock Classes="infoValue" Text="{Binding Print.QueueText}" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!-- Canh bao khi module may in bi tat trong Cau hinh -->
+                <Border Padding="12,10"
+                        CornerRadius="10"
+                        Background="{StaticResource WarnSoft}"
+                        BorderBrush="{StaticResource LineWarn}"
+                        BorderThickness="1"
+                        IsVisible="{Binding !Print.CanConnect}">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <Path Width="15" Height="15"
+                              Stretch="Uniform"
+                              Stroke="{StaticResource Warn}"
+                              StrokeThickness="1.9"
+                              StrokeLineCap="Round"
+                              StrokeJoin="Round"
+                              VerticalAlignment="Center"
+                              Data="{StaticResource Icon.Alert}" />
+                        <TextBlock Text="{Binding Print.ModuleMessage}"
+                                   FontSize="12"
+                                   Foreground="{StaticResource Warn}"
+                                   TextWrapping="Wrap"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
                 </Border>
             </StackPanel>
         </Border>
 
-        <Border Grid.Row="1" Grid.RowSpan="2" Classes="panel" Padding="20" IsVisible="{Binding !Print.CanUse}">
-            <StackPanel Spacing="10" HorizontalAlignment="Center" VerticalAlignment="Center">
-                <TextBlock Classes="sectionTitle" Text="MÁY IN CHƯA ĐƯỢC MỞ KHÓA" HorizontalAlignment="Center" />
-                <TextBlock Classes="label" Text="{Binding Print.LicenseMessage}" TextWrapping="Wrap" MaxWidth="620" HorizontalAlignment="Center" TextAlignment="Center" />
-                <TextBlock Classes="label" Text="Nhập license có quyền printer để kết nối và gửi dữ liệu." HorizontalAlignment="Center" />
+        <!-- Gui du lieu in (trai) + huong dan (phai) -->
+        <Grid Grid.Row="2"
+              ColumnDefinitions="1.35*,0.65*"
+              ColumnSpacing="14"
+              IsVisible="{Binding Print.CanUse}">
+
+            <!-- Form gui -->
+            <Border Grid.Column="0" Classes="panel" Padding="18">
+                <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="14">
+
+                    <StackPanel Grid.Row="0" Spacing="3">
+                        <TextBlock Classes="overline" Text="GỬI DỮ LIỆU IN" />
+                        <TextBlock Classes="label" FontSize="12" TextWrapping="Wrap"
+                                   Text="Chọn số lượng mã cần đẩy sang máy in, sau đó theo dõi phản hồi ở ô trạng thái bên dưới." />
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="1" Spacing="6">
+                        <TextBlock Classes="fieldLabel" Text="SỐ LƯỢNG MÃ" />
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <NumericUpDown Width="150"
+                                           MinHeight="40"
+                                           Minimum="1"
+                                           Maximum="1000"
+                                           Increment="1"
+                                           FormatString="0"
+                                           Value="{Binding Print.Quantity, Mode=TwoWay}" />
+                            <Button Classes="primary"
+                                    HorizontalContentAlignment="Center"
+                                    VerticalContentAlignment="Center"
+                                    IsEnabled="{Binding !Print.IsBusy}"
+                                    Command="{Binding Print.SendCommand}">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Path Width="15" Height="15"
+                                          Stretch="Uniform"
+                                          Stroke="White"
+                                          StrokeThickness="1.9"
+                                          StrokeLineCap="Round"
+                                          StrokeJoin="Round"
+                                          Data="{StaticResource Icon.Upload}" />
+                                    <TextBlock Text="Gửi mã vào máy in" />
+                                </StackPanel>
+                            </Button>
+                            <ProgressBar Width="90"
+                                         IsIndeterminate="True"
+                                         VerticalAlignment="Center"
+                                         IsVisible="{Binding Print.IsBusy}" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Giu cho de o trang thai luon nam sat day card. -->
+                    <Panel Grid.Row="2" />
+
+                    <Border Grid.Row="3" Classes="stat" Padding="14,12">
+                        <StackPanel Spacing="5">
+                            <TextBlock Classes="fieldLabel" Text="TRẠNG THÁI" />
+                            <TextBlock Classes="infoValue" Text="{Binding Print.StatusText}" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <!-- Huong dan -->
+            <Border Grid.Column="1" Classes="panel" Padding="18">
+                <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="14">
+
+                    <StackPanel Grid.Row="0" Spacing="3">
+                        <TextBlock Classes="overline" Text="QUY TRÌNH GỬI LỆNH" />
+                        <TextBlock Classes="label" FontSize="12" TextWrapping="Wrap"
+                                   Text="Trình tự trạng thái của mỗi mã khi truyền sang máy in." />
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="1" Spacing="12">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                            <Border Grid.Column="0" Classes="stepNo">
+                                <TextBlock Text="1" />
+                            </Border>
+                            <TextBlock Grid.Column="1" Classes="stepText"
+                                       Text="Mã được ghi trạng thái “Đã gửi” trước khi truyền sang máy in." />
+                        </Grid>
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                            <Border Grid.Column="0" Classes="stepNo">
+                                <TextBlock Text="2" />
+                            </Border>
+                            <TextBlock Grid.Column="1" Classes="stepText"
+                                       Text="MFD|OK: máy in xác nhận đã nhận lệnh in." />
+                        </Grid>
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                            <Border Grid.Column="0" Classes="stepNo">
+                                <TextBlock Text="3" />
+                            </Border>
+                            <TextBlock Grid.Column="1" Classes="stepText"
+                                       Text="BACK: máy in xác nhận đã in xong." />
+                        </Grid>
+                    </StackPanel>
+
+                    <Panel Grid.Row="2" />
+
+                    <StackPanel Grid.Row="3" Spacing="10">
+                        <Border Classes="divider" />
+                        <TextBlock Classes="label" FontSize="11" TextWrapping="Wrap"
+                                   Text="Chỉ gửi khi dây chuyền đã sẵn sàng. Mã vượt quá sức chứa buffer sẽ được ghi lần lượt theo hàng đợi." />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- Chua duoc mo khoa bang license -->
+        <Border Grid.Row="1" Grid.RowSpan="2" Classes="panel" Padding="20"
+                IsVisible="{Binding !Print.CanUse}">
+            <StackPanel Spacing="12"
+                        MaxWidth="620"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center">
+                <Border Width="56" Height="56"
+                        CornerRadius="16"
+                        Background="{StaticResource WarnSoft}"
+                        BorderBrush="{StaticResource LineWarn}"
+                        BorderThickness="1"
+                        HorizontalAlignment="Center">
+                    <Path Width="24" Height="24"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center"
+                          Stretch="Uniform"
+                          Stroke="{StaticResource Warn}"
+                          StrokeThickness="1.9"
+                          StrokeLineCap="Round"
+                          StrokeJoin="Round"
+                          Data="{StaticResource Icon.Lock}" />
+                </Border>
+                <TextBlock Classes="sectionTitle"
+                           Text="MÁY IN CHƯA ĐƯỢC MỞ KHÓA"
+                           HorizontalAlignment="Center" />
+                <TextBlock Classes="label"
+                           FontSize="12"
+                           Text="{Binding Print.LicenseMessage}"
+                           TextWrapping="Wrap"
+                           TextAlignment="Center" />
+                <TextBlock Classes="label"
+                           FontSize="12"
+                           Text="Nhập license có quyền printer để kết nối và gửi dữ liệu."
+                           TextWrapping="Wrap"
+                           TextAlignment="Center" />
             </StackPanel>
         </Border>
     </Grid>

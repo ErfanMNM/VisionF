@@ -36,9 +36,23 @@ internal sealed partial class UpdateClient : ObservableObject
     public string CurrentVersion => typeof(UpdateClient).Assembly
         .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "0.0.0";
     public string LastResult { get; }
+    public bool HasLastResult => !string.IsNullOrWhiteSpace(LastResult);
+
     [ObservableProperty] public partial string Status { get; set; }
-    [ObservableProperty] public partial string Notes { get; set; } = "";
-    [ObservableProperty] public partial string AvailableVersion { get; set; } = "";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNotes))]
+    public partial string Notes { get; set; } = "";
+
+    public bool HasNotes => !string.IsNullOrWhiteSpace(Notes);
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AvailableVersionText))]
+    public partial string AvailableVersion { get; set; } = "";
+
+    /// <summary>Hiển thị "—" khi chưa có bản mới, tránh nhãn "Bản mới" bị treo.</summary>
+    public string AvailableVersionText => string.IsNullOrWhiteSpace(AvailableVersion) ? "—" : AvailableVersion;
+
     [ObservableProperty] public partial bool IsBusy { get; set; }
     [ObservableProperty] public partial bool CanDownload { get; set; }
     [ObservableProperty] public partial bool CanInstall { get; set; }
