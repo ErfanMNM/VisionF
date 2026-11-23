@@ -56,7 +56,7 @@
     <!-- Tab May in: thong tin may in + PO + muc/hang doi o tren, form gui
          lenh va huong dan o duoi. Hai cot duoi cung chieu cao (Grid *),
          khong con mang trang trong o card nhu ban cu. -->
-    <Grid Margin="18,6,18,18" RowDefinitions="Auto,Auto,*" RowSpacing="14">
+    <Grid Margin="18,6,18,18" RowDefinitions="Auto,Auto,Auto,*" RowSpacing="14">
 
         <!-- Tieu de -->
         <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
@@ -199,8 +199,128 @@
             </StackPanel>
         </Border>
 
+        <!-- Điều khiển máy in -->
+        <Border Grid.Row="2" Classes="panel" Padding="18" IsVisible="{Binding Print.CanUse}">
+            <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="12">
+
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                    <StackPanel Spacing="3">
+                        <TextBlock Classes="overline" Text="ĐIỀU KHIỂN MÁY IN" />
+                        <TextBlock Classes="label" FontSize="11"
+                                   Text="Bật/tay in hoặc chạy các lệnh bảo trì. Lệnh chỉ gửi được khi module máy in đang bật và đã kết nối." />
+                    </StackPanel>
+                    <Border Grid.Column="1" Classes="badge"
+                            Classes.running="{Binding Print.IsPrinting}"
+                            VerticalAlignment="Center">
+                        <Panel>
+                            <TextBlock Text="ĐANG IN" IsVisible="{Binding Print.IsPrinting}" />
+                            <TextBlock Text="ĐÃ DỪNG" IsVisible="{Binding !Print.IsPrinting}" />
+                        </Panel>
+                    </Border>
+                </Grid>
+
+                <!-- Nút Bật in / Tạm dừng đổi theo trạng thái máy in. -->
+                <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="8">
+                    <Button Classes="primary"
+                            IsVisible="{Binding !Print.IsPrinting}"
+                            IsEnabled="{Binding Print.CanConnect}"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            Command="{Binding Print.TogglePrintingCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Width="15" Height="15"
+                                  Stretch="Uniform"
+                                  Stroke="White"
+                                  StrokeThickness="1.9"
+                                  StrokeLineCap="Round"
+                                  StrokeJoin="Round"
+                                  Data="{StaticResource Icon.Play}" />
+                            <TextBlock Text="Bật in" />
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="whitebtn"
+                            IsVisible="{Binding Print.IsPrinting}"
+                            IsEnabled="{Binding Print.CanConnect}"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            Command="{Binding Print.TogglePrintingCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Width="15" Height="15"
+                                  Stretch="Uniform"
+                                  Stroke="{StaticResource Danger}"
+                                  StrokeThickness="2"
+                                  StrokeLineCap="Round"
+                                  StrokeJoin="Round"
+                                  Data="{StaticResource Icon.Pause}" />
+                            <TextBlock Text="Tạm dừng in" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button Classes="chip" IsEnabled="{Binding Print.CanConnect}"
+                            HorizontalContentAlignment="Center"
+                            Command="{Binding Print.ClearDataCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Width="15" Height="15" Stretch="Uniform"
+                                  Stroke="{StaticResource TextPrimary}" StrokeThickness="1.9"
+                                  StrokeLineCap="Round" StrokeJoin="Round"
+                                  Data="{StaticResource Icon.Trash}" />
+                            <TextBlock Text="Xóa buffer" />
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="chip" IsEnabled="{Binding Print.CanConnect}"
+                            HorizontalContentAlignment="Center"
+                            Command="{Binding Print.ResetCounterCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Width="15" Height="15" Stretch="Uniform"
+                                  Stroke="{StaticResource TextPrimary}" StrokeThickness="1.9"
+                                  StrokeLineCap="Round" StrokeJoin="Round"
+                                  Data="{StaticResource Icon.Refresh}" />
+                            <TextBlock Text="Reset số đếm" />
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="chip" IsEnabled="{Binding Print.CanConnect}"
+                            HorizontalContentAlignment="Center"
+                            Command="{Binding Print.CleanNozzleCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Width="15" Height="15" Stretch="Uniform"
+                                  Stroke="{StaticResource TextPrimary}" StrokeThickness="1.9"
+                                  StrokeLineCap="Round" StrokeJoin="Round"
+                                  Data="{StaticResource Icon.Settings}" />
+                            <TextBlock Text="Vệ sinh đầu in" />
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="chip" IsEnabled="{Binding Print.CanConnect}"
+                            HorizontalContentAlignment="Center"
+                            Command="{Binding Print.TriggerJetCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Width="15" Height="15" Stretch="Uniform"
+                                  Stroke="{StaticResource TextPrimary}" StrokeThickness="1.9"
+                                  StrokeLineCap="Round" StrokeJoin="Round"
+                                  Data="{StaticResource Icon.Scan}" />
+                            <TextBlock Text="Test phun JET" />
+                        </StackPanel>
+                    </Button>
+                    <Button Classes="chip" IsEnabled="{Binding Print.CanConnect}"
+                            HorizontalContentAlignment="Center"
+                            Command="{Binding Print.RefreshFilesCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Width="15" Height="15" Stretch="Uniform"
+                                  Stroke="{StaticResource TextPrimary}" StrokeThickness="1.9"
+                                  StrokeLineCap="Round" StrokeJoin="Round"
+                                  Data="{StaticResource Icon.List}" />
+                            <TextBlock Text="Danh sách bản tin" />
+                        </StackPanel>
+                    </Button>
+                </WrapPanel>
+
+                <TextBlock Classes="label" FontSize="12" TextWrapping="Wrap"
+                           IsVisible="{Binding Print.HasControlMessage}"
+                           Text="{Binding Print.ControlMessage}" />
+            </Grid>
+        </Border>
+
         <!-- Gui du lieu in (trai) + huong dan (phai) -->
-        <Grid Grid.Row="2"
+        <Grid Grid.Row="3"
               ColumnDefinitions="1.35*,0.65*"
               ColumnSpacing="14"
               IsVisible="{Binding Print.CanUse}">
@@ -306,7 +426,7 @@
         </Grid>
 
         <!-- Chua duoc mo khoa bang license -->
-        <Border Grid.Row="1" Grid.RowSpan="2" Classes="panel" Padding="20"
+        <Border Grid.Row="1" Grid.RowSpan="3" Classes="panel" Padding="20"
                 IsVisible="{Binding !Print.CanUse}">
             <StackPanel Spacing="12"
                         MaxWidth="620"

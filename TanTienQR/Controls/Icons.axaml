@@ -24,6 +24,7 @@
     <Geometry x:Key="Icon.Download">M12,17 L12,4 M12,4 L8,8 M12,4 L16,8 M4,17 L4,21 L20,21 L20,17</Geometry>
     <Geometry x:Key="Icon.Upload">M12,7 L12,20 M12,7 L8,3 M12,7 L16,3 M4,17 L4,21 L20,21 L20,17</Geometry>
     <Geometry x:Key="Icon.Play">M8,5 L8,19 L19,12 Z</Geometry>
+    <Geometry x:Key="Icon.Pause">M8,5 L8,19 M16,5 L16,19</Geometry>
     <Geometry x:Key="Icon.Check">M5,12 L10,17 L19,7</Geometry>
     <Geometry x:Key="Icon.Close">M6,6 L18,18 M18,6 L6,18</Geometry>
     <Geometry x:Key="Icon.Refresh">M20,12 A8,8 0 1 1 17,6 M17,6 L17,2 M17,6 L13,6</Geometry>

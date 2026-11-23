@@ -37,6 +37,70 @@ public sealed class PrintService
         return await _printer.RefreshStatusAsync(ct).ConfigureAwait(false);
     }
 
+    // ---------- Điều khiển máy in (port từ Print/ucG10Printer legacy) ----------
+
+    /// <summary>Bật máy in (START). Máy sẽ in các mã đang có trong buffer.</summary>
+    public Task<PrinterCommandResult> StartPrintingAsync(CancellationToken ct = default) =>
+        SendControlAsync("START", "START", "Đã bật máy in.", 8000, ct);
+
+    /// <summary>Tạm dừng máy in (STOP) — không xoá dữ liệu trong buffer.</summary>
+    public Task<PrinterCommandResult> PausePrintingAsync(CancellationToken ct = default) =>
+        SendControlAsync("STOP", "STOP", "Đã tạm dừng máy in.", 5000, ct);
+
+    /// <summary>Xoá dữ liệu cũ trong máy in (CLR).</summary>
+    public Task<PrinterCommandResult> ClearDataAsync(CancellationToken ct = default) =>
+        SendControlAsync("CLR", "CLR", "Đã xoá dữ liệu trong máy in.", 3000, ct);
+
+    /// <summary>Đặt lại số mã đã in (RESET|1).</summary>
+    public Task<PrinterCommandResult> ResetCounterAsync(CancellationToken ct = default) =>
+        SendControlAsync("RESET|1", "RESET", "Đã đặt lại số đếm.", 3000, ct);
+
+    /// <summary>Đặt lại dữ liệu bản in (RESET|2).</summary>
+    public Task<PrinterCommandResult> ResetPrintoutAsync(CancellationToken ct = default) =>
+        SendControlAsync("RESET|2", "RESET", "Đã đặt lại bản in.", 3000, ct);
+
+    /// <summary>Vệ sinh đầu phun (CLENOZ).</summary>
+    public Task<PrinterCommandResult> CleanNozzleAsync(CancellationToken ct = default) =>
+        SendControlAsync("CLENOZ", "CLENOZ", "Đã gửi lệnh vệ sinh đầu in.", 8000, ct);
+
+    /// <summary>Test phun mực (JET).</summary>
+    public Task<PrinterCommandResult> TriggerJetAsync(CancellationToken ct = default) =>
+        SendControlAsync("JET", "JET", "Đã gửi lệnh test phun.", 3000, ct);
+
+    /// <summary>Đọc danh sách bản tin trên máy in (GFILE).</summary>
+    public Task<PrinterCommandResult> RefreshFilesAsync(CancellationToken ct = default) =>
+        SendControlAsync("GFILE", "GFILE", "Đã đọc danh sách bản tin.", 5000, ct);
+
+    private async Task<PrinterCommandResult> SendControlAsync(
+        string command,
+        string prefix,
+        string successMessage,
+        int timeoutMs,
+        CancellationToken ct)
+    {
+        EnsureLicensed();
+        EnsureEnabled();
+
+        try
+        {
+            var response = await _printer
+                .SendRawCommandAsync(command, prefix, timeoutMs, ct)
+                .ConfigureAwait(false);
+            var ok = response.StartsWith(prefix + "|OK", StringComparison.OrdinalIgnoreCase)
+                     || response.StartsWith("OK", StringComparison.OrdinalIgnoreCase);
+            var message = ok
+                ? successMessage
+                : $"Máy in từ chối lệnh {command}: {response}";
+            _logger?.LogInformation("Lệnh máy in {Command} -> {Response}", command, response);
+            return new PrinterCommandResult(ok, command, response, message);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "Gửi lệnh máy in {Command} thất bại", command);
+            return new PrinterCommandResult(false, command, ex.Message, $"Gửi lệnh {command} thất bại: {ex.Message}");
+        }
+    }
+
     public async Task<PrintBatchResult?> SendNextBatchAsync(int quantity, CancellationToken ct = default)
     {
         EnsureLicensed();

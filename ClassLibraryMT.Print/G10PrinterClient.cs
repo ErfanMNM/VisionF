@@ -101,13 +101,36 @@ public sealed class G10PrinterClient : IPrinterClient
         finally { _io.Release(); }
     }
 
-    private async Task<string> SendCommandAsync(string command, string expectedPrefix, CancellationToken ct)
+    /// <summary>
+    /// Gửi lệnh điều khiển thô theo đúng protocol G10 legacy (xem Print/command/CommandString.cs).
+    /// </summary>
+    public async Task<string> SendRawCommandAsync(
+        string command,
+        string expectedPrefix,
+        int timeoutMs = 5000,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(command);
+        await _io.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await ConnectAsync(ct).ConfigureAwait(false);
+            return await SendCommandAsync(command, expectedPrefix, ct, timeoutMs).ConfigureAwait(false);
+        }
+        finally { _io.Release(); }
+    }
+
+    private async Task<string> SendCommandAsync(
+        string command,
+        string expectedPrefix,
+        CancellationToken ct,
+        int? timeoutMs = null)
     {
         if (_stream is null) throw new IOException("Máy in chưa kết nối.");
         await _stream.WriteAsync(Encoding.ASCII.GetBytes(command + "\r\n"), ct).ConfigureAwait(false);
         await _stream.FlushAsync(ct).ConfigureAwait(false);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(_timeoutMs);
+        timeout.CancelAfter(timeoutMs ?? _timeoutMs);
         while (true)
         {
             var line = await _responses.Reader.ReadAsync(timeout.Token).ConfigureAwait(false);

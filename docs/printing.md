@@ -11,6 +11,23 @@ Module này lấy mã trong `PoCodes` của PO đang chạy, chỉ chọn mã ch
 
 Tab Máy in chỉ cho kết nối khi file license hợp lệ có entitlement `printer`. Entitlement này là gói **Máy in + gói bán kèm**, cấp cùng một license; không có license riêng cho phần bán kèm.
 
+## Điều khiển máy in
+
+Card **ĐIỀU KHIỂN MÁY IN** trên tab Máy in port các lệnh từ mã legacy `Print/ucG10Printer.cs` và `Print/command/CommandString.cs`:
+
+| Nút | Lệnh G10 | Ý nghĩa |
+|---|---|---|
+| Bật in / Tạm dừng in | `START` / `STOP` | Nút toggle đổi theo trạng thái máy in. `STOP` chỉ tạm dừng, **không xoá** dữ liệu trong buffer. |
+| Xóa buffer | `CLR` | Xoá dữ liệu cũ trong máy in. |
+| Reset số đếm | `RESET\|1` | Đặt lại số mã đã in. |
+| Vệ sinh đầu in | `CLENOZ` | Chạy chu trình vệ sinh đầu phun. |
+| Test phun JET | `JET` | Phun thử để kiểm tra đầu in. |
+| Danh sách bản tin | `GFILE` | Đọc danh sách file bản tin trên máy; phản hồi thô hiển thị ở dòng thông báo. |
+
+Các nút chỉ bật khi module máy in được bật và đã kết nối (`Print:Enabled = true`, license có entitlement `printer`). Mỗi lệnh đợi phản hồi có prefix tương ứng (`START|OK`, `STOP|OK`, …); timeout riêng 3–8 giây tuỳ lệnh. Kết quả được ghi vào log và hiển thị ngay dưới hàng nút.
+
+> Dùng **Tạm dừng in** khi cần dừng dây chuyền tạm thời; dùng **Xóa buffer** chỉ khi chắc chắn muốn bỏ dữ liệu đã gửi mà chưa in.
+
 ## Cấp quyền license
 
 Trong LicenseTool hoặc License Portal, chọn **Cấp quyền Máy in + gói bán kèm** trước khi cấp/renew license. Payload ký số có `features: ["printer"]`. License cũ không có `features` vẫn hợp lệ cho các chức năng hiện có nhưng không mở module máy in.

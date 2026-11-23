@@ -76,6 +76,9 @@ public sealed class PrintQueueItem
 
 public sealed record PrinterSendResult(string Code, bool Accepted, string Response);
 
+/// <summary>Kết quả của một lệnh điều khiển máy in (START/STOP/CLR/RESET/…).</summary>
+public sealed record PrinterCommandResult(bool Ok, string Command, string Response, string Message);
+
 public interface IPrinterClient : IAsyncDisposable
 {
     string PrinterId { get; }
@@ -85,6 +88,15 @@ public interface IPrinterClient : IAsyncDisposable
     Task DisconnectAsync(CancellationToken ct = default);
     Task<PrinterStatusSnapshot> RefreshStatusAsync(CancellationToken ct = default);
     Task<PrinterSendResult> SendCodeAsync(string code, CancellationToken ct = default);
+
+    /// <summary>
+    /// Gửi một lệnh điều khiển thô (START, STOP, CLR, …) và đợi phản hồi có prefix tương ứng.
+    /// </summary>
+    Task<string> SendRawCommandAsync(
+        string command,
+        string expectedPrefix,
+        int timeoutMs = 5000,
+        CancellationToken ct = default);
 }
 
 public sealed class PrintBatchResult

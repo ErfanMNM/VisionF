@@ -39,6 +39,18 @@ internal sealed partial class PrintViewModel : ViewModelBase, IDisposable
     [ObservableProperty] public partial string InkText { get; set; } = "Mực: —";
     [ObservableProperty] public partial string QueueText { get; set; } = "Chưa có dữ liệu hàng đợi.";
 
+    // ---- Điều khiển máy in (nút Bật in / Tạm dừng / vệ sinh…) ----
+    [ObservableProperty] public partial bool IsControlBusy { get; set; }
+    [ObservableProperty] public partial string ControlMessage { get; set; } = "";
+    [ObservableProperty] public partial bool IsControlError { get; set; }
+
+    /// <summary>Trạng thái in lấy từ lần đọc trạng thái gần nhất.</summary>
+    public bool IsPrinting => _print.Printer.Status.IsPrinting;
+
+    public bool HasControlMessage => !string.IsNullOrWhiteSpace(ControlMessage);
+
+    partial void OnControlMessageChanged(string value) => OnPropertyChanged(nameof(HasControlMessage));
+
     [RelayCommand]
     private async Task ConnectAsync()
     {
@@ -84,6 +96,8 @@ internal sealed partial class PrintViewModel : ViewModelBase, IDisposable
             QueueText = $"Chờ {summary.Pending:N0} · Đã gửi {summary.Sent:N0} · Đã in {summary.Printed:N0} · Không phản hồi {summary.NoResponse:N0}";
         }
         catch (Exception ex) { StatusText = ex.Message; }
+
+        OnPropertyChanged(nameof(IsPrinting));
     }
 
     [RelayCommand]
@@ -100,6 +114,60 @@ internal sealed partial class PrintViewModel : ViewModelBase, IDisposable
         }
         catch (Exception ex) { StatusText = ex.Message; }
         finally { IsBusy = false; }
+    }
+
+    // ---------- Lệnh điều khiển ----------
+
+    [RelayCommand]
+    private Task StartPrintingAsync() => RunControlAsync(ct => _print.StartPrintingAsync(ct));
+
+    [RelayCommand]
+    private Task PausePrintingAsync() => RunControlAsync(ct => _print.PausePrintingAsync(ct));
+
+    /// <summary>Nút toggle: đang in thì tạm dừng, đang dừng thì bật in.</summary>
+    [RelayCommand]
+    private Task TogglePrintingAsync() =>
+        IsPrinting ? PausePrintingAsync() : StartPrintingAsync();
+
+    [RelayCommand]
+    private Task ClearDataAsync() => RunControlAsync(ct => _print.ClearDataAsync(ct));
+
+    [RelayCommand]
+    private Task ResetCounterAsync() => RunControlAsync(ct => _print.ResetCounterAsync(ct));
+
+    [RelayCommand]
+    private Task CleanNozzleAsync() => RunControlAsync(ct => _print.CleanNozzleAsync(ct));
+
+    [RelayCommand]
+    private Task TriggerJetAsync() => RunControlAsync(ct => _print.TriggerJetAsync(ct));
+
+    [RelayCommand]
+    private Task RefreshFilesAsync() => RunControlAsync(ct => _print.RefreshFilesAsync(ct));
+
+    private async Task RunControlAsync(Func<CancellationToken, Task<PrinterCommandResult>> action)
+    {
+        if (IsControlBusy || !CanUse || !CanConnect)
+        {
+            return;
+        }
+
+        IsControlBusy = true;
+        try
+        {
+            var result = await action(_cts.Token).ConfigureAwait(true);
+            ControlMessage = result.Message;
+            IsControlError = !result.Ok;
+            await RefreshAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            ControlMessage = ex.Message;
+            IsControlError = true;
+        }
+        finally
+        {
+            IsControlBusy = false;
+        }
     }
 
     public void RefreshLicense()
