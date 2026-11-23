@@ -438,15 +438,21 @@ try
     Check("AboutView hiển thị giấy phép", text.Any(block => block.Text == "GIẤY PHÉP SỬ DỤNG"));
     Check("AboutView hiển thị mã máy (HWID)", text.Any(block => block.Text == "MÃ MÁY (HWID)"));
     Check("AboutView hiển thị card cập nhật", text.Any(block => block.Text == "CẬP NHẬT PHẦN MỀM"));
-    Check("Card bind phiên bản mới", text.Any(block => block.Text == "Bản mới: 1.2.3"));
+    Check("Card bind phiên bản mới", text.Any(block => block.Text == "BẢN MỚI")
+                                     && text.Any(block => block.Text == "1.2.3"));
     Check("Card bind trạng thái tiếng Việt", text.Any(block => block.Text?.StartsWith("Gói đã được xác minh.") == true));
+
+    // Nút giờ có icon + TextBlock bên trong (HorizontalContentAlignment=Center)
+    // nên tìm theo nhãn thay vì ép kiểu Content sang string.
     var updateButtons = about.GetVisualDescendants().OfType<Button>().Where(button =>
-        button.Content is string content && content is "Kiểm tra bản mới" or "Tải bản cập nhật" or "Cài đặt và khởi động lại").ToList();
+        button.GetVisualDescendants().OfType<TextBlock>().Any(label =>
+            label.Text is "Kiểm tra bản mới" or "Tải bản cập nhật" or "Cài đặt và khởi động lại")).ToList();
     Check("Card có ba nút cập nhật với command thật", updateButtons.Count == 3 && updateButtons.All(button => button.Command is not null));
     Check("Các nút cập nhật có kích thước trong cột bên phải", updateButtons.All(button =>
         button.Bounds.Width is > 0 and <= 640 && button.Bounds.Height > 0),
-        string.Join(", ", updateButtons.Select(button => $"{button.Content}={button.Bounds.Width:0}x{button.Bounds.Height:0}")));
-    var installButton = updateButtons.Single(button => (string)button.Content! == "Cài đặt và khởi động lại");
+        string.Join(", ", updateButtons.Select(button => $"{button.GetVisualDescendants().OfType<TextBlock>().First().Text}={button.Bounds.Width:0}x{button.Bounds.Height:0}")));
+    var installButton = updateButtons.Single(button =>
+        button.GetVisualDescendants().OfType<TextBlock>().Any(label => label.Text == "Cài đặt và khởi động lại"));
     Check("Cài đặt truy cập được qua ScrollViewer", installButton.GetVisualAncestors().OfType<ScrollViewer>().Any());
 
     window.Width = 1024;

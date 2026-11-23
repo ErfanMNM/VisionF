@@ -13,6 +13,7 @@
   <Project Path="tools/UpdateSafetyTests/UpdateSafetyTests.csproj" />
   <Project Path="tools/UpdateSendTests/UpdateSendTests.csproj" />
   <Project Path="ClassLibraryMT.MesSimulator/ClassLibraryMT.MesSimulator.csproj" />
+  <Project Path="ClassLibraryMT.MultiConnect/ClassLibraryMT.MultiConnect.csproj" />
   <Project Path="TanTienQR/TanTienQR.csproj" />
   <Project Path="tools/LicenseTool/LicenseTool.csproj" />
   <Project Path="tools/LicensePortalTests/LicensePortalTests.csproj" />
@@ -26,4 +27,6 @@
   <Project Path="tools/PrintTests/PrintTests.csproj" />
   <Project Path="tools/FullscreenNumpadTests/FullscreenNumpadTests.csproj" />
   <Project Path="tools/AccountsIconTests/AccountsIconTests.csproj" />
+  <Project Path="tools/MultiConnectGateway/MultiConnectGateway.csproj" />
+  <Project Path="tools/MultiConnectTests/MultiConnectTests.csproj" />
 </Solution>

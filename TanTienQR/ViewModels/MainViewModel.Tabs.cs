@@ -78,6 +78,7 @@ internal partial class MainViewModel
     [NotifyPropertyChangedFor(nameof(IsProductionOrdersVisible))]
     [NotifyPropertyChangedFor(nameof(IsPrintVisible))]
     [NotifyPropertyChangedFor(nameof(IsAboutVisible))]
+    [NotifyPropertyChangedFor(nameof(IsMultiConnectVisible))]
     [NotifyPropertyChangedFor(nameof(IsMoreActive))]
     [NotifyPropertyChangedFor(nameof(PageTitle))]
     [NotifyPropertyChangedFor(nameof(PageSubtitle))]
@@ -142,6 +143,12 @@ internal partial class MainViewModel
     /// </summary>
     public bool IsAboutVisible => CurrentSection == AppSection.About;
 
+    /// <summary>
+    /// True khi đang ở tab MultiConnect (giám sát dữ liệu vào/ra của gateway).
+    /// Mọi vai trò đều xem được — tab chỉ hiển thị dữ liệu.
+    /// </summary>
+    public bool IsMultiConnectVisible => CurrentSection == AppSection.MultiConnect;
+
     public bool CanUsePrinter => LicenseEntitlements.HasFeature(_license.Current, LicenseFeatures.Printer);
 
     /// <summary>Tiêu đề trên thanh header, đổi theo tab.</summary>
@@ -157,6 +164,7 @@ internal partial class MainViewModel
         AppSection.ProductionOrders => "Truy xuất Sản xuất (Local)",
         AppSection.Print => "Máy in",
         AppSection.About => "Giới thiệu",
+        AppSection.MultiConnect => "MultiConnect",
         _ => "Thông tin",
     };
 
@@ -173,6 +181,7 @@ internal partial class MainViewModel
         AppSection.ProductionOrders => "Quản lý lệnh sản xuất (PO) tải từ server — bắt đầu / hoàn tất sản xuất",
         AppSection.Print => "Gửi mã từ PO vào máy in và theo dõi xác nhận, mực, lỗi",
         AppSection.About => "Phiên bản phần mềm, giấy phép sử dụng và cập nhật",
+        AppSection.MultiConnect => "Dữ liệu vào/ra của các kênh Serial, TCP client, UDP — 50 dòng gần nhất mỗi bên",
         _ => "Nhận tín hiệu camera và gửi kết quả xuống PLC Omron (D12 = kết quả, D16 = Ready)",
     };
 
@@ -378,6 +387,13 @@ internal partial class MainViewModel
     {
         SwitchTo(AppSection.Print, "Máy in");
         if (CanUsePrinter) Print.RefreshCommand.Execute(null);
+    }
+
+    /// <summary>Chuyển sang tab MultiConnect (dữ liệu vào/ra của gateway).</summary>
+    [RelayCommand]
+    private void ShowMultiConnectTab()
+    {
+        SwitchTo(AppSection.MultiConnect, "MultiConnect");
     }
 
     /// <summary>

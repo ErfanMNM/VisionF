@@ -10,6 +10,7 @@ using ClassLibraryMT.Po;
 using ClassLibraryMT.PoServer;
 using ClassLibraryMT.Print;
 using ClassLibraryMT.MesSimulator;
+using ClassLibraryMT.MultiConnect;
 using ClassLibraryMT.Scans;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -79,6 +80,11 @@ public static class TanTienAppServices
         // ---- MES simulator (chỉ dùng cho test tích hợp) ----
         // Mặc định tắt; khi bật sẽ gửi PO mẫu tới PoServer qua HTTP POST.
         services.AddMesSimulator(configuration);
+
+        // ---- MultiConnect: Serial/TCP client/UDP sang TCP server ----
+        // Mặc định tắt. Khi bật, mỗi kênh mở một TCP server riêng để app (hoặc
+        // thiết bị khác) có thể trỏ Camera:Ip/Port tới mà không đổi code app.
+        services.AddMultiConnect(configuration);
 
         // ---- Camera: bind cấu hình thủ công (tương thích Native AOT) ----
         services.AddOptions<CameraOptions>()
@@ -243,6 +249,7 @@ public static class TanTienAppServices
         services.AddSingleton<ProductionInfoViewModel>();
         services.AddSingleton<ProductionOrdersViewModel>();
         services.AddSingleton<PrintViewModel>();
+        services.AddSingleton<MultiConnectViewModel>();
 
         // ---- Bàn phím ảo cho máy cảm ứng ----
         // VM bàn phím là singleton để mọi cửa sổ dùng chung một trạng thái

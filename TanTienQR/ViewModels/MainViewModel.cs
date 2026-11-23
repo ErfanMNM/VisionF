@@ -41,6 +41,10 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     private readonly ProductionInfoViewModel _productionInfo;
     private readonly ProductionOrdersViewModel _productionOrders;
     public PrintViewModel Print { get; }
+
+    /// <summary>Tab MultiConnect: dữ liệu vào/ra của các kênh gateway.</summary>
+    public MultiConnectViewModel MultiConnect { get; }
+
     private readonly VirtualKeyboardViewModel _keyboard;
     private readonly IUserActionLogger _actionLog;
     private readonly ISessionContext _session;
@@ -72,6 +76,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         ProductionInfoViewModel productionInfo,
         ProductionOrdersViewModel productionOrders,
         PrintViewModel print,
+        MultiConnectViewModel multiConnect,
         VirtualKeyboardViewModel keyboard,
         LoginViewModel login,
         IUserActionLogger actionLog,
@@ -93,6 +98,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         _productionInfo = productionInfo;
         _productionOrders = productionOrders;
         Print = print;
+        MultiConnect = multiConnect;
         _keyboard = keyboard;
         _login = login;
         _actionLog = actionLog;

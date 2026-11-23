@@ -448,6 +448,19 @@
                                     <TextBlock Text="Dev" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
+                            <Button Classes="menubtn"
+                                    Classes.active="{Binding IsMultiConnectVisible}"
+                                    Command="{Binding ShowMultiConnectTabCommand}"
+                                    Click="OnMoreItemClick">
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <Path Width="16" Height="16" Stretch="Uniform"
+                                          Stroke="{StaticResource TextMuted}" StrokeThickness="1.9"
+                                          StrokeLineCap="Round" StrokeJoin="Round"
+                                          VerticalAlignment="Center"
+                                          Data="{StaticResource Icon.Link}" />
+                                    <TextBlock Text="MultiConnect" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
                             <Border Height="1" Margin="12,6"
                                     Background="{StaticResource LineColor}" />
                             <Button Classes="menubtn"
@@ -589,6 +602,9 @@
                 <views:LazyTabHost x:Name="AboutTab"
                                    IsVisible="{Binding IsAboutVisible}"
                                    Factory="{x:Static views:LazyTabFactories.About}" />
+                <views:LazyTabHost x:Name="MultiConnectTab"
+                                   IsVisible="{Binding IsMultiConnectVisible}"
+                                   Factory="{x:Static views:LazyTabFactories.MultiConnect}" />
             </Grid>
         </Grid>
 

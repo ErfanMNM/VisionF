@@ -47,4 +47,7 @@ public static class LazyTabFactories
 
     /// <summary>Tab Giới thiệu (phiên bản, license, cập nhật — dựng khi mở tab).</summary>
     public static Func<Control> About => static () => new AboutView();
+
+    /// <summary>Tab MultiConnect (dữ liệu vào/ra — dựng khi mở tab).</summary>
+    public static Func<Control> MultiConnect => static () => new MultiConnectView();
 }

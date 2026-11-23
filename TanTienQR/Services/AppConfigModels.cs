@@ -122,6 +122,30 @@ public sealed class ScannerConfig
 }
 
 /// <summary>
+/// Cấu hình gateway MultiConnect (mục "MultiConnect").
+/// Danh sách <c>Channels</c> là mảng object nên không hiển thị trên form Cấu hình;
+/// ConfigStore vẫn giữ nguyên key này khi lưu (unknown-key merge).
+/// </summary>
+[ConfigSection(
+    Key = "MultiConnect",
+    Title = "MULTI CONNECT · CHUYỂN GIAO THỨC SANG TCP",
+    Order = 35,
+    Icon = "Link",
+    Description = "Serial / TCP client / UDP sang TCP server. Được nạp một lần khi app khởi động.")]
+public sealed class MultiConnectConfig
+{
+    [ConfigField("Bật gateway", Order = 1, RequiresRestart = true,
+        HelpText = "Bật các kênh chuyển tiếp đã khai báo trong MultiConnect:Channels.")]
+    [JsonPropertyName("Enabled")] public bool Enabled { get; set; }
+
+    [ConfigField("Trễ kết nối lại (ms)", Order = 2, Min = 200, Max = 60000, Increment = 100, RequiresRestart = true, SkipWhenDisabledBy = "MultiConnect:Enabled")]
+    [JsonPropertyName("ReconnectDelayMs")] public int ReconnectDelayMs { get; set; } = 3000;
+
+    [ConfigField("Dài frame tối đa", Order = 3, Min = 32, Max = 8192, RequiresRestart = true, SkipWhenDisabledBy = "MultiConnect:Enabled")]
+    [JsonPropertyName("MaxFrameLength")] public int MaxFrameLength { get; set; } = 512;
+}
+
+/// <summary>
 /// Cấu hình server quản lý Production Order (mục "Po").
 ///
 /// Khớp với <c>PoOptions</c>: địa chỉ server, thư mục DB, chu kỳ gửi mã
@@ -475,6 +499,7 @@ public sealed class AppConfigSnapshot
     [JsonPropertyName("Plc")] public PlcConfig Plc { get; set; } = new();
     [JsonPropertyName("Web")] public WebConfig Web { get; set; } = new();
     [JsonPropertyName("Scanner")] public ScannerConfig Scanner { get; set; } = new();
+    [JsonPropertyName("MultiConnect")] public MultiConnectConfig MultiConnect { get; set; } = new();
     [JsonPropertyName("Po")] public PoConfig Po { get; set; } = new();
     [JsonPropertyName("Print")] public PrintConfig Print { get; set; } = new();
     [JsonPropertyName("PoServer")] public PoServerConfig PoServer { get; set; } = new();
@@ -502,6 +527,7 @@ public sealed class AppConfigSnapshot
 [JsonSerializable(typeof(PlcSettingsConfig))]
 [JsonSerializable(typeof(ScanConfig))]
 [JsonSerializable(typeof(ScannerConfig))]
+[JsonSerializable(typeof(MultiConnectConfig))]
 [JsonSerializable(typeof(PoConfig))]
 [JsonSerializable(typeof(PrintConfig))]
 [JsonSerializable(typeof(PoServerConfig))]

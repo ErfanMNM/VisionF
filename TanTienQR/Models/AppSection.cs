@@ -56,4 +56,9 @@ public enum AppSection
     /// Giới thiệu: phiên bản phần mềm, giấy phép sử dụng và cập nhật.
     /// </summary>
     About = 10,
+
+    /// <summary>
+    /// MultiConnect: dữ liệu vào/ra của các kênh chuyển giao thức sang TCP.
+    /// </summary>
+    MultiConnect = 11,
 }

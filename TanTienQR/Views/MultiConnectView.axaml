@@ -1,0 +1,207 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:TanTienQR.ViewModels"
+             xmlns:services="using:ClassLibraryMT.MultiConnect"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1040" d:DesignHeight="700"
+             x:Class="TanTienQR.Views.MultiConnectView"
+             x:DataType="vm:MainViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.trafficValue">
+            <Setter Property="FontFamily" Value="{StaticResource MonoFont}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style Selector="Border.row">
+            <Setter Property="Padding" Value="10,7" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineColor}" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+        </Style>
+    </UserControl.Styles>
+
+    <Grid Margin="18,6,18,18" RowDefinitions="Auto,Auto,*" RowSpacing="14">
+
+        <!-- Tieu de -->
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+            <Border Grid.Column="0"
+                    Width="42" Height="42"
+                    CornerRadius="14"
+                    Background="{StaticResource AccentSoft}"
+                    BorderBrush="{StaticResource LineAccent}"
+                    BorderThickness="1"
+                    VerticalAlignment="Center">
+                <Path Width="20" Height="20"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center"
+                      Stretch="Uniform"
+                      Stroke="{StaticResource Accent}"
+                      StrokeThickness="1.9"
+                      StrokeLineCap="Round"
+                      StrokeJoin="Round"
+                      Data="{StaticResource Icon.Link}" />
+            </Border>
+
+            <StackPanel Grid.Column="1" Spacing="4">
+                <TextBlock Classes="pageTitle" Text="MultiConnect" />
+                <TextBlock Classes="label" FontSize="12"
+                           Text="Dữ liệu đi vào và phát ra của các kênh chuyển giao thức." />
+            </StackPanel>
+
+            <Button Grid.Column="2"
+                    Classes="chip"
+                    VerticalAlignment="Center"
+                    Content="Xoà dữ liệu"
+                    Command="{Binding MultiConnect.ClearCommand}" />
+        </Grid>
+
+        <!-- Trang thai -->
+        <Border Grid.Row="1"
+                Classes="device"
+                Padding="12,9"
+                IsVisible="{Binding MultiConnect.IsGatewayEnabled}">
+            <TextBlock Text="{Binding MultiConnect.StatusText}"
+                       FontSize="12"
+                       Foreground="{StaticResource TextSecondary}"
+                       TextWrapping="Wrap" />
+        </Border>
+        <Border Grid.Row="1"
+                Padding="12,9"
+                CornerRadius="10"
+                Background="{StaticResource WarnSoft}"
+                BorderBrush="{StaticResource LineWarn}"
+                BorderThickness="1"
+                IsVisible="{Binding !MultiConnect.IsGatewayEnabled}">
+            <TextBlock Text="{Binding MultiConnect.StatusText}"
+                       FontSize="12"
+                       Foreground="{StaticResource Warn}"
+                       TextWrapping="Wrap" />
+        </Border>
+
+        <!-- Hai cot: trai = du lieu vao, phai = du lieu ra -->
+        <Grid Grid.Row="2" ColumnDefinitions="*,*" ColumnSpacing="14">
+
+            <Border Grid.Column="0" Classes="panel" Padding="0">
+                <Grid RowDefinitions="Auto,*" RowSpacing="0">
+                    <Border Grid.Row="0" Padding="16,14,16,10">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Spacing="3">
+                                <TextBlock Classes="overline" Text="DỮ LIỆU VÀO" />
+                                <TextBlock Classes="label" FontSize="11"
+                                           Text="Từ Serial / TCP client / UDP gửi vào gateway." />
+                            </StackPanel>
+                            <Border Grid.Column="1" Classes="pill" VerticalAlignment="Center">
+                                <TextBlock Classes="mono" FontSize="11"
+                                           Text="{Binding MultiConnect.InputCount, StringFormat={}{0}/50}" />
+                            </Border>
+                        </Grid>
+                    </Border>
+                    <ScrollViewer Grid.Row="1"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <Grid>
+                        <ItemsControl ItemsSource="{Binding MultiConnect.InputRows}"
+                                      IsVisible="{Binding MultiConnect.HasInputRows}"
+                                      Padding="8,0,8,8">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="services:MultiConnectTrafficItem">
+                                    <Border Classes="row">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                                            <TextBlock Classes="mono"
+                                                       FontSize="11"
+                                                       Foreground="{StaticResource TextMuted}"
+                                                       VerticalAlignment="Top"
+                                                       Text="{Binding Time, StringFormat=HH:mm:ss}" />
+                                            <StackPanel Grid.Column="1" Spacing="2">
+                                                <TextBlock Text="{Binding Channel}"
+                                                           FontSize="11"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{StaticResource Accent}" />
+                                                <TextBlock Classes="trafficValue"
+                                                           Text="{Binding Payload}" />
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="2"
+                                                       Classes="mono"
+                                                       FontSize="10"
+                                                       Foreground="{StaticResource TextMuted}"
+                                                       VerticalAlignment="Top"
+                                                       Text="IN" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Text="Chưa có dữ liệu vào."
+                                   Classes="label"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   IsVisible="{Binding !MultiConnect.HasInputRows}" />
+                        </Grid>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="1" Classes="panel" Padding="0">
+                <Grid RowDefinitions="Auto,*" RowSpacing="0">
+                    <Border Grid.Row="0" Padding="16,14,16,10">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Spacing="3">
+                                <TextBlock Classes="overline" Text="DỮ LIỆU RA" />
+                                <TextBlock Classes="label" FontSize="11"
+                                           Text="Gateway phát tới các client TCP đang kết nối." />
+                            </StackPanel>
+                            <Border Grid.Column="1" Classes="pill" VerticalAlignment="Center">
+                                <TextBlock Classes="mono" FontSize="11"
+                                           Text="{Binding MultiConnect.OutputCount, StringFormat={}{0}/50}" />
+                            </Border>
+                        </Grid>
+                    </Border>
+                    <ScrollViewer Grid.Row="1"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <Grid>
+                        <ItemsControl ItemsSource="{Binding MultiConnect.OutputRows}"
+                                      IsVisible="{Binding MultiConnect.HasOutputRows}"
+                                      Padding="8,0,8,8">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="services:MultiConnectTrafficItem">
+                                    <Border Classes="row">
+                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                                            <TextBlock Classes="mono"
+                                                       FontSize="11"
+                                                       Foreground="{StaticResource TextMuted}"
+                                                       VerticalAlignment="Top"
+                                                       Text="{Binding Time, StringFormat=HH:mm:ss}" />
+                                            <StackPanel Grid.Column="1" Spacing="2">
+                                                <TextBlock Text="{Binding Channel}"
+                                                           FontSize="11"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{StaticResource Accent}" />
+                                                <TextBlock Classes="trafficValue"
+                                                           Text="{Binding Payload}" />
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="2"
+                                                       Classes="mono"
+                                                       FontSize="10"
+                                                       Foreground="{StaticResource TextMuted}"
+                                                       VerticalAlignment="Top"
+                                                       Text="{Binding Clients, StringFormat={}{0} client}" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Text="Chưa có dữ liệu ra."
+                                   Classes="label"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   IsVisible="{Binding !MultiConnect.HasOutputRows}" />
+                        </Grid>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

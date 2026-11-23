@@ -414,6 +414,7 @@ internal static class Program
             ("Accounts", "ShowAccountsTabCommand", "AccountsView"),
             ("Dev", "ShowDevTabCommand", "DevView"),
             ("About", "ShowAboutTabCommand", "AboutView"),
+            ("MultiConnect", "ShowMultiConnectTabCommand", "MultiConnectView"),
         };
 
         foreach (var tab in tabs)
