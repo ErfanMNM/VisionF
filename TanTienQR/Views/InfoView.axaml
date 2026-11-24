@@ -129,7 +129,7 @@
                         <ScrollViewer Grid.Row="0"
                                       HorizontalScrollBarVisibility="Disabled"
                                       VerticalScrollBarVisibility="Visible">
-                            <Grid ColumnDefinitions="90,1.6*,1.2*,100,110,100"
+                            <Grid ColumnDefinitions="90,*,100,110,100"
                                   ColumnSpacing="12"
                                   Margin="20,0"
                                   Background="#F8F9FB">
@@ -143,27 +143,21 @@
                                         BorderBrush="{StaticResource LineColor}"
                                         BorderThickness="0,0,0,1"
                                         Margin="0,9,0,9">
-                                    <TextBlock Classes="overline" Text="MÃ / SERIAL" />
+                                    <TextBlock Classes="overline" Text="NỘI DUNG MÃ QR" />
                                 </Border>
                                 <Border Grid.Row="0" Grid.Column="2"
                                         BorderBrush="{StaticResource LineColor}"
                                         BorderThickness="0,0,0,1"
                                         Margin="0,9,0,9">
-                                    <TextBlock Classes="overline" Text="GTIN" />
+                                    <TextBlock Classes="overline" Text="KẾT QUẢ" />
                                 </Border>
                                 <Border Grid.Row="0" Grid.Column="3"
                                         BorderBrush="{StaticResource LineColor}"
                                         BorderThickness="0,0,0,1"
                                         Margin="0,9,0,9">
-                                    <TextBlock Classes="overline" Text="KẾT QUẢ" />
-                                </Border>
-                                <Border Grid.Row="0" Grid.Column="4"
-                                        BorderBrush="{StaticResource LineColor}"
-                                        BorderThickness="0,0,0,1"
-                                        Margin="0,9,0,9">
                                     <TextBlock Classes="overline" Text="XỬ LÝ" />
                                 </Border>
-                                <Border Grid.Row="0" Grid.Column="5"
+                                <Border Grid.Row="0" Grid.Column="4"
                                         BorderBrush="{StaticResource LineColor}"
                                         BorderThickness="0,0,0,1"
                                         Margin="0,9,0,9">
@@ -180,16 +174,13 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:ScanRowViewModel">
                                         <Border Margin="20,1" Padding="0,7">
-                                            <Grid ColumnDefinitions="90,1.6*,1.2*,100,110,100" ColumnSpacing="12">
+                                            <Grid ColumnDefinitions="90,*,100,110,100" ColumnSpacing="12">
                                                 <TextBlock Classes="mono" FontSize="11"
                                                            VerticalAlignment="Center" Text="{Binding TimeText}" />
-                                                <TextBlock Grid.Column="1" Classes="mono" FontSize="12" FontWeight="SemiBold"
+                                                <TextBlock Grid.Column="1" Classes="mono" FontSize="11" FontWeight="SemiBold"
                                                            VerticalAlignment="Center" Text="{Binding CodeText}"
-                                                           TextTrimming="CharacterEllipsis" />
-                                                <TextBlock Grid.Column="2" Classes="mono" FontSize="11"
-                                                           VerticalAlignment="Center" Text="{Binding GtinText}"
-                                                           TextTrimming="CharacterEllipsis" />
-                                                <Border Grid.Column="3" Classes="badge"
+                                                           TextWrapping="Wrap" />
+                                                <Border Grid.Column="2" Classes="badge"
                                                         Classes.running="{Binding IsPass}"
                                                         Classes.warning="{Binding IsWarningOutcome}"
                                                         Classes.fault="{Binding IsInvalid}"
@@ -197,9 +188,9 @@
                                                         HorizontalAlignment="Left">
                                                     <TextBlock Text="{Binding OutcomeText}" />
                                                 </Border>
-                                                <TextBlock Grid.Column="4" Classes="mono" FontSize="11"
+                                                <TextBlock Grid.Column="3" Classes="mono" FontSize="11"
                                                            VerticalAlignment="Center" Text="{Binding ProcessingTimeText}" />
-                                                <TextBlock Grid.Column="5" Classes="label" FontSize="11"
+                                                <TextBlock Grid.Column="4" Classes="label" FontSize="11"
                                                            VerticalAlignment="Center" Text="{Binding PlcText}" />
                                             </Grid>
                                         </Border>

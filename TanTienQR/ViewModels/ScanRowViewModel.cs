@@ -16,8 +16,10 @@ public sealed class ScanRowViewModel
     public ScanRowViewModel(ScanRecord record)
     {
         TimeText = record.TimestampUtc.ToLocalTime().ToString("HH:mm:ss.fff", ViCulture);
-        CodeText = record.Serial ?? record.Raw;
-        GtinText = record.Gtin ?? "—";
+        // Hiển thị nguyên nội dung camera gửi lên (full QR), không tách GTIN / serial.
+        CodeText = string.IsNullOrWhiteSpace(record.Raw)
+            ? record.Serial ?? record.Gtin ?? "—"
+            : record.Raw;
         OutcomeText = record.Outcome switch
         {
             ScanOutcome.Pass => "Pass",
@@ -35,11 +37,8 @@ public sealed class ScanRowViewModel
     /// <summary>Giờ nhận mã.</summary>
     public string TimeText { get; }
 
-    /// <summary>Mã / serial quét được.</summary>
+    /// <summary>Nội dung mã đầy đủ do camera gửi lên (QR thô).</summary>
     public string CodeText { get; }
-
-    /// <summary>GTIN nếu có.</summary>
-    public string GtinText { get; }
 
     /// <summary>Kết quả xử lý (Pass / NoRead / Sai định dạng / Quá tải).</summary>
     public string OutcomeText { get; }
