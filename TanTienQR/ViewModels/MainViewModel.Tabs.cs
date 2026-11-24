@@ -242,7 +242,13 @@ internal partial class MainViewModel
 
     /// <summary>Chuyển sang tab Thông tin.</summary>
     [RelayCommand]
-    private void ShowInfoTab() => SwitchTo(AppSection.Info, "Thông tin");
+    private void ShowInfoTab()
+    {
+        SwitchTo(AppSection.Info, "Thông tin");
+
+        // Phòng trường hợp danh sách PO chưa được nạp (luồng khởi tạo khác).
+        ProductionOrders.Load();
+    }
 
     /// <summary>Chuyển sang tab Sản xuất (nạp web nếu chưa nạp).</summary>
     [RelayCommand]

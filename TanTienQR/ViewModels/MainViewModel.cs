@@ -674,6 +674,11 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         // Cập nhật lại thông tin người dùng + cờ quyền hiển thị tab.
         RefreshCurrentUser();
 
+        // Nạp danh sách PO ngay từ lúc mở app: tab mặc định là "Thông tin",
+        // trong khi trước đây chỉ có ShowProductionOrdersTab() gọi Load().
+        // Load() có guard Orders.Count == 0 nên gọi lại sau đăng nhập không đọc DB thừa.
+        ProductionOrders.Load();
+
         if (_pollTimer != null) return;
 
         UpdateClock();
