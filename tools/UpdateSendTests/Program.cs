@@ -72,6 +72,63 @@ Check(await retry == (1, 1), "Retry trả đúng số bản ghi reset và gửi"
 await retryDrain.WaitAsync(timeout.Token);
 Console.WriteLine($"Đạt {passed} kiểm thử dừng luồng gửi khi cập nhật; không dùng mạng/DB thật.");
 
+// Kiểm tra phần xác thực của CheckeeClient: header gửi kèm + làm mới token khi 401.
+using var authHandler = new AuthFakeHttp();
+using var authHttp = new HttpClient(authHandler) { BaseAddress = new Uri("https://checkee.test/") };
+var authOptions = new CheckeeOptions
+{
+    BaseUrl = "https://checkee.test",
+    ApiKey = "KEY-123",
+    ClientId = "CLIENT-1",
+};
+using var authClient = new CheckeeClient(authHttp, authOptions);
+var authResult = await authClient.ActivateAsync(
+    "08934567890123", "LOT-1", "DECLARE", ["SER-1"], timeout.Token);
+Check(authResult.Ok, "Kích hoạt thành công sau khi làm mới token khi gặp 401");
+Check(authHandler.TokenRequests == 2 && authHandler.Activations == 2,
+    "401 gọi lại token và gửi lại đúng 1 lần");
+Check(authHandler.LastAuthorization == "Bearer accessToken=fake",
+    "Header Authorization đúng chuẩn Bearer accessToken=<JWT>");
+Check(authHandler.LastApiKey == "KEY-123",
+    "Header x-api-key được gắn khi gửi kích hoạt");
+Console.WriteLine($"Đạt {passed} kiểm thử tổng cộng.");
+
+sealed class AuthFakeHttp : HttpMessageHandler
+{
+    public int TokenRequests;
+    public int Activations;
+    public string? LastAuthorization;
+    public string? LastApiKey;
+
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        if (request.Method == HttpMethod.Get)
+        {
+            Interlocked.Increment(ref TokenRequests);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{"code":200,"status":true,"data":{"token":"accessToken=fake"}}"""),
+            });
+        }
+
+        var activation = Interlocked.Increment(ref Activations);
+        LastAuthorization = request.Headers.TryGetValues("Authorization", out var auth)
+            ? string.Join(",", auth)
+            : null;
+        LastApiKey = request.Headers.TryGetValues("x-api-key", out var key)
+            ? string.Join(",", key)
+            : null;
+
+        var unauthorized = activation == 1;
+        var status = unauthorized ? HttpStatusCode.Unauthorized : HttpStatusCode.OK;
+        var body = unauthorized
+            ? """{"code":401,"status":false,"message":"UNAUTHORIZED"}"""
+            : """{"code":200,"status":true,"message":"OK","data":{}}""";
+        return Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(body) });
+    }
+}
+
 sealed class Fixture : IDisposable
 {
     public ScanIntakeGate Intake { get; } = new();

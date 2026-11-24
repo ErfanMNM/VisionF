@@ -38,8 +38,20 @@ public static class CheckeeServiceCollectionExtensions
                     cfg, $"{CheckeeOptions.SectionName}:ClientId", o.ClientId);
                 o.Enabled = CheckeeConfigReader.GetBool(
                     cfg, $"{CheckeeOptions.SectionName}:Enabled", o.Enabled);
-                o.SendIntervalMinutes = CheckeeConfigReader.GetInt(
-                    cfg, $"{CheckeeOptions.SectionName}:SendIntervalMinutes", o.SendIntervalMinutes);
+                // Đơn vị ms. Nếu file config cũ còn SendIntervalMinutes (phút)
+                // và chưa có SendIntervalMs thì quy đổi sang ms để không mất
+                // chu kỳ đã cài đặt trên máy.
+                var sendIntervalMs = CheckeeConfigReader.GetInt(
+                    cfg, $"{CheckeeOptions.SectionName}:SendIntervalMs", -1);
+                if (sendIntervalMs < 0)
+                {
+                    var legacyMinutes = CheckeeConfigReader.GetInt(
+                        cfg, $"{CheckeeOptions.SectionName}:SendIntervalMinutes", -1);
+                    sendIntervalMs = legacyMinutes > 0
+                        ? legacyMinutes * 60_000
+                        : o.SendIntervalMs;
+                }
+                o.SendIntervalMs = sendIntervalMs;
                 o.BatchSize = CheckeeConfigReader.GetInt(
                     cfg, $"{CheckeeOptions.SectionName}:BatchSize", o.BatchSize);
                 o.TimeoutSeconds = CheckeeConfigReader.GetInt(
@@ -53,8 +65,8 @@ public static class CheckeeServiceCollectionExtensions
             })
             .Validate(o => !string.IsNullOrWhiteSpace(o.BaseUrl),
                 "Checkee:BaseUrl khong duoc de trong.")
-            .Validate(o => o.SendIntervalMinutes > 0,
-                "Checkee:SendIntervalMinutes phai lon hon 0.")
+            .Validate(o => o.SendIntervalMs >= 100,
+                "Checkee:SendIntervalMs phai lon hon hoac bang 100 ms.")
             .Validate(o => o.BatchSize > 0,
                 "Checkee:BatchSize phai lon hon 0.")
             .Validate(o => o.TimeoutSeconds > 0,

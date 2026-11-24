@@ -39,10 +39,10 @@ public sealed class CheckeeOptions
     public bool Enabled { get; set; } = true;
 
     /// <summary>
-    /// Chu kỳ gửi (phút) — worker gom các mã chưa gửi rồi gửi lên Checkee
-    /// mỗi khoảng thời gian này. Tối thiểu 1 phút.
+    /// Chu kỳ gửi (ms) — worker gom các mã chưa gửi rồi gửi lên Checkee
+    /// mỗi khoảng thời gian này. Mặc định <c>1000</c> ms (1 giây).
     /// </summary>
-    public int SendIntervalMinutes { get; set; } = 15;
+    public int SendIntervalMs { get; set; } = 1000;
 
     /// <summary>
     /// Số mã tối đa gửi trong một lần (một batch). Tối đa 500.
@@ -83,9 +83,9 @@ public sealed class CheckeeOptions
     /// <summary>Base URL đã chuẩn hoá (bỏ dấu '/' cuối).</summary>
     public string ResolveBaseUrl() => BaseUrl.TrimEnd('/');
 
-    /// <summary>Chu kỳ gửi đã chuẩn hoá (tối thiểu 1 phút).</summary>
+    /// <summary>Chu kỳ gửi đã chuẩn hoá (tối thiểu 100 ms, tối đa 24 giờ).</summary>
     public TimeSpan ResolveSendInterval() =>
-        TimeSpan.FromMinutes(Math.Clamp(SendIntervalMinutes, 1, 24 * 60));
+        TimeSpan.FromMilliseconds(Math.Clamp(SendIntervalMs, 100, 86_400_000));
 
     /// <summary>Timeout đã chuẩn hoá (tối thiểu 5 giây).</summary>
     public TimeSpan ResolveTimeout() =>

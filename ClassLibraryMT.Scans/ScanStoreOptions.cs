@@ -22,9 +22,9 @@ public sealed class ScanStoreOptions
 
     /// <summary>
     /// Chu kỳ (ms) flush batch xuống database khi chưa đủ <see cref="BatchSize"/>.
-    /// Mặc định <c>1000</c>.
+    /// Mặc định <c>100</c>.
     /// </summary>
-    public int FlushIntervalMs { get; set; } = 1000;
+    public int FlushIntervalMs { get; set; } = 100;
 
     /// <summary>
     /// Sức chứa tối đa của hàng đợi ghi bất đồng bộ.

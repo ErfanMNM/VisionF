@@ -215,7 +215,7 @@ public sealed class PrintConfig
 /// Cấu hình kết nối Checkee Middleware API (mục "Checkee").
 ///
 /// Khớp với <c>ClassLibraryMT.Checkee.CheckeeOptions</c> — địa chỉ host,
-/// API key / client id, chu kỳ gửi mã (phút), số mã mỗi batch và các thông số
+/// API key / client id, chu kỳ gửi mã (ms), số mã mỗi batch và các thông số
 /// phụ (GTIN / loại mã / mã lô).
 /// </summary>
 [ConfigSection(
@@ -238,8 +238,8 @@ public sealed class CheckeeConfig
     [ConfigField("Bật gửi mã", Order = 4, RequiresRestart = true, HelpText = "Bật worker gửi mã đã quét lên Checkee theo chu kỳ.")]
     [JsonPropertyName("Enabled")] public bool Enabled { get; set; } = true;
 
-    [ConfigField("Chu kỳ gửi (phút)", Order = 5, Min = 1, Max = 1440, RequiresRestart = true, HelpText = "Số phút giữa hai lần gửi mã lên Checkee.")]
-    [JsonPropertyName("SendIntervalMinutes")] public int SendIntervalMinutes { get; set; } = 15;
+    [ConfigField("Chu kỳ gửi (ms)", Order = 5, Min = 100, Max = 86400000, RequiresRestart = true, HelpText = "Số mili-giây giữa hai lần gửi mã lên Checkee (mặc định 1000 ms).")]
+    [JsonPropertyName("SendIntervalMs")] public int SendIntervalMs { get; set; } = 1000;
 
     [ConfigField("Số mã / lần gửi", Order = 6, Min = 1, Max = 500, RequiresRestart = true, HelpText = "Số mã tối đa gửi trong một chu kỳ.")]
     [JsonPropertyName("BatchSize")] public int BatchSize { get; set; } = 100;
@@ -470,7 +470,7 @@ public sealed class ScanConfig
     [JsonPropertyName("BatchSize")] public int BatchSize { get; set; } = 100;
 
     [ConfigField("Chu kỳ flush (ms)", Order = 3, Min = 1, Max = 600000, RequiresRestart = true)]
-    [JsonPropertyName("FlushIntervalMs")] public int FlushIntervalMs { get; set; } = 1000;
+    [JsonPropertyName("FlushIntervalMs")] public int FlushIntervalMs { get; set; } = 100;
 
     [ConfigField("Dung lượng hàng đợi", Order = 4, Min = 1, Max = 10000000, RequiresRestart = true)]
     [JsonPropertyName("QueueCapacity")] public int QueueCapacity { get; set; } = 20_000;

@@ -222,7 +222,7 @@ public static class TanTienAppServices
         // Worker gửi mã kích hoạt PO định kỳ (>2s/lần).
         services.AddHostedService<PoActivationWorker>();
 
-        // Worker gửi mã đã quét lên Checkee định kỳ (Checkee:SendIntervalMinutes).
+        // Worker gửi mã đã quét lên Checkee định kỳ (Checkee:SendIntervalMs).
         // Đăng ký singleton + hosted service để UI đọc được trạng thái worker.
         services.AddSingleton<CheckeeSendWorker>();
         services.AddHostedService(sp => sp.GetRequiredService<CheckeeSendWorker>());

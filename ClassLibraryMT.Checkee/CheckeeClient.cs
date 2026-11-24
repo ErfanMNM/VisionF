@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 
@@ -37,6 +38,11 @@ public sealed class CheckeeClient : IDisposable
 
     /// <summary>Access token đang cache (null = chưa lấy).</summary>
     private string? _accessToken;
+
+    /// <summary>
+    /// Chống nhiều luồng (timer 1s + gửi lại thủ công) cùng lấy token.
+    /// </summary>
+    private readonly SemaphoreSlim _tokenLock = new(1, 1);
 
     /// <summary>
     /// Khởi tạo client với <see cref="HttpClient"/> bên ngoài (dùng chung).
@@ -79,84 +85,102 @@ public sealed class CheckeeClient : IDisposable
     /// <exception cref="CheckeeServerException">
     /// Khi không lấy được token (lỗi mạng, timeout hoặc HTTP != 200).
     /// </exception>
-    public async Task<string> GetAccessTokenAsync(CancellationToken ct = default)
+    public Task<string> GetAccessTokenAsync(CancellationToken ct = default) =>
+        GetAccessTokenAsync(forceRefresh: false, ct);
+
+    /// <summary>
+    /// Lấy token, có thể ép làm mới (dùng khi API trả 401 do token hết hạn).
+    /// </summary>
+    private async Task<string> GetAccessTokenAsync(bool forceRefresh, CancellationToken ct)
     {
-        if (!string.IsNullOrEmpty(_accessToken))
-        {
-            return _accessToken;
-        }
-
-        if (!_options.IsConfigured)
-        {
-            throw new CheckeeServerException(
-                "Chưa cấu hình đầy đủ thông tin Checkee (BaseUrl / ApiKey / ClientId). "
-                + "Vào tab Cấu hình để bổ sung.");
-        }
-
-        using var request = new HttpRequestMessage(HttpMethod.Get, TokenPath);
-
-        // Header theo spec: x-client-id + x-api-key (KHÔNG dùng Bearer token).
-        request.Headers.TryAddWithoutValidation("x-client-id", _options.ClientId);
-        request.Headers.TryAddWithoutValidation("x-api-key", _options.ApiKey);
-
-        HttpResponseMessage response;
+        await _tokenLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            response = await _http
-                .SendAsync(request, HttpCompletionOption.ResponseContentRead, ct)
-                .ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (OperationCanceledException ex)
-        {
-            throw new CheckeeServerException(
-                "Checkee không phản hồi (quá thời gian chờ).", ex);
-        }
-        catch (HttpRequestException ex)
-        {
-            throw new CheckeeServerException(
-                "Không kết nối được tới Checkee. Kiểm tra mạng và địa chỉ (Checkee:BaseUrl).", ex);
-        }
-
-        using (response)
-        {
-            var body = await ReadBodyAsync(response, ct).ConfigureAwait(false);
-
-            if (!response.IsSuccessStatusCode)
+            if (!forceRefresh && !string.IsNullOrEmpty(_accessToken))
             {
-                var message = DescribeError(response.StatusCode, body);
-                throw new CheckeeServerException(message, (int)response.StatusCode);
+                return _accessToken;
             }
 
-            CheckeeResponse<CheckeeTokenData>? parsed;
-            try
-            {
-                parsed = await response.Content
-                    .ReadFromJsonAsync(
-                        CheckeeJsonContext.Default.CheckeeResponseCheckeeTokenData,
-                        ct)
-                    .ConfigureAwait(false);
-            }
-            catch (JsonException ex)
+            // Bỏ token cũ trước khi lấy cái mới (tránh dùng lại token hết hạn
+            // nếu lượt lấy mới thất bại).
+            _accessToken = null;
+
+            if (!_options.IsConfigured)
             {
                 throw new CheckeeServerException(
-                    "Dữ liệu Checkee trả về không hợp lệ (không đọc được access token).", ex);
+                    "Chưa cấu hình đầy đủ thông tin Checkee (BaseUrl / ApiKey / ClientId). "
+                    + "Vào tab Cấu hình để bổ sung.");
             }
 
-            var token = parsed?.Data?.Token;
-            if (string.IsNullOrWhiteSpace(token))
+            using var request = new HttpRequestMessage(HttpMethod.Get, TokenPath);
+
+            // Header theo spec: x-client-id + x-api-key (KHÔNG dùng Bearer token).
+            request.Headers.TryAddWithoutValidation("x-client-id", _options.ClientId);
+            request.Headers.TryAddWithoutValidation("x-api-key", _options.ApiKey);
+
+            HttpResponseMessage response;
+            try
             {
-                var message = string.IsNullOrWhiteSpace(parsed?.Message)
-                    ? "Checkee không trả về access token."
-                    : $"Checkee không trả về access token: {parsed!.Message}";
-                throw new CheckeeServerException(message, (int)response.StatusCode);
+                response = await _http
+                    .SendAsync(request, HttpCompletionOption.ResponseContentRead, ct)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (OperationCanceledException ex)
+            {
+                throw new CheckeeServerException(
+                    "Checkee không phản hồi (quá thời gian chờ).", ex);
+            }
+            catch (HttpRequestException ex)
+            {
+                throw new CheckeeServerException(
+                    "Không kết nối được tới Checkee. Kiểm tra mạng và địa chỉ (Checkee:BaseUrl).", ex);
             }
 
-            _accessToken = token;
-            return token;
+            using (response)
+            {
+                var body = await ReadBodyAsync(response, ct).ConfigureAwait(false);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var message = DescribeError(response.StatusCode, body);
+                    throw new CheckeeServerException(message, (int)response.StatusCode);
+                }
+
+                CheckeeResponse<CheckeeTokenData>? parsed;
+                try
+                {
+                    parsed = await response.Content
+                        .ReadFromJsonAsync(
+                            CheckeeJsonContext.Default.CheckeeResponseCheckeeTokenData,
+                            ct)
+                        .ConfigureAwait(false);
+                }
+                catch (JsonException ex)
+                {
+                    throw new CheckeeServerException(
+                        "Dữ liệu Checkee trả về không hợp lệ (không đọc được access token).", ex);
+                }
+
+                var token = parsed?.Data?.Token;
+                if (string.IsNullOrWhiteSpace(token))
+                {
+                    var message = string.IsNullOrWhiteSpace(parsed?.Message)
+                        ? "Checkee không trả về access token."
+                        : $"Checkee không trả về access token: {parsed!.Message}";
+                    throw new CheckeeServerException(message, (int)response.StatusCode);
+                }
+
+                _accessToken = token;
+                return token;
+            }
+        }
+        finally
+        {
+            _tokenLock.Release();
         }
     }
 
@@ -196,26 +220,7 @@ public sealed class CheckeeClient : IDisposable
             };
         }
 
-        string token;
-        try
-        {
-            token = await GetAccessTokenAsync(ct).ConfigureAwait(false);
-        }
-        catch (CheckeeServerException ex)
-        {
-            // Không lấy được token -> không gửi được. Giữ mã ở trạng thái chờ
-            // nếu lỗi tạm thời (mạng / timeout).
-            return new CheckeeSendResult
-            {
-                Ok = false,
-                StatusCode = ex.StatusCode,
-                Message = ex.Message,
-                RawMessage = ex.Message,
-                IsTransient = ex.IsTransient,
-            };
-        }
-
-        var request = new CheckeeActivateRequest
+        var payload = new CheckeeActivateRequest
         {
             Gtin = gtin ?? string.Empty,
             BatchCode = batchCode ?? string.Empty,
@@ -223,97 +228,143 @@ public sealed class CheckeeClient : IDisposable
             SerialNumbers = [.. serialNumbers],
         };
 
-        using var content = JsonContent.Create(
-            request,
-            CheckeeJsonContext.Default.CheckeeActivateRequest);
-
-        HttpResponseMessage response;
-        try
+        // Tối đa 2 lần: nếu token hết hạn (401) thì ép lấy token mới rồi gửi lại.
+        for (var attempt = 0; attempt < 2; attempt++)
         {
-            response = await _http
-                .PostAsync(ActivatePath, content, ct)
-                .ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (OperationCanceledException ex)
-        {
-            return new CheckeeSendResult
-            {
-                Ok = false,
-                StatusCode = 0,
-                Message = "Checkee không phản hồi (quá thời gian chờ). Sẽ thử gửi lại ở chu kỳ sau.",
-                RawMessage = ex.Message,
-                IsTransient = true,
-            };
-        }
-        catch (HttpRequestException ex)
-        {
-            return new CheckeeSendResult
-            {
-                Ok = false,
-                StatusCode = 0,
-                Message = "Không kết nối được tới Checkee. Sẽ thử gửi lại ở chu kỳ sau.",
-                RawMessage = ex.Message,
-                IsTransient = true,
-            };
-        }
-
-        using (response)
-        {
-            var body = await ReadBodyAsync(response, ct).ConfigureAwait(false);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                return new CheckeeSendResult
-                {
-                    Ok = false,
-                    StatusCode = (int)response.StatusCode,
-                    Message = DescribeError(response.StatusCode, body),
-                    RawMessage = body,
-                    IsTransient = false,
-                };
-            }
-
-            // HTTP 200 nhưng body có status=false -> vẫn là lỗi nghiệp vụ.
-            CheckeeResponse<CheckeeActiveData>? parsed = null;
+            string token;
             try
             {
-                parsed = await response.Content
-                    .ReadFromJsonAsync(
-                        CheckeeJsonContext.Default.CheckeeResponseCheckeeActiveData,
-                        ct)
-                    .ConfigureAwait(false);
+                token = await GetAccessTokenAsync(forceRefresh: attempt > 0, ct).ConfigureAwait(false);
             }
-            catch (JsonException)
+            catch (CheckeeServerException ex)
             {
-                // Body không đọc được -> coi như thành công (HTTP 200 đã đúng).
+                // Không lấy được token -> không gửi được. Giữ mã ở trạng thái chờ
+                // nếu lỗi tạm thời (mạng / timeout).
+                return new CheckeeSendResult
+                {
+                    Ok = false,
+                    StatusCode = ex.StatusCode,
+                    Message = ex.Message,
+                    RawMessage = ex.Message,
+                    IsTransient = ex.IsTransient,
+                };
             }
 
-            if (parsed is not null && !parsed.Status && !string.IsNullOrWhiteSpace(parsed.Message))
+            // Mỗi lần thử cần một content mới (content bị dispose cùng request).
+            using var content = JsonContent.Create(
+                payload,
+                CheckeeJsonContext.Default.CheckeeActivateRequest);
+
+            // Header theo spec cho API nghiệp vụ: Bearer token + x-api-key.
+            // Token trả về đã có tiền tố "accessToken=" -> "Bearer accessToken=<JWT>".
+            using var request = new HttpRequestMessage(HttpMethod.Post, ActivatePath)
+            {
+                Content = content,
+            };
+            request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {token}");
+            request.Headers.TryAddWithoutValidation("x-api-key", _options.ApiKey);
+
+            HttpResponseMessage response;
+            try
+            {
+                response = await _http.SendAsync(request, ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (OperationCanceledException ex)
             {
                 return new CheckeeSendResult
                 {
                     Ok = false,
-                    StatusCode = (int)response.StatusCode,
-                    Message = DescribeError(response.StatusCode, parsed.Message),
-                    RawMessage = parsed.Message,
-                    IsTransient = false,
+                    StatusCode = 0,
+                    Message = "Checkee không phản hồi (quá thời gian chờ). Sẽ thử gửi lại ở chu kỳ sau.",
+                    RawMessage = ex.Message,
+                    IsTransient = true,
+                };
+            }
+            catch (HttpRequestException ex)
+            {
+                return new CheckeeSendResult
+                {
+                    Ok = false,
+                    StatusCode = 0,
+                    Message = "Không kết nối được tới Checkee. Sẽ thử gửi lại ở chu kỳ sau.",
+                    RawMessage = ex.Message,
+                    IsTransient = true,
                 };
             }
 
-            var activated = parsed?.Data?.ActiveSerials ?? serialNumbers.Count;
-
-            return new CheckeeSendResult
+            using (response)
             {
-                Ok = true,
-                StatusCode = (int)response.StatusCode,
-                Message = $"Đã gửi {activated} mã lên Checkee.",
-                RawMessage = parsed?.Message ?? string.Empty,
-            };
+                if (response.StatusCode == HttpStatusCode.Unauthorized && attempt == 0)
+                {
+                    // Token hết hạn/không hợp lệ -> vòng sau làm mới rồi gửi lại.
+                    continue;
+                }
+
+                var body = await ReadBodyAsync(response, ct).ConfigureAwait(false);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    return new CheckeeSendResult
+                    {
+                        Ok = false,
+                        StatusCode = (int)response.StatusCode,
+                        Message = DescribeError(response.StatusCode, body),
+                        RawMessage = body,
+                        IsTransient = false,
+                    };
+                }
+
+                // HTTP 200 nhưng body có status=false -> vẫn là lỗi nghiệp vụ.
+                CheckeeResponse<CheckeeActiveData>? parsed = null;
+                try
+                {
+                    parsed = await response.Content
+                        .ReadFromJsonAsync(
+                            CheckeeJsonContext.Default.CheckeeResponseCheckeeActiveData,
+                            ct)
+                        .ConfigureAwait(false);
+                }
+                catch (JsonException)
+                {
+                    // Body không đọc được -> coi như thành công (HTTP 200 đã đúng).
+                }
+
+                if (parsed is not null && !parsed.Status && !string.IsNullOrWhiteSpace(parsed.Message))
+                {
+                    return new CheckeeSendResult
+                    {
+                        Ok = false,
+                        StatusCode = (int)response.StatusCode,
+                        Message = DescribeError(response.StatusCode, parsed.Message),
+                        RawMessage = parsed.Message,
+                        IsTransient = false,
+                    };
+                }
+
+                var activated = parsed?.Data?.ActiveSerials ?? serialNumbers.Count;
+
+                return new CheckeeSendResult
+                {
+                    Ok = true,
+                    StatusCode = (int)response.StatusCode,
+                    Message = $"Đã gửi {activated} mã lên Checkee.",
+                    RawMessage = parsed?.Message ?? string.Empty,
+                };
+            }
         }
+
+        return new CheckeeSendResult
+        {
+            Ok = false,
+            StatusCode = 401,
+            Message = "Xác thực Checkee thất bại sau khi làm mới token.",
+            RawMessage = "Unauthorized",
+            IsTransient = false,
+        };
     }
 
     /// <summary>
@@ -430,5 +481,6 @@ public sealed class CheckeeClient : IDisposable
         {
             _http.Dispose();
         }
+        _tokenLock.Dispose();
     }
 }

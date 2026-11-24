@@ -171,7 +171,7 @@ internal sealed class ScanRecordWriter : IScanRecordWriter, IDisposable
             {
                 // Chờ có phần tử mới, nhưng không lâu hơn 1/4 chu kỳ flush
                 // để batch luôn được đẩy xuống đúng nhịp.
-                var waitMs = Math.Max(50, _opt.FlushIntervalMs / 4);
+                var waitMs = Math.Max(10, _opt.FlushIntervalMs / 4);
                 using var waitCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 waitCts.CancelAfter(waitMs);
 

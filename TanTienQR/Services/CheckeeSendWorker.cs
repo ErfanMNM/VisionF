@@ -10,8 +10,8 @@ namespace TanTienQR.Services;
 /// Worker nền gửi mã đã quét (kích hoạt) lên Checkee Middleware API.
 ///
 /// <para>
-/// Mỗi chu kỳ (<see cref="CheckeeOptions.SendIntervalMinutes"/>, mặc định 15
-/// phút), worker gom các mã CHƯA gửi (<c>SendStatus = Pending</c>) rồi gửi
+/// Mỗi chu kỳ (<see cref="CheckeeOptions.SendIntervalMs"/>, mặc định 1000 ms),
+/// worker gom các mã CHƯA gửi (<c>SendStatus = Pending</c>) rồi gửi
 /// lên <c>POST /middleware-api/CTEs/active</c> theo batch, nhóm theo GTIN +
 /// batch code vì API Checkee yêu cầu một GTIN / batchCode cho mỗi request.
 /// </para>
@@ -89,12 +89,12 @@ internal sealed class CheckeeSendWorker : BackgroundService
         var interval = _opt.ResolveSendInterval();
 
         _logger.LogInformation(
-            "CheckeeSendWorker bắt đầu, chu kỳ {Interval} phút, batch tối đa {Batch} mã.",
-            interval.TotalMinutes,
+            "CheckeeSendWorker bắt đầu, chu kỳ {IntervalMs} ms, batch tối đa {Batch} mã.",
+            interval.TotalMilliseconds,
             _opt.BatchSize);
 
         _state.SetStatus(
-            $"Đang chờ chu kỳ gửi mã ({interval.TotalMinutes:0} phút).",
+            $"Đang chờ chu kỳ gửi mã ({interval.TotalMilliseconds:0} ms).",
             isError: false);
 
         using var timer = new PeriodicTimer(interval);
