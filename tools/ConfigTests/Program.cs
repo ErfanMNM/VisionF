@@ -229,42 +229,51 @@ Check("Khong doi gi -> khong co thay doi", ConfigDiff.DescribeCriticalChanges(be
 after = NewSnapshot();
 after.Camera.Ip = "10.0.0.9";
 var diff = ConfigDiff.DescribeCriticalChanges(before, after);
-Check("Doi IP camera -> co thay doi", diff.Contains("IP đầu đọc"), string.Join(",", diff));
+Check("Doi IP camera -> hot-apply, khong restart", diff.Count == 0, string.Join(",", diff));
 
 after = NewSnapshot();
 after.Camera.Port = 9001;
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
-Check("Doi Port camera -> co thay doi", diff.Contains("Port TCP"), string.Join(",", diff));
+Check("Doi Port camera -> hot-apply, khong restart", diff.Count == 0, string.Join(",", diff));
 
 after = NewSnapshot();
 after.Plc.Ip = "10.0.0.10";
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
-Check("Doi IP PLC -> co thay doi", diff.Contains("IP PLC"), string.Join(",", diff));
+Check("Doi IP PLC -> hot-apply, khong restart", diff.Count == 0, string.Join(",", diff));
 
 after = NewSnapshot();
 after.Plc.Port = 9601;
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
-Check("Doi Port PLC -> co thay doi", diff.Contains("Port FINS"), string.Join(",", diff));
+Check("Doi Port PLC -> hot-apply, khong restart", diff.Count == 0, string.Join(",", diff));
 
 after = NewSnapshot();
 after.Plc.TimeoutMs = 2000;
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
-Check("Doi Timeout PLC -> co thay doi", diff.Contains("Timeout (ms)"), string.Join(",", diff));
+Check("Doi Timeout PLC -> hot-apply, khong restart", diff.Count == 0, string.Join(",", diff));
 
 after = NewSnapshot();
 after.Plc.Retries = 3;
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
-Check("Doi Retries PLC -> co thay doi", diff.Contains("Số lần thử lại"), string.Join(",", diff));
+Check("Doi Retries PLC -> hot-apply, khong restart", diff.Count == 0, string.Join(",", diff));
 
 after = NewSnapshot();
 after.Plc.ResultAddress = "D20";
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
-Check("Doi dia chi vung D -> co thay doi", diff.Contains("Kết quả (1/0)"), string.Join(",", diff));
+Check("Doi dia chi ket qua PLC -> hot-apply, khong restart", diff.Count == 0, string.Join(",", diff));
 
 after = NewSnapshot();
 after.Plc.RefreshIntervalMs = 1500;
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
-Check("Doi chu ky heartbeat -> co thay doi", diff.Contains("Chu kỳ heartbeat (ms)"), string.Join(",", diff));
+Check("Doi chu ky heartbeat -> hot-apply, khong restart", diff.Count == 0, string.Join(",", diff));
+
+after = NewSnapshot();
+after.Plc.Enabled = false;
+after.Plc.RemoteNode = 7;
+after.Plc.LocalNode = 8;
+after.Plc.ReadyAddress = "D30";
+diff = ConfigDiff.DescribeCriticalChanges(before, after);
+Check("Bat/tat PLC, node va dia chi Ready deu hot-apply", diff.Count == 0, string.Join(",", diff));
+Check("Thong so PLC hot-apply van danh dau dirty", !ConfigDiff.AreEquivalent(before, after));
 
 after = NewSnapshot();
 after.Scanner.TcpHost = "10.0.0.20";
@@ -311,14 +320,40 @@ after.Auth.SeedAdminPassword = "changed-secret";
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
 Check("Doi seed password -> co thay doi restart", diff.Contains("Mật khẩu seed"), string.Join(",", diff));
 
-// Duplicate window nằm trong CameraOptions -> đọc lúc start nên cũng cần restart.
+// Toàn bộ mục Camera được áp dụng cùng kết nối, bao gồm cửa sổ trùng mã.
 after = NewSnapshot();
 after.Camera.DuplicateWindowSeconds = 60;
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
 Check(
-    "Doi duplicate window -> bat buoc restart",
-    diff.Contains("Cửa sổ trùng mã (giây)"),
+    "Doi duplicate window -> hot-apply, khong restart",
+    diff.Count == 0,
     string.Join(",", diff));
+Check("Duplicate window van la thay doi can luu", !ConfigDiff.AreEquivalent(before, after));
+
+after.Scanner.TcpPort++;
+diff = ConfigDiff.DescribeCriticalChanges(before, after);
+Check("Doi Camera cung Scanner chi yeu cau restart Scanner",
+    diff.Count == 1 && diff.Contains("Port TCP"), string.Join(",", diff));
+
+Console.WriteLine("\n[4b] Noi dung xac nhan chi gom thong so Camera/PLC");
+after = NewSnapshot();
+after.Camera.Ip = "10.0.0.9";
+after.Plc.TimeoutMs = 2000;
+after.Scanner.TcpPort = 7001;
+after.Auth.SeedAdminPassword = "secret-must-not-appear";
+var connectionChanges = DeviceConfigurationChanges.Describe(before, after);
+Check("Camera va PLC cung co trong mot danh sach xac nhan", connectionChanges.Count == 2
+    && connectionChanges.Any(change => change.Contains("IP đầu đọc"))
+    && connectionChanges.Any(change => change.Contains("Timeout (ms)")), string.Join(",", connectionChanges));
+Check("Xac nhan ket noi khong dua cac muc khac hoac mat khau vao noi dung",
+    !string.Join("\n", connectionChanges).Contains("secret-must-not-appear")
+    && connectionChanges.All(change => change.StartsWith("Camera", StringComparison.Ordinal)
+        || change.StartsWith("PLC", StringComparison.Ordinal)));
+Check("Loc theo Camera/PLC dung section", DeviceConfigurationChanges.Describe(before, after, "Camera").Count == 1
+    && DeviceConfigurationChanges.Describe(before, after, "Plc").Count == 1);
+after = NewSnapshot();
+after.Scanner.TcpPort = 7001;
+Check("Chi doi Scanner khong tao xac nhan Camera/PLC", DeviceConfigurationChanges.Describe(before, after).Count == 0);
 
 // ---------------------------------------------------------------
 // [5] ConfigDiff.AreEquivalent (cờ "chưa lưu")

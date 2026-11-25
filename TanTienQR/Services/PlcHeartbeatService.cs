@@ -5,86 +5,75 @@ using Microsoft.Extensions.Options;
 
 namespace TanTienQR.Services;
 
-/// <summary>
-/// Vòng lặp nền ghi trạng thái Ready xuống PLC (D16) — tương đương vòng
-/// lặp <c>WK_Update</c> của dự án TApp.
-///
-/// Mỗi vòng luôn ghi giá trị hiện tại (0 hoặc 1) xuống D16. Chính kết quả
-/// của lệnh ghi quyết định trạng thái kết nối PLC: ghi thành công thì
-/// <see cref="PLCStatus.Connected"/>, ghi lỗi thì <see cref="PLCStatus.Disconnect"/>.
-///
-/// Vì vậy vòng lặp phải luôn chạy (kể cả khi chưa Ready) — nếu chỉ ghi lúc
-/// Ready thì không bao giờ phát hiện được kết nối PLC.
-/// </summary>
+/// <summary>Heartbeat Ready sống suốt vòng đời app, kể cả khi PLC bắt đầu ở chế độ tắt.</summary>
 internal sealed class PlcHeartbeatService : BackgroundService
 {
     private readonly PlcWriter _writer;
-    private readonly PlcOptions _opt;
     private readonly ILogger<PlcHeartbeatService> _logger;
 
-    public PlcHeartbeatService(
-        PlcWriter writer,
-        IOptions<PlcOptions> options,
+    public PlcHeartbeatService(PlcWriter writer, IOptions<PlcOptions> options,
         ILogger<PlcHeartbeatService> logger)
     {
         _writer = writer;
-        _opt = options.Value;
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (!_opt.Enabled)
-            return;
-
-        var interval = TimeSpan.FromMilliseconds(_opt.RefreshIntervalMs);
-
-        // PeriodicTimer là BCL, không cần package thêm.
-        using var timer = new PeriodicTimer(interval);
-
         try
         {
-            // Ghi ngay một lần khi khởi động để xác định trạng thái kết nối PLC.
-            await TickAsync(stoppingToken);
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                using var wait = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                var changed = _writer.WaitForConfigurationChangeAsync(wait.Token);
+                try
+                {
+                    if (_writer.Enabled) await TickAsync(stoppingToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    wait.Cancel();
+                    try { await changed.ConfigureAwait(false); } catch (OperationCanceledException) { }
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    // Lỗi ngoài dự kiến chỉ bỏ tick này; không làm worker chết.
+                    _logger.LogError(ex, "Heartbeat PLC gặp lỗi; sẽ thử lại ở chu kỳ tiếp theo.");
+                }
 
-            while (await timer.WaitForNextTickAsync(stoppingToken))
-                await TickAsync(stoppingToken);
+                var interval = _writer.Enabled
+                    ? TimeSpan.FromMilliseconds(Math.Max(1, _writer.RefreshIntervalMs))
+                    : Timeout.InfiniteTimeSpan;
+                var delay = Task.Delay(interval, wait.Token);
+                try
+                {
+                    await Task.WhenAny(changed, delay).ConfigureAwait(false);
+                    stoppingToken.ThrowIfCancellationRequested();
+                }
+                finally
+                {
+                    // Hủy cả waiter và timer còn lại, không tích lũy callback
+                    // qua nhiều lần bật/tắt hoặc thay chu kỳ heartbeat.
+                    wait.Cancel();
+                    try { await Task.WhenAll(changed, delay).ConfigureAwait(false); }
+                    catch (OperationCanceledException) when (wait.IsCancellationRequested) { }
+                }
+            }
         }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-            // Shutdown bình thường.
-        }
-        catch (Exception ex)
-        {
-            // KHÔNG để exception làm service chết.
-            //
-            // Mặc định BackgroundService ném exception sẽ kích hoạt
-            // BackgroundServiceExceptionBehavior.StopHost -> DỪNG CẢ APP, mất
-            // luôn heartbeat. Lỗi ghi PLC (timeout, PLC tắt) là chuyện bình
-            // thường và PHẢI được xử lý ở tầng "ghi thất bại" chứ không phải
-            // làm sập app.
-            _logger.LogError(ex, "Heartbeat PLC gặp lỗi ngoài dự kiến, vòng lặp sẽ dừng.");
-        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
     }
 
     private async Task TickAsync(CancellationToken ct)
     {
-        // Ready được tính tự động từ e_AppState (license + camera + PLC).
-        var ready = GlobalVariables.Ready;
-
         var before = GlobalVariables.PLCStatus;
-        await _writer.WriteReadyAsync(ready, ct);
+        await _writer.WriteReadyAsync(GlobalVariables.Ready, ct).ConfigureAwait(false);
         var after = GlobalVariables.PLCStatus;
-
-        // Không spam log mỗi vòng: chỉ log khi trạng thái vừa đổi.
         if (after == PLCStatus.Connected)
         {
-            if (before != PLCStatus.Connected)
-                _logger.LogInformation("PLC da ket noi.");
-            return;
+            if (before != PLCStatus.Connected) _logger.LogInformation("PLC da ket noi.");
         }
-
-        if (before == PLCStatus.Connected)
+        else if (before == PLCStatus.Connected)
             _logger.LogWarning("PLC mat ket noi.");
     }
 }

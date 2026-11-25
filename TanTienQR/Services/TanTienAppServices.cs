@@ -52,6 +52,7 @@ public static class TanTienAppServices
 
         // ---- Quản lý tham số PLC & recipe (tab "Chỉnh PLC") ----
         services.AddPlcSettings(configuration);
+        services.AddSingleton<IPlcMemoryClientFactory, RuntimePlcMemoryClientFactory>();
 
         // ---- Quản lý Production Order (PO) ----
         // Đăng ký TRƯỚC CameraSignalWorker vì worker này cần
@@ -145,7 +146,8 @@ public static class TanTienAppServices
                 opt.RemoteNode,
                 opt.LocalNode,
                 opt.TimeoutMs,
-                opt.Retries);
+                opt.Retries,
+                opt.Enabled);
         });
 
         // PlcWriter: serialize các lệnh ghi vì OmronPlc không thread-safe.
@@ -212,6 +214,7 @@ public static class TanTienAppServices
                 string.IsNullOrWhiteSpace(basePath) ? AppContext.BaseDirectory : basePath);
         });
         services.AddSingleton<ConfigEditorViewModel>();
+        services.AddSingleton<IDeviceConfigurationApplier, DeviceConfigurationApplier>();
 
         // ---- Worker chạy nền ----
         services.AddSingleton<CameraSignalWorker>();

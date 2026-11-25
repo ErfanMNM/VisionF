@@ -60,15 +60,18 @@ public sealed partial class OmronPlc
     /// </summary>
     public PlcResult WriteBool(string address, bool value)
     {
-        if (!FinsAddress.TryParse(address, out var parsed) || !parsed.IsBit)
-            return PlcResult.Fail("ARG", $"Địa chỉ bit không hợp lệ: '{address}'.", default);
+        lock (_sync)
+        {
+            if (!FinsAddress.TryParse(address, out var parsed) || !parsed.IsBit)
+                return PlcResult.Fail("ARG", $"Địa chỉ bit không hợp lệ: '{address}'.", default);
 
-        var read = ReadWordsAt(parsed.WordAddress, 1);
-        if (!read.IsSuccess)
-            return PlcResult.Fail(read.ErrorCode, read.Message, read.ProcessTime);
+            var read = ReadWordsAt(parsed.WordAddress, 1);
+            if (!read.IsSuccess)
+                return PlcResult.Fail(read.ErrorCode, read.Message, read.ProcessTime);
 
-        var updated = FinsData.SetBit(read.Value![0], parsed.BitAddress!.Value, value);
-        return WriteWordsCore(parsed.WordAddress, [updated], read.ProcessTime);
+            var updated = FinsData.SetBit(read.Value![0], parsed.BitAddress!.Value, value);
+            return WriteWordsCore(parsed.WordAddress, [updated], read.ProcessTime);
+        }
     }
 
     // ------------------------------------------------------------------
@@ -197,32 +200,35 @@ public sealed partial class OmronPlc
     /// </summary>
     public PlcResult WriteBoolArray(string address, bool[] values)
     {
-        if (!FinsAddress.TryParse(address, out var parsed) || !parsed.IsBit)
-            return PlcResult.Fail("ARG", $"Địa chỉ bit không hợp lệ: '{address}'.", default);
-
-        ArgumentNullException.ThrowIfNull(values);
-
-        if (values.Length == 0)
-            return PlcResult.Fail("ARG", "Mảng bool rỗng.", default);
-
-        var startBit = parsed.BitAddress!.Value;
-        var wordCount = (startBit + values.Length + 15) / 16;
-
-        var read = ReadWordsAt(parsed.WordAddress, wordCount);
-        if (!read.IsSuccess)
-            return PlcResult.Fail(read.ErrorCode, read.Message, read.ProcessTime);
-
-        var words = new ushort[wordCount];
-        read.Value!.CopyTo(words, 0);
-
-        for (var i = 0; i < values.Length; i++)
+        lock (_sync)
         {
-            var absoluteBit = startBit + i;
-            var wordIndex = absoluteBit / 16;
-            words[wordIndex] = FinsData.SetBit(words[wordIndex], absoluteBit % 16, values[i]);
-        }
+            if (!FinsAddress.TryParse(address, out var parsed) || !parsed.IsBit)
+                return PlcResult.Fail("ARG", $"Địa chỉ bit không hợp lệ: '{address}'.", default);
 
-        return WriteWordsCore(parsed.WordAddress, words, read.ProcessTime);
+            ArgumentNullException.ThrowIfNull(values);
+
+            if (values.Length == 0)
+                return PlcResult.Fail("ARG", "Mảng bool rỗng.", default);
+
+            var startBit = parsed.BitAddress!.Value;
+            var wordCount = (startBit + values.Length + 15) / 16;
+
+            var read = ReadWordsAt(parsed.WordAddress, wordCount);
+            if (!read.IsSuccess)
+                return PlcResult.Fail(read.ErrorCode, read.Message, read.ProcessTime);
+
+            var words = new ushort[wordCount];
+            read.Value!.CopyTo(words, 0);
+
+            for (var i = 0; i < values.Length; i++)
+            {
+                var absoluteBit = startBit + i;
+                var wordIndex = absoluteBit / 16;
+                words[wordIndex] = FinsData.SetBit(words[wordIndex], absoluteBit % 16, values[i]);
+            }
+
+            return WriteWordsCore(parsed.WordAddress, words, read.ProcessTime);
+        }
     }
 
     /// <summary>
@@ -263,31 +269,43 @@ public sealed partial class OmronPlc
     /// <summary>Ghi word (noi bo, da kiem tra pham vi).</summary>
     private PlcResult WriteWordsCore(int wordAddress, ReadOnlySpan<ushort> words, TimeSpan elapsed)
     {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        var total = new List<ushort>(words.Length);
-        var offset = 0;
-        var current = wordAddress;
-
-        while (offset < words.Length)
+        lock (_sync)
         {
-            var chunk = Math.Min(words.Length - offset, Fins.MaxWordsPerRequest);
-            var result = _transport.Write(_remoteNode, _localNode, current, words.Slice(offset, chunk));
+            if (_disposed)
+                return PlcResult.Fail("DISPOSED", "Kết nối PLC đã đóng.", default);
+            if (!_enabled)
+                return PlcResult.Fail("DISABLED", "PLC đã tắt.", default);
 
-            if (!result.IsSuccess)
-                return PlcResult.Fail(result.ErrorCode, result.Message, sw.Elapsed + elapsed);
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var total = new List<ushort>(words.Length);
+            var offset = 0;
+            var current = wordAddress;
 
-            offset += chunk;
-            current += chunk;
+            while (offset < words.Length)
+            {
+                var chunk = Math.Min(words.Length - offset, Fins.MaxWordsPerRequest);
+                var result = _transport!.Write(_remoteNode, _localNode, current, words.Slice(offset, chunk));
+
+                if (!result.IsSuccess)
+                    return PlcResult.Fail(result.ErrorCode, result.Message, sw.Elapsed + elapsed);
+
+                offset += chunk;
+                current += chunk;
+            }
+
+            return PlcResult.Ok("OK", sw.Elapsed + elapsed);
         }
-
-        return PlcResult.Ok("OK", sw.Elapsed + elapsed);
     }
 
     /// <summary>Dong ket noi UDP.</summary>
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
-        _transport.Dispose();
+        lock (_sync)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _transport?.Dispose();
+            _transport = null;
+        }
     }
 }

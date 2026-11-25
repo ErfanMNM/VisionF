@@ -13,6 +13,8 @@
   <Project Path="TanTienQR/TanTienQR.csproj" />
   <Project Path="tools/AccountsIconTests/AccountsIconTests.csproj" />
   <Project Path="tools/ConfigTests/ConfigTests.csproj" />
+  <Project Path="tools/CameraHotApplyTests/CameraHotApplyTests.csproj" />
+  <Project Path="tools/DeviceConfigurationTests/DeviceConfigurationTests.csproj" />
   <Project Path="tools/ConfigUiTests/ConfigUiTests.csproj" />
   <Project Path="tools/FullscreenNumpadTests/FullscreenNumpadTests.csproj" />
   <Project Path="tools/HardwareIdTests/HardwareIdTests.csproj" />
@@ -26,6 +28,7 @@
   <Project Path="tools/PoServerTests/e2e/PoServerE2E.csproj" />
   <Project Path="tools/PoServerTests/PoServerTests.csproj" />
   <Project Path="tools/PoTests/PoTests.csproj" />
+  <Project Path="tools/PlcHotApplyTests/PlcHotApplyTests.csproj" />
   <Project Path="tools/PrinterRemoteHost/PrinterRemoteHost.csproj" />
   <Project Path="tools/PrintTests/PrintTests.csproj" />
   <Project Path="tools/TanTienLauncher/TanTienLauncher.csproj" />

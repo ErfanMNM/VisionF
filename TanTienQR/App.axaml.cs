@@ -234,6 +234,8 @@ public partial class App : Application
             throw new InvalidOperationException("Ứng dụng đang dừng.");
         var updates = _host.Services.GetRequiredService<UpdateClient>();
         updates.EnsureAdmin();
+        if (_host.Services.GetRequiredService<ConfigEditorViewModel>().IsSaving)
+            throw new InvalidOperationException("Đang lưu cấu hình thiết bị. Hãy đợi thao tác hoàn tất trước khi cài cập nhật.");
         if (UpdateProtocol.LauncherSession is null)
             throw new InvalidOperationException("Cần mở ứng dụng bằng TanTienLauncher trước khi cài cập nhật.");
         var dialog = new Window
@@ -268,6 +270,8 @@ public partial class App : Application
         try
         {
             await updates.VerifyInstallAuthorizationAsync(timeout.Token);
+            if (host.Services.GetRequiredService<ConfigEditorViewModel>().IsSaving)
+                throw new InvalidOperationException("Đang lưu cấu hình thiết bị. Hãy đợi thao tác hoàn tất trước khi cài cập nhật.");
             if (!await po.TryEnterUpdateMaintenanceAsync(timeout.Token))
                 throw new InvalidOperationException("Còn lệnh sản xuất đang chạy hoặc dở dang. Hãy hoàn tất hoặc hủy lệnh trước.");
             enteredMaintenance = true;

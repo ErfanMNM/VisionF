@@ -24,11 +24,8 @@ namespace TanTienQR.ViewModels;
 /// giữa appsettings.json và appsettings.Development.json) nên form hiển thị
 /// đúng giá trị đang chạy. <see cref="Save"/> ghi xuống appsettings.json.
 ///
-/// Lưu ý: <c>OmronPlc</c>, <c>Reader</c> và <c>HandheldScannerService</c> là
-/// singleton được tạo một lần khi app khởi động, nên thay đổi thông số kết nối
-/// (IP/host/port/timeout/...) chỉ có hiệu lực sau khi khởi động lại ứng dụng.
-/// Vì vậy sau khi lưu có thay đổi quan trọng, ứng dụng đánh dấu trạng thái
-/// "cần restart" và hiển thị banner kèm nút <c>Restart Now</c> / <c>Restart Later</c>.
+/// Camera và PLC hỗ trợ áp dụng nóng sau khi người vận hành xác nhận; các
+/// nhóm cấu hình khác vẫn hiển thị trạng thái khởi động lại khi cần.
 ///
 /// ===== THÊM SETTING MỚI =====
 /// 1) Thêm property vào class section trong <c>Services/AppConfigModels.cs</c>
@@ -47,6 +44,13 @@ internal partial class ConfigEditorViewModel : ViewModelBase
     private readonly ConfigStore _store;
     private readonly IConfiguration _configuration;
     private readonly IUserActionLogger _actionLog;
+    private readonly IDeviceConfigurationApplier _deviceApplier;
+    private bool _loaded;
+
+    /// <summary>Chủ cửa sổ gắn callback; thiếu xác nhận thì không đổi thiết bị.</summary>
+    public Func<string, Task<bool>>? ConfirmConnectionChangesAsync { get; set; }
+
+    public event EventHandler? DeviceConfigurationApplied;
 
     /// <summary>
     /// Bản chụp cấu hình đang chạy tại thời điểm nạp form — dùng làm mốc so sánh
@@ -63,11 +67,13 @@ internal partial class ConfigEditorViewModel : ViewModelBase
     public ConfigEditorViewModel(
         ConfigStore store,
         IConfiguration configuration,
-        IUserActionLogger actionLog)
+        IUserActionLogger actionLog,
+        IDeviceConfigurationApplier deviceApplier)
     {
         _store = store;
         _configuration = configuration;
         _actionLog = actionLog;
+        _deviceApplier = deviceApplier;
 
         BuildSectionsFromSchema();
     }
@@ -162,6 +168,7 @@ internal partial class ConfigEditorViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsDirty))]
     [NotifyPropertyChangedFor(nameof(DirtyBadgeText))]
     [NotifyPropertyChangedFor(nameof(CanSave))]
+    [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
     public partial bool HasUnsavedChanges { get; set; }
 
     /// <summary>True khi có thay đổi chưa lưu.</summary>
@@ -190,25 +197,37 @@ internal partial class ConfigEditorViewModel : ViewModelBase
     /// <summary>
     /// True khi nút "Restart Now" được phép bấm (đã có thay đổi chờ restart).
     /// </summary>
-    public bool CanRestartNow => RestartRequired;
+    public bool CanRestartNow => RestartRequired && !IsSaving;
 
     /// <summary>
-    /// True khi được phép áp dụng thay đổi NGAY (hot-apply) mà không cần restart.
-    ///
-    /// Luôn false: các thông số kết nối (camera, PLC, máy quét, server PO, web)
-    /// đều được bind một lần khi app khởi động nên không thể áp dụng nóng.
-    /// UI dùng cờ này để khóa nút Lưu khi không có thay đổi nào để lưu.
+    /// True khi thay đổi Camera/PLC có thể áp dụng ngay sau xác nhận.
+    /// UI vẫn khóa nút Lưu nếu không có thay đổi nào để lưu.
     /// </summary>
-    public bool CanHotApply => false;
+    public bool CanHotApply => true;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanSave))]
+    [NotifyPropertyChangedFor(nameof(CanReset))]
+    [NotifyPropertyChangedFor(nameof(CanRestartNow))]
+    [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ResetCommand))]
+    public partial bool IsSaving { get; set; }
+
+    public bool CanReset => !IsSaving;
 
     /// <summary>
     /// True khi nút "Lưu cấu hình" được phép bấm: chỉ khi form có thay đổi
     /// chưa lưu so với cấu hình đang chạy.
     /// </summary>
-    public bool CanSave => HasUnsavedChanges;
+    public bool CanSave => HasUnsavedChanges && !IsSaving;
 
     /// <summary>Kiểu thông báo hiện tại (thông tin / lỗi).</summary>
-    private MessageKind ConfigMessageKind { get; set; } = MessageKind.Info;
+    private MessageKind _messageKind;
+    private MessageKind ConfigMessageKind
+    {
+        get => _messageKind;
+        set { _messageKind = value; OnPropertyChanged(nameof(HasErrorMessage)); }
+    }
 
     /// <summary>
     /// Nạp cấu hình đang chạy vào form.
@@ -219,6 +238,16 @@ internal partial class ConfigEditorViewModel : ViewModelBase
     /// </summary>
     public void Load()
     {
+        if (_loaded)
+        {
+            foreach (var field in AllFields)
+            {
+                field.SetValueSilently(field.Schema.GetValue(field.Schema.Section.ResolveOwner(_baseline)), resetOriginal: true);
+                field.SetError(null);
+            }
+            HasUnsavedChanges = false;
+            return;
+        }
         var snapshot = _store.Load();
 
         foreach (var field in AllFields)
@@ -237,6 +266,7 @@ internal partial class ConfigEditorViewModel : ViewModelBase
         // Mốc so sánh = cấu hình đang chạy.
         _baseline = BuildSnapshot();
         _runningSnapshot = _baseline;
+        _loaded = true;
 
         ConfigMessageText = string.Empty;
         ConfigMessageKind = MessageKind.Info;
@@ -334,7 +364,7 @@ internal partial class ConfigEditorViewModel : ViewModelBase
     /// <summary>
     /// Hoàn tác các thay đổi chưa lưu về giá trị trong file.
     /// </summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanReset))]
     private void Reset()
     {
         Load();
@@ -380,9 +410,11 @@ internal partial class ConfigEditorViewModel : ViewModelBase
     /// <summary>
     /// Lưu cấu hình xuống <c>appsettings.json</c>.
     /// </summary>
-    [RelayCommand]
-    private void Save()
+    [RelayCommand(CanExecute = nameof(CanSave))]
+    private async Task SaveAsync(CancellationToken cancellationToken)
     {
+        if (!CanSave) return;
+        IsSaving = true;
         try
         {
             if (!Validate())
@@ -391,7 +423,28 @@ internal partial class ConfigEditorViewModel : ViewModelBase
             }
 
             var snapshot = BuildSnapshot();
-            SaveSnapshot(snapshot);
+            var deviceChanges = DeviceConfigurationChanges.Describe(_runningSnapshot, snapshot);
+            if (deviceChanges.Count > 0)
+            {
+                var confirmation = ConfirmConnectionChangesAsync;
+                if (confirmation is null)
+                    throw new InvalidOperationException("Chưa có cửa sổ xác nhận. Hãy mở trang Cấu hình trong ứng dụng để lưu thay đổi Camera/PLC.");
+                var message = "Lưu và áp dụng các thay đổi sau?\n\n" + string.Join("\n", deviceChanges)
+                    + "\n\nKết nối thiết bị sẽ tạm ngắt để chuyển cấu hình. Ứng dụng và phiên đăng nhập vẫn được giữ; thiết bị sẽ tự kết nối lại. Chỉ xác nhận khi dây chuyền có thể tạm dừng nhận mã."
+                    + (HasDevelopmentOverride ? "\n\nLưu ý: cấu hình Development có thể ghi đè các giá trị này ở lần khởi động sau." : "");
+                if (!await confirmation(message).WaitAsync(cancellationToken))
+                {
+                    ConfigMessageKind = MessageKind.Info;
+                    ConfigMessageText = "Đã hủy lưu; cấu hình và kết nối hiện tại được giữ nguyên.";
+                    return;
+                }
+            }
+            await SaveSnapshotAsync(snapshot, deviceChanges.Count > 0, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            ConfigMessageKind = MessageKind.Warning;
+            ConfigMessageText = "Đã dừng thao tác lưu cấu hình.";
         }
         catch (Exception ex)
         {
@@ -403,16 +456,26 @@ internal partial class ConfigEditorViewModel : ViewModelBase
                 $"Loi khong mong doi khi luu: {ex.Message}",
                 UserActionResults.Failed);
         }
+        finally { IsSaving = false; }
     }
 
     /// <summary>
     /// Ghi snapshot đã validate xuống disk và cập nhật trạng thái restart/dirty.
     /// </summary>
     /// <param name="snapshot">Snapshot đã kiểm tra hợp lệ.</param>
-    private void SaveSnapshot(AppConfigSnapshot snapshot)
+    private async Task SaveSnapshotAsync(AppConfigSnapshot snapshot, bool deviceChanged, CancellationToken cancellationToken)
     {
         // Dùng SaveMerged để GIỮ NGUYÊN các key lạ có sẵn trong file.
-        if (!_store.SaveMerged(snapshot))
+        if (deviceChanged)
+        {
+            await _deviceApplier.ApplyAndSaveAsync(snapshot, _runningSnapshot,
+                () => _store.SaveMerged(snapshot), cancellationToken);
+            // Chỉ Camera/PLC đã được áp dụng; giữ runtime thật của các section khác.
+            _runningSnapshot.Camera = snapshot.Camera;
+            _runningSnapshot.Plc = snapshot.Plc;
+            DeviceConfigurationApplied?.Invoke(this, EventArgs.Empty);
+        }
+        else if (!_store.SaveMerged(snapshot))
         {
             ConfigMessageText = "Không ghi được file cấu hình. Kiểm tra quyền truy cập thư mục ứng dụng.";
             ConfigMessageKind = MessageKind.Error;
@@ -431,13 +494,12 @@ internal partial class ConfigEditorViewModel : ViewModelBase
         // Dùng _pendingRestartSnapshot nếu có (trường hợp app được mở lại mà
         // cấu hình đã lưu vẫn chưa được áp dụng), ngược lại so với cấu hình
         // lúc nạp form.
-        var runningSnapshot = _pendingRestartSnapshot ?? _runningSnapshot;
-        var criticalChanges = DescribeCriticalChanges(runningSnapshot, snapshot);
+        var criticalChanges = DescribeCriticalChanges(_runningSnapshot, snapshot);
 
         // Cập nhật giá trị gốc của các trường -> form sạch.
         foreach (var field in AllFields)
         {
-            field.SetValueSilently(field.Value, resetOriginal: true);
+            field.SetValueSilently(field.Schema.GetValue(field.Schema.Section.ResolveOwner(snapshot)), resetOriginal: true);
         }
 
         HasUnsavedChanges = false;
@@ -458,7 +520,8 @@ internal partial class ConfigEditorViewModel : ViewModelBase
             RestartRequired = false;
             RestartBannerText = string.Empty;
             ConfigMessageText = HasDevelopmentOverride
-                ? "Đã lưu cấu hình. Lưu ý: appsettings.Development.json đang tồn tại và sẽ ghi đè các giá trị này khi app khởi động."
+                ? "Đã lưu và áp dụng cấu hình Camera/PLC. Lưu ý: appsettings.Development.json có thể ghi đè ở lần khởi động sau."
+                : deviceChanged ? "Đã lưu và áp dụng cấu hình Camera/PLC ngay. Thiết bị sẽ tự kết nối lại; không cần khởi động lại ứng dụng."
                 : "Đã lưu cấu hình. Thông số không yêu cầu khởi động lại ứng dụng.";
             ConfigMessageKind = MessageKind.Info;
         }
@@ -811,7 +874,7 @@ internal partial class ConfigEditorViewModel : ViewModelBase
 
         var list = string.Join(", ", changes);
         return $"Cần khởi động lại ứng dụng để áp dụng: {list}. "
-            + "Các kết nối camera, PLC và máy quét chỉ được khởi tạo lại khi app khởi động lại.";
+            + "Camera và PLC được áp dụng ngay; các mục liệt kê ở trên sẽ có hiệu lực sau khi khởi động lại.";
     }
 
     /// <summary>Kiểu thông báo.</summary>

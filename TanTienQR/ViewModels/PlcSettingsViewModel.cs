@@ -155,6 +155,13 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
     /// </summary>
     public Uri CameraMonitorUri => BuildCameraUri();
 
+    internal void RefreshCameraConfiguration()
+    {
+        OnPropertyChanged(nameof(CameraMonitorUri));
+        OnPropertyChanged(nameof(CameraMonitorUrl));
+        OnPropertyChanged(nameof(HasCameraUrl));
+    }
+
     /// <summary>URL webview camera dạng chuỗi (để hiển thị trên thanh địa chỉ).</summary>
     public string CameraMonitorUrl => CameraMonitorUri.ToString();
 

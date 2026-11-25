@@ -45,7 +45,7 @@
                     <TextBlock Classes="label"
                                FontSize="13"
                                TextWrapping="Wrap"
-                               Text="Tham số kết nối camera, PLC, máy quét, server PO và web. Thay đổi thông số kết nối sẽ có hiệu lực sau khi khởi động lại ứng dụng." />
+                               Text="Camera và PLC được áp dụng ngay sau khi xác nhận lưu. Các thông số khác có thể cần khởi động lại ứng dụng." />
                 </StackPanel>
             </Grid>
 
@@ -84,7 +84,7 @@
                                    FontSize="11"
                                    TextWrapping="Wrap"
                                    IsVisible="{Binding !ConfigEditor.CanHotApply}"
-                                   Text="Ứng dụng không áp dụng nóng các thông số này — bắt buộc khởi động lại để kết nối lại thiết bị." />
+                                   Text="Các mục được liệt kê ở trên sẽ có hiệu lực sau khi khởi động lại ứng dụng." />
                     </StackPanel>
 
                     <StackPanel Grid.Row="0" Grid.Column="2"
@@ -145,7 +145,7 @@
 
         <!-- Các nhóm cấu hình: 2 cột, luôn hiện thanh cuộn dọc khi nội dung vượt khung.
              Toàn bộ card được sinh động từ ConfigSchemaProvider (xem ConfigEditor.Sections). -->
-        <ScrollViewer Grid.Row="1"
+        <ScrollViewer Grid.Row="1" IsEnabled="{Binding !ConfigEditor.IsSaving}"
                       VerticalScrollBarVisibility="Visible"
                       HorizontalScrollBarVisibility="Disabled">
             <ItemsControl ItemsSource="{Binding ConfigEditor.Sections}">
@@ -322,7 +322,7 @@
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                     <Button Classes="chip"
-                            Command="{Binding ConfigEditor.ResetCommand}">
+                            Command="{Binding ConfigEditor.ResetCommand}" IsEnabled="{Binding ConfigEditor.CanReset}">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <Path Width="15" Height="15"
                                   Stretch="Uniform"
@@ -338,7 +338,7 @@
                             FontWeight="Bold"
                             IsEnabled="{Binding ConfigEditor.CanSave}"
                             Command="{Binding ConfigEditor.SaveCommand}"
-                            ToolTip.Tip="Lưu cấu hình xuống appsettings.json. Thông số kết nối cần khởi động lại ứng dụng mới có hiệu lực.">
+                            ToolTip.Tip="Lưu cấu hình. Thay đổi Camera/PLC cần xác nhận và sẽ được áp dụng ngay.">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <Path Width="15" Height="15"
                                   Stretch="Uniform"

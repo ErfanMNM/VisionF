@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text.Json;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
@@ -34,8 +35,8 @@ using TanTienQR.Views;
 //   [1] Form nạp đủ các thông số camera / PLC / scanner / PO / web
 //   [2] Sửa 1 ô -> badge "Chưa lưu" hiện, nút Lưu được bật
 //   [3] Hoàn tác -> badge tắt
-//   [4] Lưu thông số quan trọng -> banner "Cần khởi động lại" hiện
-//   [5] Nút "Khởi động lại ngay" / "Để sau" tồn tại và bấm được
+//   [4] Camera / PLC xác nhận rồi áp dụng nóng; huỷ giữ nguyên file và runtime
+//   [5] Các mục khác vẫn chờ restart; nhiều lần lưu không xoá mất banner
 //   [6] Lưu giá trị không đổi -> KHÔNG yêu cầu restart
 //   [7] Validation: IP sai -> không lưu được, hiện thông báo lỗi
 //   [8] File appsettings.json trong sandbox được ghi đúng
@@ -115,6 +116,9 @@ builder.Configuration
 builder.Logging.AddConsole();
 builder.Logging.SetMinimumLevel(LogLevel.Error);
 builder.Services.AddTanTienServices(builder.Configuration);
+// Thay coordinator thật để test không đổi kết nối camera/PLC trên máy.
+var deviceApplier = new FakeDeviceConfigurationApplier();
+builder.Services.AddSingleton<IDeviceConfigurationApplier>(deviceApplier);
 using var host = builder.Build();
 
 var services = host.Services;
@@ -131,12 +135,46 @@ void Invoke(string method)
         .Invoke(vm, null);
 }
 
-void Exec(string commandProp)
+void CompleteUiTask(Task task)
 {
-    var cmd = Get(commandProp);
+    var deadline = Environment.TickCount64 + 20000;
+    while (!task.IsCompleted && Environment.TickCount64 < deadline)
+    {
+        Dispatcher.UIThread.RunJobs();
+        Thread.Sleep(5);
+    }
+    if (!task.IsCompleted) throw new TimeoutException("Lenh UI khong hoan tat trong 20 giay.");
+    task.GetAwaiter().GetResult();
+    Dispatcher.UIThread.RunJobs();
+}
+
+void ExecOn(object target, string commandProp)
+{
+    var cmd = target.GetType().GetProperty(commandProp,
+        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(target);
     cmd!.GetType().GetMethod("Execute", BindingFlags.Public | BindingFlags.Instance)!
         .Invoke(cmd, new object?[] { null });
+    if (cmd.GetType().GetProperty("ExecutionTask")?.GetValue(cmd) is Task task)
+        CompleteUiTask(task);
+    else
+        Dispatcher.UIThread.RunJobs();
 }
+
+void Exec(string commandProp) => ExecOn(vm, commandProp);
+
+void SetConfirmation(object target, Func<string, Task<bool>> callback) =>
+    target.GetType().GetProperty("ConfirmConnectionChangesAsync",
+        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(target, callback);
+
+var confirmationCount = 0;
+var acceptConnectionChanges = true;
+var confirmationMessages = new List<string>();
+SetConfirmation(vm, message =>
+{
+    confirmationCount++;
+    confirmationMessages.Add(message);
+    return Task.FromResult(acceptConnectionChanges);
+});
 
 // ---------------------------------------------------------------
 // Truy cap field theo schema (form nay SINH DONG tu [ConfigField]).
@@ -187,6 +225,7 @@ IHost RestartHost(string basePath)
     b.Logging.AddConsole();
     b.Logging.SetMinimumLevel(LogLevel.Error);
     b.Services.AddTanTienServices(b.Configuration);
+    b.Services.AddSingleton<IDeviceConfigurationApplier>(new FakeDeviceConfigurationApplier());
     return b.Build();
 }
 
@@ -245,27 +284,57 @@ Check("Sau Hoan tac: nut Luu bi khoa", (bool?)Get("CanSave") == false);
 Check("Sau Hoan tac: Timeout ve lai gia tri cu", (int?)FieldValue(vm, "Plc:TimeoutMs") == 1000);
 
 // ---------------------------------------------------------------
-// [4] Luu thong so quan trong -> banner restart
+// [4] Xac nhan Camera/PLC truoc khi luu va ap dung nong
 // ---------------------------------------------------------------
-Console.WriteLine("\n[4] Luu thong so quan trong -> yeu cau restart");
+Console.WriteLine("\n[4] Camera/PLC: khong doi, huy va xac nhan ap dung nong");
 
+var configPath = Path.Combine(root, "appsettings.json");
+var initialFile = File.ReadAllText(configPath);
+Exec("SaveCommand");
+Check("Khong doi gi -> khong hoi xac nhan", confirmationCount == 0);
+Check("Khong doi gi -> khong doi ket noi", deviceApplier.ApplyCount == 0);
+Check("Khong doi gi -> file giu nguyen", File.ReadAllText(configPath) == initialFile);
+
+acceptConnectionChanges = false;
+SetField(vm, "Camera:Ip", "192.168.9.50");
 SetField(vm, "Plc:Ip", "192.168.9.9");
 Exec("SaveCommand");
+Check("Doi Camera va PLC cung luc chi hoi mot lan", confirmationCount == 1);
+Check("Tu choi -> khong doi ket noi", deviceApplier.ApplyCount == 0);
+Check("Tu choi -> khong luu file", File.ReadAllText(configPath) == initialFile);
+Check("Tu choi -> form van chua luu", (bool?)Get("IsDirty") == true);
+Check("Tu choi -> giu gia tri dang soan de sua tiep",
+    (string?)FieldValue(vm, "Camera:Ip") == "192.168.9.50"
+    && (string?)FieldValue(vm, "Plc:Ip") == "192.168.9.9");
+Exec("ResetCommand");
+Check("Hoan tac sau khi huy -> van dung ket noi cu",
+    (string?)FieldValue(vm, "Camera:Ip") == "127.0.0.1"
+    && (string?)FieldValue(vm, "Plc:Ip") == "127.0.0.1");
 
-Check("RestartRequired = true", (bool?)Get("RestartRequired") == true);
-Check("CanRestartNow = true", (bool?)Get("CanRestartNow") == true);
-Check("Banner co noi dung", !string.IsNullOrWhiteSpace((string?)Get("RestartBannerText")));
-Check(
-    "Banner nhac dung thong so da doi",
-    ((string?)Get("RestartBannerText"))?.Contains("IP PLC") == true,
-    (string?)Get("RestartBannerText") ?? "");
+acceptConnectionChanges = true;
+SetField(vm, "Camera:Ip", "192.168.9.50");
+SetField(vm, "Camera:DuplicateWindowSeconds", 60);
+SetField(vm, "Plc:Ip", "192.168.9.9");
+Exec("SaveCommand");
+Check("Xac nhan -> mot lan ap dung bat dong bo", confirmationCount == 2 && deviceApplier.ApplyCount == 1);
+Check("Coordinator nhan dung target Camera/PLC",
+    deviceApplier.LastTarget?.Camera.Ip == "192.168.9.50"
+    && deviceApplier.LastTarget.Camera.DuplicateWindowSeconds == 60
+    && deviceApplier.LastTarget.Plc.Ip == "192.168.9.9");
+Check("Coordinator nhan runtime cu de rollback",
+    deviceApplier.LastRunning?.Camera.Ip == "127.0.0.1"
+    && deviceApplier.LastRunning.Plc.Ip == "127.0.0.1");
+Check("Dialog co noi dung de xem truoc khi ap dung", confirmationMessages.All(message => !string.IsNullOrWhiteSpace(message)));
+Check("Chi Camera/PLC -> khong yeu cau restart", (bool?)Get("RestartRequired") == false);
+Check("Chi Camera/PLC -> khong bat nut restart", (bool?)Get("CanRestartNow") == false);
 Check("Thong bao bao da luu", ((string?)Get("ConfigMessageText"))?.Contains("Đã lưu") == true);
 Check("Nut Luu bi khoa sau khi luu", (bool?)Get("CanSave") == false);
 Check("Khong co thay doi chua luu sau khi luu", (bool?)Get("HasUnsavedChanges") == false);
 
 // File da duoc ghi?
-var savedText = File.ReadAllText(Path.Combine(root, "appsettings.json"));
+var savedText = File.ReadAllText(configPath);
 Check("File appsettings da ghi IP PLC moi", savedText.Contains("192.168.9.9"));
+Check("File appsettings da ghi IP camera moi", savedText.Contains("192.168.9.50"));
 Check("File appsettings giu section Auth", savedText.Contains("\"Auth\""));
 Check("File appsettings giu section Logging", savedText.Contains("\"Logging\""));
 Check("File appsettings giu section Scanner", savedText.Contains("\"Scanner\""));
@@ -274,17 +343,55 @@ Check("File appsettings luu Logging retention", savedText.Contains("\"RetentionD
 Check("File appsettings luu seed password da nhap", savedText.Contains("\"SeedAdminPassword\": \"admin\""));
 Check("File appsettings luu Scans queue capacity", savedText.Contains("\"QueueCapacity\": 20000"));
 
-// Da luu xong: sua them roi Hoan tac -> banner restart phai VAN con,
-// vi cau hinh da luu van chua duoc ap dung cho app dang chay.
+// IConfiguration van la snapshot khoi dong: reset khong duoc tra IP ve cu.
 SetField(vm, "Plc:TimeoutMs", 3333);
 Exec("ResetCommand");
-Check("Luu xong roi Hoan tac: banner restart van con", (bool?)Get("RestartRequired") == true);
+Check("Hoan tac giu Camera/PLC da hot-apply du IConfiguration cu",
+    (string?)FieldValue(vm, "Camera:Ip") == "192.168.9.50"
+    && (int?)FieldValue(vm, "Camera:DuplicateWindowSeconds") == 60
+    && (string?)FieldValue(vm, "Plc:Ip") == "192.168.9.9");
+Check("Hoan tac bo thay doi PLC chua luu", (int?)FieldValue(vm, "Plc:TimeoutMs") == 1000);
+Check("Hoan tac khong tu tao banner restart Camera/PLC", (bool?)Get("RestartRequired") == false);
 Check("Luu xong roi Hoan tac: khong co thay doi chua luu", (bool?)Get("HasUnsavedChanges") == false);
 
 // ---------------------------------------------------------------
-// [5] Nut restart
+// [5] Scanner va cac muc khac van can restart, khong mat qua lan luu sau
 // ---------------------------------------------------------------
-Console.WriteLine("\n[5] Nut khoi dong lai");
+Console.WriteLine("\n[5] Giu banner pending restart qua nhieu lan luu");
+
+var beforeOtherConfirmation = confirmationCount;
+SetField(vm, "Scanner:TcpPort", 7001);
+Exec("SaveCommand");
+Check("Doi rieng Scanner khong hoi doi ket noi Camera/PLC", confirmationCount == beforeOtherConfirmation);
+Check("Scanner van yeu cau restart", (bool?)Get("RestartRequired") == true && (bool?)Get("CanRestartNow") == true);
+Check("Banner chi ro Scanner da doi", ((string?)Get("RestartBannerText"))?.Contains("Port TCP") == true);
+
+SetField(vm, "Logging:Sqlite:RetentionDays", 31);
+Exec("SaveCommand");
+Check("Luu muc khac khong xoa banner Scanner chua ap dung",
+    (bool?)Get("RestartRequired") == true
+    && ((string?)Get("RestartBannerText"))?.Contains("Port TCP") == true
+    && ((string?)Get("RestartBannerText"))?.Contains("Số ngày lưu log") == true);
+
+SetField(vm, "Plc:Ip", "192.168.9.10");
+var beforeMixedConfirmation = confirmationCount;
+Exec("SaveCommand");
+Check("Luu PLC trong khi Scanner pending van xac nhan dung mot lan",
+    confirmationCount == beforeMixedConfirmation + 1);
+Check("Lan ap dung sau dung runtime PLC da ap dung lan truoc",
+    deviceApplier.LastRunning?.Plc.Ip == "192.168.9.9");
+Check("Coordinator khong danh dau Scanner da chay theo ban da luu",
+    deviceApplier.LastRunning?.Scanner.TcpPort == 6999);
+Check("Hot-apply PLC khong xoa banner muc khac",
+    (bool?)Get("RestartRequired") == true
+    && ((string?)Get("RestartBannerText"))?.Contains("Port TCP") == true
+    && ((string?)Get("RestartBannerText"))?.Contains("IP PLC") != true);
+SetField(vm, "Plc:TimeoutMs", 3333);
+Exec("ResetCommand");
+Check("Reset giu runtime PLC moi va Scanner da luu",
+    (string?)FieldValue(vm, "Plc:Ip") == "192.168.9.10"
+    && (int?)FieldValue(vm, "Scanner:TcpPort") == 7001);
+Check("Reset giu banner pending muc chua ap dung", (bool?)Get("RestartRequired") == true);
 
 Exec("RestartLaterCommand");
 Check("RestartLater khong lam tat banner", (bool?)Get("RestartRequired") == true);
@@ -294,13 +401,6 @@ Check("RestartLater co thong bao", !string.IsNullOrWhiteSpace((string?)Get("Conf
 // [6] Luu gia tri KHONG doi -> khong yeu cau restart
 // ---------------------------------------------------------------
 Console.WriteLine("\n[6] Luu gia tri khong doi -> khong yeu cau restart");
-
-// Mo phong vong doi dang chay -> luu -> app KHOI DONG LAI (doc lai config
-// tu file vua luu) -> luu lai khong doi gi -> KHONG yeu cau restart.
-Invoke("Load");
-SetField(vm, "Plc:Ip", "192.168.9.10");   // config dang chay van la 192.168.9.9 (da luu o [4])
-Exec("SaveCommand");
-Check("Doi IP -> van yeu cau restart", (bool?)Get("RestartRequired") == true);
 
 // Tao host moi tu file da luu = mo phong app khoi dong lai.
 var restarted = RestartHost(root);
@@ -317,24 +417,33 @@ Check("Sau restart: config moi da duoc nap", (string?)FieldValue(restartedVm, "P
 Check("Sau restart: banner restart tat", (bool?)RGet("RestartRequired") == false);
 Check("Sau restart: khong co thay doi chua luu", (bool?)RGet("HasUnsavedChanges") == false);
 
-// Luu lai khong doi gi -> khong yeu cau restart.
-restartedVmType.GetProperty("SaveCommand",
-    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!
-    .GetValue(restartedVm)!
-    .GetType().GetMethod("Execute", BindingFlags.Public | BindingFlags.Instance)!
-    .Invoke(
-        restartedVmType.GetProperty("SaveCommand",
-            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)!
-            .GetValue(restartedVm),
-        new object?[] { null });
+var restartConfirmations = 0;
+SetConfirmation(restartedVm, _ =>
+{
+    restartConfirmations++;
+    return Task.FromResult(true);
+});
+ExecOn(restartedVm, "SaveCommand");
 
 Check("Luu khong doi gi -> khong yeu cau restart", (bool?)RGet("RestartRequired") == false);
-Check(
-    "Luu khong doi gi -> thong bao thanh cong",
-    ((string?)RGet("ConfigMessageText"))?.Contains("Đã lưu") == true,
-    (string?)RGet("ConfigMessageText") ?? "");
+Check("Luu khong doi sau restart -> khong xac nhan", restartConfirmations == 0);
 
 restarted.Dispose();
+
+Console.WriteLine("\n[6b] Ap dung ket noi that bai khong commit file/baseline");
+var beforeFailureFile = File.ReadAllText(configPath);
+var beforeFailurePersist = deviceApplier.PersistCount;
+deviceApplier.Failure = new IOException("Mo phong ket noi moi that bai.");
+SetField(vm, "Plc:Ip", "192.168.9.11");
+Exec("SaveCommand");
+Check("Ap dung loi -> file cu duoc giu nguyen", File.ReadAllText(configPath) == beforeFailureFile);
+Check("Ap dung loi -> chua goi persist", deviceApplier.PersistCount == beforeFailurePersist);
+Check("Ap dung loi -> form van dirty va co thong bao loi",
+    (bool?)Get("IsDirty") == true && (bool?)Get("HasErrorMessage") == true);
+deviceApplier.Failure = null;
+Exec("ResetCommand");
+Check("Hoan tac sau apply loi khong nhan target loi lam baseline",
+    (string?)FieldValue(vm, "Plc:Ip") == "192.168.9.10");
 
 // ---------------------------------------------------------------
 // [7] Validation: IP sai -> khong luu
@@ -343,6 +452,8 @@ Console.WriteLine("\n[7] Validation: gia tri sai bi tu choi");
 
 Invoke("Load");
 var fileBefore = File.ReadAllText(Path.Combine(root, "appsettings.json"));
+var beforeInvalidConfirmation = confirmationCount;
+var beforeInvalidApply = deviceApplier.ApplyCount;
 
 SetField(vm, "Plc:Ip", "192.168.1.999");
 Exec("SaveCommand");
@@ -369,6 +480,8 @@ Invoke("Load");
 SetField(vm, "Scanner:TcpPort", 99999);
 Exec("SaveCommand");
 Check("Scanner port sai -> khong ghi file", File.ReadAllText(Path.Combine(root, "appsettings.json")) == fileBefore);
+Check("Cau hinh sai duoc chan truoc dialog va coordinator",
+    confirmationCount == beforeInvalidConfirmation && deviceApplier.ApplyCount == beforeInvalidApply);
 
 // ---------------------------------------------------------------
 // [8] View thuc te render duoc (compiled binding khong loi)
@@ -635,3 +748,32 @@ Console.WriteLine($"  KET QUA: {passed} pass / {failed} fail");
 Console.WriteLine("========================================");
 
 return failed == 0 ? 0 : 1;
+
+// Chỉ kiểm tra contract VM/coordinator; không tạo socket hoặc kết nối thiết bị.
+internal sealed class FakeDeviceConfigurationApplier : IDeviceConfigurationApplier
+{
+    public int ApplyCount { get; private set; }
+    public int PersistCount { get; private set; }
+    public AppConfigSnapshot? LastTarget { get; private set; }
+    public AppConfigSnapshot? LastRunning { get; private set; }
+    public Exception? Failure { get; set; }
+
+    public async Task ApplyAndSaveAsync(AppConfigSnapshot target, AppConfigSnapshot running,
+        Func<bool> persist, CancellationToken ct)
+    {
+        ApplyCount++;
+        LastTarget = Clone(target);
+        LastRunning = Clone(running);
+        // Bảo đảm harness thực sự đợi AsyncRelayCommand qua UI dispatcher.
+        await Task.Yield();
+        ct.ThrowIfCancellationRequested();
+        if (Failure is not null) throw Failure;
+        PersistCount++;
+        if (!persist()) throw new IOException("Mo phong khong luu duoc cau hinh.");
+    }
+
+    private static AppConfigSnapshot Clone(AppConfigSnapshot value) =>
+        JsonSerializer.Deserialize(
+            JsonSerializer.Serialize(value, AppConfigJsonContext.Default.AppConfigSnapshot),
+            AppConfigJsonContext.Default.AppConfigSnapshot)!;
+}

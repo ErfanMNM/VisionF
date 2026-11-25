@@ -116,6 +116,27 @@ internal sealed class CameraSignalWorker : BackgroundService
             await Task.Delay(25, ct).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Áp dụng camera trong phiên hiện tại. Coordinator phải chặn nhận mã mới
+    /// trước khi gọi; worker/queue và lịch sử chống trùng được giữ nguyên.
+    /// </summary>
+    internal async Task ApplyConfigurationAsync(CameraConfig target, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        if (!_intake.IsSuspended)
+            throw new InvalidOperationException("Cần tạm dừng nhận mã trước khi đổi cấu hình camera.");
+        if (target.DuplicateWindowSeconds is < 1 or > 3600)
+            throw new ArgumentOutOfRangeException(nameof(target), "Cửa sổ trùng mã phải từ 1 đến 3600 giây.");
+
+        await DrainAsync(ct).ConfigureAwait(false);
+        await _camera.ReconfigureAsync(target.Ip, target.Port, ct).ConfigureAwait(false);
+
+        // Giữ cùng options instance cho các consumer như camera web/PLC settings.
+        _opt.Ip = target.Ip;
+        _opt.Port = target.Port;
+        _opt.DuplicateWindowSeconds = target.DuplicateWindowSeconds;
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _camera.ClientCallback += OnCameraEvent;

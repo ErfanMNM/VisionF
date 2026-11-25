@@ -18,16 +18,16 @@ namespace TanTienQR.Services;
     Title = "CAMERA · ĐẦU ĐỌC MÃ",
     Order = 10,
     Icon = "Camera",
-    Description = "Kết nối TCP tới đầu đọc mã. Được nạp một lần khi app khởi động.")]
+    Description = "Kết nối TCP tới đầu đọc mã. Xác nhận khi lưu để áp dụng ngay, không cần khởi động lại.")]
 public sealed class CameraConfig
 {
-    [ConfigField("IP đầu đọc", Order = 1, Placeholder = "VD: 192.168.1.50", RequiresRestart = true, Validation = "IpOrHost", HelpText = "Địa chỉ IPv4 hoặc hostname của đầu đọc mã.")]
+    [ConfigField("IP đầu đọc", Order = 1, Placeholder = "VD: 192.168.1.50", RequiresRestart = false, Validation = "IpOrHost", HelpText = "Địa chỉ IPv4 hoặc hostname của đầu đọc mã.")]
     [JsonPropertyName("Ip")] public string Ip { get; set; } = "127.0.0.1";
 
-    [ConfigField("Port TCP", Order = 2, Min = 1, Max = 65535, RequiresRestart = true)]
+    [ConfigField("Port TCP", Order = 2, Min = 1, Max = 65535, RequiresRestart = false)]
     [JsonPropertyName("Port")] public int Port { get; set; } = 9000;
 
-    [ConfigField("Cửa sổ trùng mã (giây)", Order = 3, Min = 1, Max = 3600, RequiresRestart = true, HelpText = "Mã quét trùng trong cửa sổ này được coi là trùng và gửi Fail (D12 = 0).")]
+    [ConfigField("Cửa sổ trùng mã (giây)", Order = 3, Min = 1, Max = 3600, RequiresRestart = false, HelpText = "Mã quét trùng trong cửa sổ này được coi là trùng và gửi Fail (D12 = 0).")]
     [JsonPropertyName("DuplicateWindowSeconds")] public int DuplicateWindowSeconds { get; set; } = 30;
 }
 
@@ -37,37 +37,37 @@ public sealed class CameraConfig
     Title = "PLC · OMERON FINS/UDP",
     Order = 20,
     Icon = "CpuChip",
-    Description = "Kết nối FINS/UDP tới PLC. Được nạp một lần khi app khởi động.")]
+    Description = "Kết nối FINS/UDP tới PLC. Xác nhận khi lưu để áp dụng ngay, không cần khởi động lại.")]
 public sealed class PlcConfig
 {
-    [ConfigField("Bật PLC", Order = 0, RequiresRestart = true)]
+    [ConfigField("Bật PLC", Order = 0, RequiresRestart = false)]
     [JsonPropertyName("Enabled")] public bool Enabled { get; set; } = true;
 
-    [ConfigField("IP PLC", Order = 1, Placeholder = "VD: 192.168.1.10", RequiresRestart = true, Validation = "IpOrHost")]
+    [ConfigField("IP PLC", Order = 1, Placeholder = "VD: 192.168.1.10", RequiresRestart = false, Validation = "IpOrHost")]
     [JsonPropertyName("Ip")] public string Ip { get; set; } = "127.0.0.1";
 
-    [ConfigField("Port FINS", Order = 2, Min = 1, Max = 65535, RequiresRestart = true)]
+    [ConfigField("Port FINS", Order = 2, Min = 1, Max = 65535, RequiresRestart = false)]
     [JsonPropertyName("Port")] public int Port { get; set; } = 9600;
 
-    [ConfigField("Remote node (DA1)", Order = 3, Min = 0, Max = 255, RequiresRestart = true)]
+    [ConfigField("Remote node (DA1)", Order = 3, Min = 0, Max = 255, RequiresRestart = false)]
     [JsonPropertyName("RemoteNode")] public int RemoteNode { get; set; }
 
-    [ConfigField("Local node (SA1)", Order = 4, Min = 0, Max = 255, RequiresRestart = true)]
+    [ConfigField("Local node (SA1)", Order = 4, Min = 0, Max = 255, RequiresRestart = false)]
     [JsonPropertyName("LocalNode")] public int LocalNode { get; set; } = 1;
 
-    [ConfigField("Timeout (ms)", Order = 5, Min = 1, Max = 60000, RequiresRestart = true)]
+    [ConfigField("Timeout (ms)", Order = 5, Min = 1, Max = 60000, RequiresRestart = false)]
     [JsonPropertyName("TimeoutMs")] public int TimeoutMs { get; set; } = 1000;
 
-    [ConfigField("Số lần thử lại", Order = 6, Min = 0, Max = 10, RequiresRestart = true)]
+    [ConfigField("Số lần thử lại", Order = 6, Min = 0, Max = 10, RequiresRestart = false)]
     [JsonPropertyName("Retries")] public int Retries { get; set; }
 
-    [ConfigField("Kết quả (1/0)", Order = 7, Placeholder = "VD: D12", RequiresRestart = true, HelpText = "D12 = 1 khi đọc mã hợp lệ, D12 = 0 khi NoRead / FAIL / sai định dạng / trùng mã.")]
+    [ConfigField("Kết quả (1/0)", Order = 7, Placeholder = "VD: D12", RequiresRestart = false, HelpText = "D12 = 1 khi đọc mã hợp lệ, D12 = 0 khi NoRead / FAIL / sai định dạng / trùng mã.")]
     [JsonPropertyName("ResultAddress")] public string ResultAddress { get; set; } = "D12";
 
-    [ConfigField("Ready (1/0)", Order = 8, Placeholder = "VD: D16", RequiresRestart = true, HelpText = "D16 = 1 mỗi chu kỳ khi camera + PLC + license đều sẵn sàng.")]
+    [ConfigField("Ready (1/0)", Order = 8, Placeholder = "VD: D16", RequiresRestart = false, HelpText = "D16 = 1 mỗi chu kỳ khi camera + PLC + license đều sẵn sàng.")]
     [JsonPropertyName("ReadyAddress")] public string ReadyAddress { get; set; } = "D16";
 
-    [ConfigField("Chu kỳ heartbeat (ms)", Order = 9, Min = 100, Max = 60000, RequiresRestart = true)]
+    [ConfigField("Chu kỳ heartbeat (ms)", Order = 9, Min = 100, Max = 60000, RequiresRestart = false)]
     [JsonPropertyName("RefreshIntervalMs")] public int RefreshIntervalMs { get; set; } = 1000;
 }
 

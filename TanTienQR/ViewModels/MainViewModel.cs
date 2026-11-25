@@ -94,6 +94,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         _licensePortal = licensePortal;
         LicensePortalUrl = licensePortalOptions.Value.BaseUrl;
         _configEditor = configEditor;
+        _configEditor.DeviceConfigurationApplied += OnDeviceConfigurationApplied;
         _historyView = historyView;
         _accountsView = accountsView;
         _plcSettingsView = plcSettingsView;
@@ -661,6 +662,11 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     {
         _window = window;
         Internet.Start();
+        _configEditor.ConfirmConnectionChangesAsync = async message =>
+        {
+            if (_window is null || !_window.IsVisible || _disposed) return false;
+            return await new ConnectionConfigurationConfirmWindow(message).ShowDialog<bool>(_window);
+        };
 
         // Trang Lịch sử cần cửa sổ chính để mở hộp thoại lưu file xuất.
         if (window is not null)
@@ -732,6 +738,12 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
             // và tiếp tục vòng lặp.
             _logger.LogError(ex, "Lỗi trong luồng đọc kênh kết quả quét mã.");
         }
+    }
+
+    private void OnDeviceConfigurationApplied(object? sender, EventArgs e)
+    {
+        _plcSettingsView.RefreshCameraConfiguration();
+        RefreshAppState();
     }
 
     /// <summary>
@@ -833,6 +845,9 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         RefreshPrinterRemotePresentation();
         Print.Dispose();
         Internet.Dispose();
+        _configEditor.DeviceConfigurationApplied -= OnDeviceConfigurationApplied;
+        _configEditor.ConfirmConnectionChangesAsync = null;
+        _configEditor.SaveCommand.Cancel();
 
         // Ngừng theo dõi phiên đăng nhập (tránh giữ tham chiếu tới VM).
         _session.Changed -= OnSessionChanged;

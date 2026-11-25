@@ -22,16 +22,23 @@ public sealed partial class OmronPlc : IDisposable
     /// <summary>Timeout mac dinh cho mot request (ms).</summary>
     public const int DefaultTimeoutMs = 1000;
 
-    private readonly FinsUdpTransport _transport;
-    private readonly byte _remoteNode;
-    private readonly byte _localNode;
+    // Cùng một khóa bảo vệ request hoàn chỉnh, read-modify-write, đổi cấu
+    // hình và Dispose. Mọi caller (kể cả tab Chỉnh PLC) dùng chung client.
+    private readonly object _sync = new();
+    // Lease non-thread-affine: một recipe có thể gồm nhiều request, trong
+    // khi request đơn vẫn dùng _sync để bảo vệ SID/socket.
+    private readonly SemaphoreSlim _transactionGate = new(1, 1);
+    private FinsUdpTransport? _transport;
+    private byte _remoteNode;
+    private byte _localNode;
+    private bool _enabled;
     private bool _disposed;
 
     /// <summary>Dia chi IP cua PLC.</summary>
-    public string IpAddress { get; }
+    public string IpAddress { get; private set; }
 
     /// <summary>Cong UDP cua PLC.</summary>
-    public int Port { get; }
+    public int Port { get; private set; }
 
     /// <summary>Node cua PLC (DA1 trong header FINS).</summary>
     public byte RemoteNode => _remoteNode;
@@ -40,10 +47,46 @@ public sealed partial class OmronPlc : IDisposable
     public byte LocalNode => _localNode;
 
     /// <summary>Timeout moi request (ms).</summary>
-    public int TimeoutMs { get; }
+    public int TimeoutMs { get; private set; }
 
     /// <summary>So lan thu lai khi khong nhan duoc phan hoi.</summary>
-    public int Retries { get; }
+    public int Retries { get; private set; }
+
+    /// <summary>False khi PLC bị tắt; mọi đọc/ghi trả DISABLED mà không gửi UDP.</summary>
+    public bool Enabled { get { lock (_sync) return _enabled; } }
+
+    /// <summary>
+    /// Lấy lease cho toàn bộ thao tác thủ công/recipe mà không chặn luồng UI.
+    /// Null nghĩa là một thao tác hoặc lần đổi cấu hình khác đang giữ PLC.
+    /// </summary>
+    public IDisposable? TryAcquireTransactionLease()
+    {
+        if (!_transactionGate.Wait(0)) return null;
+        if (Volatile.Read(ref _disposed))
+        {
+            _transactionGate.Release();
+            return null;
+        }
+        return new TransactionLease(_transactionGate);
+    }
+
+    /// <summary>Đợi recipe hiện tại hoàn tất trước khi cấu hình client và options runtime.</summary>
+    public async Task<IDisposable> AcquireConfigurationLeaseAsync(CancellationToken cancellationToken = default)
+    {
+        await _transactionGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        if (Volatile.Read(ref _disposed))
+        {
+            _transactionGate.Release();
+            throw new ObjectDisposedException(nameof(OmronPlc));
+        }
+        return new TransactionLease(_transactionGate);
+    }
+
+    private sealed class TransactionLease(SemaphoreSlim gate) : IDisposable
+    {
+        private SemaphoreSlim? _gate = gate;
+        public void Dispose() => Interlocked.Exchange(ref _gate, null)?.Release();
+    }
 
     /// <summary>
     /// Tao client.
@@ -54,13 +97,15 @@ public sealed partial class OmronPlc : IDisposable
     /// <param name="localNode">Node PC (SA1), mac dinh 1.</param>
     /// <param name="timeoutMs">Timeout moi request, mac dinh 1000ms.</param>
     /// <param name="retries">So lan thu lai, mac dinh 0.</param>
+    /// <param name="enabled">False để không mở socket hoặc gửi lệnh PLC.</param>
     public OmronPlc(
         string ip,
         int port = DefaultPort,
         byte remoteNode = 0,
         byte localNode = 1,
         int timeoutMs = DefaultTimeoutMs,
-        int retries = 0)
+        int retries = 0,
+        bool enabled = true)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ip);
 
@@ -71,7 +116,45 @@ public sealed partial class OmronPlc : IDisposable
         TimeoutMs = timeoutMs;
         Retries = retries;
 
-        _transport = new FinsUdpTransport(ip, port, timeoutMs, retries);
+        _enabled = enabled;
+        _transport = enabled ? CreateTransport(ip, port, timeoutMs, retries) : null;
+    }
+
+    /// <summary>Đổi endpoint/node/timeout tại chỗ sau khi request hiện tại hoàn tất.</summary>
+    public void Reconfigure(string ip, int port, byte remoteNode, byte localNode,
+        int timeoutMs, int retries, bool enabled = true)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(ip);
+        // Tạo trước khi swap: lỗi DNS/socket không làm mất cấu hình đang chạy.
+        var replacement = enabled ? CreateTransport(ip, port, timeoutMs, retries) : null;
+        lock (_sync)
+        {
+            if (_disposed)
+            {
+                replacement?.Dispose();
+                throw new ObjectDisposedException(nameof(OmronPlc));
+            }
+            var previous = _transport;
+            _transport = replacement;
+            IpAddress = ip;
+            Port = port;
+            _remoteNode = remoteNode;
+            _localNode = localNode;
+            TimeoutMs = timeoutMs;
+            Retries = retries;
+            _enabled = enabled;
+            previous?.Dispose();
+        }
+    }
+
+    private static FinsUdpTransport CreateTransport(string host, int port, int timeoutMs, int retries)
+    {
+        var address = System.Net.IPAddress.TryParse(host, out var parsed)
+            ? parsed
+            : System.Net.Dns.GetHostAddresses(host)
+                .FirstOrDefault(candidate => candidate.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                ?? throw new ArgumentException("Không phân giải được địa chỉ IPv4 PLC.", nameof(host));
+        return new FinsUdpTransport(address.ToString(), port, timeoutMs, retries);
     }
 
     // ------------------------------------------------------------------
@@ -321,25 +404,33 @@ public sealed partial class OmronPlc : IDisposable
     /// <summary>Doc tu dia chi word (noi bo, da kiem tra pham vi).</summary>
     private PlcResult<ushort[]> ReadWordsAt(int wordAddress, int wordCount)
     {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        var total = new List<ushort>(wordCount);
-        var remaining = wordCount;
-        var current = wordAddress;
-
-        while (remaining > 0)
+        lock (_sync)
         {
-            var chunk = Math.Min(remaining, Fins.MaxWordsPerRequest);
-            var result = _transport.Read(_remoteNode, _localNode, current, chunk);
+            if (_disposed)
+                return PlcResult<ushort[]>.Fail("DISPOSED", "Kết nối PLC đã đóng.", default);
+            if (!_enabled)
+                return PlcResult<ushort[]>.Fail("DISABLED", "PLC đã tắt.", default);
 
-            if (!result.IsSuccess)
-                return PlcResult<ushort[]>.Fail(result.ErrorCode, result.Message, sw.Elapsed);
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var total = new List<ushort>(wordCount);
+            var remaining = wordCount;
+            var current = wordAddress;
 
-            total.AddRange(result.Words);
-            current += chunk;
-            remaining -= chunk;
+            while (remaining > 0)
+            {
+                var chunk = Math.Min(remaining, Fins.MaxWordsPerRequest);
+                var result = _transport!.Read(_remoteNode, _localNode, current, chunk);
+
+                if (!result.IsSuccess)
+                    return PlcResult<ushort[]>.Fail(result.ErrorCode, result.Message, sw.Elapsed);
+
+                total.AddRange(result.Words);
+                current += chunk;
+                remaining -= chunk;
+            }
+
+            return PlcResult<ushort[]>.Ok([.. total], "OK", sw.Elapsed);
         }
-
-        return PlcResult<ushort[]>.Ok([.. total], "OK", sw.Elapsed);
     }
 
     /// <summary>Doc 1 gia tri don co quy doi tu word.</summary>
