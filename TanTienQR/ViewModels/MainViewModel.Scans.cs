@@ -46,27 +46,19 @@ internal partial class MainViewModel
         // Bảng vừa có dữ liệu -> cập nhật trạng thái empty state.
         OnPropertyChanged(nameof(HasScans));
 
-        TotalScans++;
-        if (record.Outcome == ScanOutcome.Pass)
-            PassCount++;
-        else
-            FailCount++;
-
-        PassRate = TotalScans == 0 ? 0 : Math.Round(PassCount * 100.0 / TotalScans, 1);
-
-        LastScanText = record.Serial ?? record.Raw;
+        LastScanText = record.CodeContent;
         LastScanTimeText = record.TimestampUtc.ToLocalTime().ToString("HH:mm:ss.fff", ViCulture);
 
         switch (record.Outcome)
         {
             case ScanOutcome.Pass:
-                AddEvent($"Mã hợp lệ · {record.Serial}", EventLevel.Info);
+                AddEvent($"Mã hợp lệ · {record.CodeContent}", EventLevel.Info);
                 break;
             case ScanOutcome.NoRead:
                 AddEvent("Camera không đọc được mã (NoRead)", EventLevel.Warning);
                 break;
             case ScanOutcome.Duplicate:
-                AddEvent($"Mã trùng với lần quét gần đây · {record.Serial}", EventLevel.Warning);
+                AddEvent($"Trùng mã trong PO · {record.CodeContent}", EventLevel.Warning);
                 break;
             case ScanOutcome.NoProductionOrder:
                 AddEvent(
@@ -75,23 +67,26 @@ internal partial class MainViewModel
                 break;
             case ScanOutcome.InvalidForOrder:
                 AddEvent(
-                    $"Mã không thuộc PO đang chạy · {record.Serial}",
+                    $"Không tồn tại trong PO đang chạy · {record.CodeContent}",
                     EventLevel.Warning);
                 break;
             case ScanOutcome.Overload:
                 AddEvent(
-                    $"Hệ thống đang xử lý mã trước, bỏ qua mã mới · {record.Raw}",
+                    $"Hệ thống đang xử lý mã trước, bỏ qua mã mới · {record.CodeContent}",
                     EventLevel.Warning);
                 break;
-            default:
-                AddEvent($"Mã sai định dạng · {record.Raw}", EventLevel.Warning);
+            case ScanOutcome.PlcError:
+                AddEvent($"PLC chưa xác nhận Pass, mã chưa được ghi nhận PO · {record.CodeContent}", EventLevel.Critical);
+                break;
+            case ScanOutcome.Halted:
+                AddEvent($"Máy đã dừng · {record.CodeContent}", EventLevel.Critical);
                 break;
         }
 
         // Mã bị từ chối do quá tải / chưa bắt đầu sản xuất thì KHÔNG ghi PLC
         // -> không phải lỗi PLC.
         if (!record.PlcWritten
-            && record.Outcome is not (ScanOutcome.Overload or ScanOutcome.NoProductionOrder))
+            && record.Outcome is not (ScanOutcome.Overload or ScanOutcome.NoProductionOrder or ScanOutcome.Halted))
         {
             AddEvent("Ghi kết quả xuống PLC thất bại", EventLevel.Critical);
         }

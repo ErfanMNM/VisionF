@@ -31,6 +31,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     private static readonly CultureInfo ViCulture = CreateViCulture();
 
     private readonly ScanFeed _feed;
+    private readonly PlcWriter _plcWriter;
     private readonly LicenseManager _license;
     private readonly ConfigEditorViewModel _configEditor;
     private readonly HistoryViewModel _historyView;
@@ -66,6 +67,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
 
     public MainViewModel(
         ScanFeed feed,
+        PlcWriter plcWriter,
         LicenseManager license,
         LicensePortalClient licensePortal,
         IOptions<LicensePortalOptions> licensePortalOptions,
@@ -90,6 +92,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     {
         Updates = updates;
         _feed = feed;
+        _plcWriter = plcWriter;
         _license = license;
         _licensePortal = licensePortal;
         LicensePortalUrl = licensePortalOptions.Value.BaseUrl;
@@ -256,15 +259,15 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
 
     /// <summary>Tổng số lần quét.</summary>
     [ObservableProperty]
-    public partial int TotalScans { get; set; }
+    public partial int TotalScans { get; set; } = -1;
 
     /// <summary>Số mã hợp lệ (Pass).</summary>
     [ObservableProperty]
-    public partial int PassCount { get; set; }
+    public partial int PassCount { get; set; } = -1;
 
     /// <summary>Số mã lỗi (Fail).</summary>
     [ObservableProperty]
-    public partial int FailCount { get; set; }
+    public partial long FailCount { get; set; } = -1;
 
     /// <summary>Tỷ lệ đạt (%), 0 khi chưa có lần quét nào.</summary>
     [ObservableProperty]
@@ -416,6 +419,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
 
         // Cập nhật luôn cờ hiển thị tab theo quyền mới.
         RefreshPermissionFlags();
+        RefreshPlcCounters();
         RefreshPrinterRemotePresentation();
     }
 
@@ -760,10 +764,12 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
             _ => "Đang khởi động",
         };
 
+        if (_productionOrders.IsHalted) text = "Đã dừng";
+
         if (AppStateText != text)
             AppStateText = text;
 
-        var ready = state == e_AppState.Ready;
+        var ready = state == e_AppState.Ready && !_productionOrders.IsHalted;
         if (IsReady != ready)
             IsReady = ready;
 
@@ -785,6 +791,8 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         };
         if (PlcStatusText != plc)
             PlcStatusText = plc;
+
+        RefreshPlcCounters();
     }
 
     /// <summary>Cập nhật thông tin license hiển thị trên UI.</summary>

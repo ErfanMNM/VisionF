@@ -27,8 +27,6 @@ public sealed class CameraConfig
     [ConfigField("Port TCP", Order = 2, Min = 1, Max = 65535, RequiresRestart = false)]
     [JsonPropertyName("Port")] public int Port { get; set; } = 9000;
 
-    [ConfigField("Cửa sổ trùng mã (giây)", Order = 3, Min = 1, Max = 3600, RequiresRestart = false, HelpText = "Mã quét trùng trong cửa sổ này được coi là trùng và gửi Fail (D12 = 0).")]
-    [JsonPropertyName("DuplicateWindowSeconds")] public int DuplicateWindowSeconds { get; set; } = 30;
 }
 
 /// <summary>Cấu hình PLC Omron (mục "Plc").</summary>
@@ -61,7 +59,7 @@ public sealed class PlcConfig
     [ConfigField("Số lần thử lại", Order = 6, Min = 0, Max = 10, RequiresRestart = false)]
     [JsonPropertyName("Retries")] public int Retries { get; set; }
 
-    [ConfigField("Kết quả (1/0)", Order = 7, Placeholder = "VD: D12", RequiresRestart = false, HelpText = "D12 = 1 khi đọc mã hợp lệ, D12 = 0 khi NoRead / FAIL / sai định dạng / trùng mã.")]
+    [ConfigField("Kết quả (1/0)", Order = 7, Placeholder = "VD: D12", RequiresRestart = false, HelpText = "D12 = 1 khi đọc mã hợp lệ, D12 = 0 khi NoRead / FAIL / không tồn tại trong PO / trùng mã.")]
     [JsonPropertyName("ResultAddress")] public string ResultAddress { get; set; } = "D12";
 
     [ConfigField("Ready (1/0)", Order = 8, Placeholder = "VD: D16", RequiresRestart = false, HelpText = "D16 = 1 mỗi chu kỳ khi camera + PLC + license đều sẵn sàng.")]
@@ -69,6 +67,13 @@ public sealed class PlcConfig
 
     [ConfigField("Chu kỳ heartbeat (ms)", Order = 9, Min = 100, Max = 60000, RequiresRestart = false)]
     [JsonPropertyName("RefreshIntervalMs")] public int RefreshIntervalMs { get; set; } = 1000;
+
+    [ConfigField("Bộ đếm PLC (Int32 × 5)", Order = 10, Validation = "PlcCounterAddress", RequiresRestart = false, HelpText = "Word bắt đầu khối Total, ReadFail, Pass, dự phòng, Timeout. Mỗi số Int32 chiếm 2 word; Fail = ReadFail + Timeout.")]
+    [JsonPropertyName("CounterAddress")] public string CounterAddress { get; set; } = "D100";
+
+    [ConfigField("Lệnh xóa số PLC", Order = 11, Validation = "PlcWordAddress", Required = false, RequiresRestart = false, HelpText = "Word reset thực tế của máy: ghi Int16 = 1 theo TApp. Để trống để khóa nút xóa; không tự xóa số trên ứng dụng.")]
+    [JsonPropertyName("ResetCounterAddress")] public string ResetCounterAddress { get; set; } = string.Empty;
+
 }
 
 /// <summary>Cấu hình trang web nhúng (mục "Web").</summary>
@@ -287,6 +292,10 @@ public sealed class CheckeeConfig
 
     [ConfigField("Loại mã TXNG", Order = 10, Options = new[] { "DECLARE", "RANDOM", "INCREASING" }, RequiresRestart = true)]
     [JsonPropertyName("SerialType")] public string SerialType { get; set; } = "DECLARE";
+
+    [ConfigField("GTIN gửi Checkee", Order = 11, Required = false, RequiresRestart = true, HelpText = "Metadata riêng cho API ngoài; không dùng nhận diện mã sản xuất. CodeContent được gửi nguyên văn trong serialNumbers. Thiếu GTIN giữ mã Pending.")]
+    [JsonPropertyName("ProductGtin")] public string ProductGtin { get; set; } = string.Empty;
+
 }
 
 /// <summary>
@@ -331,10 +340,10 @@ public sealed class PoServerConfig
     Title = "GIẢ LẬP MES · GỬI PO TEST",
     Order = 43,
     Icon = "Upload",
-    Description = "Sinh PO mẫu và upload qua HTTP POST /api/po. Được nạp một lần khi khởi động.")]
+    Description = "Upload một file CodeContent qua HTTP POST /api/po khi khởi động; không tự sinh mã.")]
 public sealed class MesSimulatorConfig
 {
-    [ConfigField("Bật giả lập MES", Order = 1, RequiresRestart = true, HelpText = "Bật worker gửi PO test định kỳ tới HTTP server. Cần bật PoServer ở cùng máy hoặc cấu hình đúng TargetUrl/API key.")]
+    [ConfigField("Bật giả lập MES", Order = 1, RequiresRestart = true, HelpText = "Gửi file PO một lần khi khởi động. Cần chọn file CodeContent và cấu hình đúng TargetUrl/API key.")]
     [JsonPropertyName("Enabled")] public bool Enabled { get; set; }
 
     [ConfigField("Địa chỉ HTTP đích", Order = 2, Placeholder = "VD: http://127.0.0.1:8085", RequiresRestart = true, Validation = "Url", SkipWhenDisabledBy = "MesSimulator:Enabled")]
@@ -343,19 +352,16 @@ public sealed class MesSimulatorConfig
     [ConfigField("API key", Order = 3, Control = ConfigControlKind.Password, Required = false, RequiresRestart = true, SkipWhenDisabledBy = "MesSimulator:Enabled")]
     [JsonPropertyName("ApiKey")] public string ApiKey { get; set; } = string.Empty;
 
-    [ConfigField("Chu kỳ gửi (giây)", Order = 4, Min = 1, Max = 86400, RequiresRestart = true, SkipWhenDisabledBy = "MesSimulator:Enabled")]
+    [ConfigField("Chu kỳ gửi cũ (giây)", Order = 4, Min = 1, Max = 86400, RequiresRestart = true, SkipWhenDisabledBy = "MesSimulator:Enabled", HelpText = "Giữ để đọc cấu hình cũ; file hiện chỉ được upload một lần khi khởi động.")]
     [JsonPropertyName("IntervalSeconds")] public int IntervalSeconds { get; set; } = 30;
 
-    [ConfigField("Số mã / PO", Order = 5, Min = 1, Max = 100000, RequiresRestart = true, SkipWhenDisabledBy = "MesSimulator:Enabled", HelpText = "Dùng làm orderQty cả khi upload file custom.")]
+    [ConfigField("Số dòng mã trong file", Order = 5, Min = 1, Max = 100000, RequiresRestart = true, SkipWhenDisabledBy = "MesSimulator:Enabled", HelpText = "orderQty phải bằng số dòng CodeContent trước lọc trùng.")]
     [JsonPropertyName("OrderQty")] public int OrderQty { get; set; } = 10;
 
-    [ConfigField("GTIN mẫu", Order = 6, RequiresRestart = true, SkipWhenDisabledBy = "MesSimulator:Enabled")]
-    [JsonPropertyName("Gtin")] public string Gtin { get; set; } = "08934567890123";
-
-    [ConfigField("Tiền tố PO / serial", Order = 7, RequiresRestart = true, SkipWhenDisabledBy = "MesSimulator:Enabled")]
+    [ConfigField("Tiền tố PO cũ", Order = 7, RequiresRestart = true, SkipWhenDisabledBy = "MesSimulator:Enabled", HelpText = "Giữ để đọc cấu hình cũ; không tự sinh tên PO hoặc mã.")]
     [JsonPropertyName("PoPrefix")] public string PoPrefix { get; set; } = "MES-TEST";
 
-    [ConfigField("File PO có sẵn", Order = 8, Control = ConfigControlKind.Path, Required = false, Placeholder = "Để trống để tự sinh PO; hỗ trợ CSV/JSON/XLSX/XLS", RequiresRestart = true, SkipWhenDisabledBy = "MesSimulator:Enabled", HelpText = "Có file thì upload một lần lúc khởi động. Đường dẫn tương đối tính từ thư mục ứng dụng.")]
+    [ConfigField("File PO có sẵn", Order = 8, Control = ConfigControlKind.Path, Required = true, Placeholder = "Bắt buộc khi bật; CSV/JSON/XLSX một cột CodeContent", RequiresRestart = true, SkipWhenDisabledBy = "MesSimulator:Enabled", HelpText = "Upload file CodeContent một lần lúc khởi động. Không tự sinh GTIN/serial. Đường dẫn tương đối tính từ thư mục ứng dụng.")]
     [JsonPropertyName("CustomFilePath")] public string CustomFilePath { get; set; } = string.Empty;
 
     [ConfigField("Tên PO file custom", Order = 9, Required = false, Placeholder = "Mặc định lấy tên file", RequiresRestart = true, SkipWhenDisabledBy = "MesSimulator:Enabled")]

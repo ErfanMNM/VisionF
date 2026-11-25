@@ -154,120 +154,109 @@ public static class PoMultipartReader
         [System.Runtime.CompilerServices.EnumeratorCancellation]
         CancellationToken ct = default)
     {
-        var separator = Encoding.UTF8.GetBytes("--" + boundary);
-        var headerTerminator = new byte[] { 13, 10, 13, 10 };
-
+        ArgumentNullException.ThrowIfNull(stream);
+        if (!stream.CanRead || !stream.CanSeek)
+            throw new ArgumentException("Multipart input must be a readable seekable stream.", nameof(stream));
+        ValidateBoundary(boundary);
+        var separator = Encoding.ASCII.GetBytes("--" + boundary);
+        byte[] headerTerminator = [13, 10, 13, 10];
         var length = stream.Length;
+        var delimiter = await FindDelimiterAsync(stream, separator, 0, length, ct).ConfigureAwait(false)
+            ?? throw new PoFileFormatException("Multipart is missing its opening boundary.");
 
-        // Con trỏ hiện tại trong file (sau separator vừa xử lý).
-        var cursor = await FindSequenceAsync(stream, separator, 0, length, ct)
-            .ConfigureAwait(false);
-
-        if (cursor < 0)
-        {
-            yield break;
-        }
-
-        cursor += separator.Length;
-
-        // Bỏ CRLF ngay sau separator.
-        cursor = await SkipCrLfAsync(stream, cursor, length, ct).ConfigureAwait(false);
-
-        while (cursor < length)
+        while (!delimiter.Closing)
         {
             ct.ThrowIfCancellationRequested();
+            var cursor = delimiter.Next;
+            // Header scanning and allocation are bounded independently of the body/file limit.
+            var headerLimit = Math.Min(length, cursor + MaxHeaderBytes + headerTerminator.Length);
+            var headerEnd = await FindSequenceAsync(stream, headerTerminator, cursor, headerLimit, ct)
+                .ConfigureAwait(false);
+            if (headerEnd < 0 || headerEnd - cursor > MaxHeaderBytes)
+                throw new PoFileFormatException("Multipart headers are incomplete or exceed 64 KB.");
+            var headerBytes = await ReadRangeAsync(stream, cursor, checked((int)(headerEnd - cursor)), ct)
+                .ConfigureAwait(false);
+            string headerText;
+            try { headerText = new UTF8Encoding(false, true).GetString(headerBytes); }
+            catch (DecoderFallbackException error)
+            { throw new PoFileFormatException("Multipart headers are not valid UTF-8.", error); }
+            ValidateHeaders(headerText);
 
-            // Separator kết thúc ("--boundary--") -> hết.
-            if (await StartsWithAsync(stream, cursor, length, (byte)'-', (byte)'-', ct)
-                .ConfigureAwait(false))
-            {
-                yield break;
-            }
-
-            // ---- Đọc header của part ----
-            var headerEnd = await FindSequenceAsync(
-                stream, headerTerminator, cursor, length, ct).ConfigureAwait(false);
-
-            if (headerEnd < 0)
-            {
-                yield break;
-            }
-
-            var headerBytes = await ReadRangeAsync(
-                stream, cursor, (int)(headerEnd - cursor), ct).ConfigureAwait(false);
-            var headerText = Encoding.UTF8.GetString(headerBytes);
-
-            // Nội dung bắt đầu sau CRLFCRLF.
-            var contentStart = headerEnd + 4;
-
-            // ---- Tìm separator kế tiếp (kết thúc nội dung) ----
-            var nextSep = await FindSequenceAsync(
-                stream, separator, contentStart, length, ct).ConfigureAwait(false);
-
-            if (nextSep < 0)
-            {
-                yield break;
-            }
-
-            // Nội dung kết thúc bằng CRLF (hoặc LF) ngay trước separator ->
-            // cắt bỏ phần kết thúc đó nếu có.
-            var contentEnd = nextSep;
-            if (contentEnd - 1 >= contentStart)
-            {
-                stream.Seek(contentEnd - 1, SeekOrigin.Begin);
-                var lastByte = new byte[1];
-                await ReadExactAsync(stream, lastByte, ct).ConfigureAwait(false);
-
-                if (lastByte[0] == 10)
-                {
-                    contentEnd--;
-
-                    if (contentEnd - 1 >= contentStart)
-                    {
-                        stream.Seek(contentEnd - 1, SeekOrigin.Begin);
-                        await ReadExactAsync(stream, lastByte, ct).ConfigureAwait(false);
-
-                        if (lastByte[0] == 13)
-                        {
-                            contentEnd--;
-                        }
-                    }
-                }
-            }
-
-            var contentLength = contentEnd - contentStart;
-            if (contentLength < 0)
-            {
-                contentLength = 0;
-            }
-
-            yield return new PoMultipartPart(headerText, contentStart, contentLength);
-
-            // ---- Chuẩn bị cho part tiếp theo ----
-            cursor = nextSep + separator.Length;
-            cursor = await SkipCrLfAsync(stream, cursor, length, ct).ConfigureAwait(false);
+            var contentStart = headerEnd + headerTerminator.Length;
+            var next = await FindDelimiterAsync(stream, separator, contentStart, length, ct).ConfigureAwait(false)
+                ?? throw new PoFileFormatException("Multipart is missing its complete closing boundary.");
+            // CRLF before a MIME delimiter belongs to the delimiter, not the file.
+            var contentEnd = next.Position - 2;
+            if (contentEnd < contentStart)
+                throw new PoFileFormatException("Multipart part has an invalid content boundary.");
+            yield return new PoMultipartPart(headerText, contentStart, contentEnd - contentStart);
+            delimiter = next;
         }
     }
 
-    /// <summary>Bỏ qua CRLF nếu có tại vị trí đư���c chỉ định.</summary>
-    private static async Task<long> SkipCrLfAsync(
-        Stream stream,
-        long position,
-        long length,
-        CancellationToken ct)
+    private const int MaxHeaderBytes = 64 * 1024;
+
+    private static void ValidateBoundary(string boundary)
     {
-        if (position + 1 >= length)
-        {
-            return position;
-        }
-
-        stream.Seek(position, SeekOrigin.Begin);
-        var probe = new byte[2];
-        await ReadExactAsync(stream, probe, ct).ConfigureAwait(false);
-
-        return probe[0] == 13 && probe[1] == 10 ? position + 2 : position;
+        // MIME bchars: ASCII letters/digits and these punctuation characters; no trailing space.
+        if (string.IsNullOrEmpty(boundary) || boundary.Length > 70 || boundary[^1] == ' '
+            || boundary.Any(character => !char.IsAsciiLetterOrDigit(character)
+                && "'()+_,-./:=? ".IndexOf(character, StringComparison.Ordinal) < 0))
+            throw new PoFileFormatException("Multipart boundary must contain 1-70 valid MIME characters without CR/LF.");
     }
 
+    private static void ValidateHeaders(string headerText)
+    {
+        if (headerText.Length == 0)
+            throw new PoFileFormatException("Multipart part is missing its headers.");
+        var dispositionSeen = false;
+        foreach (var line in headerText.Split("\r\n", StringSplitOptions.None))
+        {
+            var colon = line.IndexOf(':');
+            if (colon <= 0 || line[..colon].Any(character => !char.IsAsciiLetterOrDigit(character)
+                    && "!#$%&'*+-.^_`|~".IndexOf(character, StringComparison.Ordinal) < 0)
+                || line[(colon + 1)..].Any(character => character < ' ' && character != '\t' || character == 127))
+                throw new PoFileFormatException("Multipart contains a malformed part header.");
+            if (!line[..colon].Equals("Content-Disposition", StringComparison.OrdinalIgnoreCase)) continue;
+            if (dispositionSeen)
+                throw new PoFileFormatException("Multipart part has duplicate Content-Disposition headers.");
+            dispositionSeen = true;
+            var disposition = line[(colon + 1)..].TrimStart();
+            if (!disposition.Equals("form-data", StringComparison.OrdinalIgnoreCase)
+                && !disposition.StartsWith("form-data;", StringComparison.OrdinalIgnoreCase))
+                throw new PoFileFormatException("Multipart part requires Content-Disposition: form-data.");
+        }
+        if (!dispositionSeen)
+            throw new PoFileFormatException("Multipart part is missing Content-Disposition.");
+    }
+
+    private readonly record struct MultipartDelimiter(long Position, long Next, bool Closing);
+
+    private static async Task<MultipartDelimiter?> FindDelimiterAsync(
+        Stream stream, byte[] separator, long start, long length, CancellationToken ct)
+    {
+        var search = start;
+        while (search < length)
+        {
+            var position = await FindSequenceAsync(stream, separator, search, length, ct).ConfigureAwait(false);
+            if (position < 0) return null;
+            var after = position + separator.Length;
+            var lineStart = position == 0 || position >= 2
+                && await StartsWithAsync(stream, position - 2, length, 13, 10, ct).ConfigureAwait(false);
+            if (lineStart)
+            {
+                if (await StartsWithAsync(stream, after, length, 13, 10, ct).ConfigureAwait(false))
+                    return new MultipartDelimiter(position, after + 2, Closing: false);
+                if (await StartsWithAsync(stream, after, length, (byte)'-', (byte)'-', ct).ConfigureAwait(false)
+                    && (after + 2 == length
+                        || await StartsWithAsync(stream, after + 2, length, 13, 10, ct).ConfigureAwait(false)))
+                    return new MultipartDelimiter(position, after + 2, Closing: true);
+            }
+            // Inline boundary text and boundary prefixes are ordinary opaque file data.
+            search = position + 1;
+        }
+        return null;
+    }
     /// <summary>Kiểm tra stream có bắt đầu bằng 2 byte cho trước hay không.</summary>
     private static async Task<bool> StartsWithAsync(
         Stream stream,
@@ -303,7 +292,7 @@ public static class PoMultipartReader
                 .ConfigureAwait(false);
             if (n <= 0)
             {
-                break;
+                throw new PoFileFormatException("Multipart ended before the requested data was read.");
             }
 
             offset += n;
@@ -374,7 +363,7 @@ public static class PoMultipartReader
 
             if (read <= 0)
             {
-                break;
+                throw new PoFileFormatException("Multipart stream is truncated.");
             }
 
             // Ghép carry + chunk mới.
@@ -466,7 +455,7 @@ public static class PoMultipartPartReader
 
             if (read <= 0)
             {
-                break;
+                throw new PoFileFormatException("Multipart file part is truncated.");
             }
 
             total += read;
@@ -512,7 +501,7 @@ public static class PoMultipartPartReader
 
             if (read <= 0)
             {
-                break;
+                throw new PoFileFormatException("Multipart metadata part is truncated.");
             }
 
             ms.Write(buffer, 0, read);

@@ -22,7 +22,6 @@ public static class MesSimulatorServiceCollectionExtensions
                 o.ApiKey = GetString(cfg, "MesSimulator:ApiKey", o.ApiKey);
                 o.IntervalSeconds = GetInt(cfg, "MesSimulator:IntervalSeconds", o.IntervalSeconds);
                 o.OrderQty = GetInt(cfg, "MesSimulator:OrderQty", o.OrderQty);
-                o.Gtin = GetString(cfg, "MesSimulator:Gtin", o.Gtin);
                 o.PoPrefix = GetString(cfg, "MesSimulator:PoPrefix", o.PoPrefix);
                 o.CustomFilePath = GetString(cfg, "MesSimulator:CustomFilePath", o.CustomFilePath);
                 o.CustomPoName = GetString(cfg, "MesSimulator:CustomPoName", o.CustomPoName);
@@ -32,6 +31,8 @@ public static class MesSimulatorServiceCollectionExtensions
             .Validate(o => o.OrderQty > 0, "MesSimulator:OrderQty phải lớn hơn 0.")
             .Validate(o => !string.IsNullOrWhiteSpace(o.TargetUrl), "MesSimulator:TargetUrl không được để trống.")
             .Validate(o => !string.IsNullOrWhiteSpace(o.PoPrefix), "MesSimulator:PoPrefix không được để trống.")
+            .Validate(o => !o.Enabled || !string.IsNullOrWhiteSpace(o.CustomFilePath),
+                "MesSimulator:CustomFilePath phải trỏ tới file CodeContent khi bật simulator.")
             .ValidateOnStart();
 
         services.AddHttpClient<MesSimulatorClient>((sp, http) =>

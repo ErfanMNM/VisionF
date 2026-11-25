@@ -9,10 +9,7 @@ public enum ScanOutcome
     /// <summary>Camera báo lỗi đọc mã ("NoRead" / "FAIL") → Fail (gửi D12 = 0).</summary>
     NoRead = 1,
 
-    /// <summary>Mã không khớp pattern TXNG/GS1 → Fail (gửi D12 = 0).</summary>
-    InvalidFormat = 2,
-
-    /// <summary>Mã trùng với lần quét gần đây → Fail (gửi D12 = 0).</summary>
+    /// <summary>Mã đã được quét/kích hoạt trong PO → Fail (gửi D12 = 0).</summary>
     Duplicate = 3,
 
     /// <summary>
@@ -40,4 +37,7 @@ public enum ScanOutcome
     /// KHÔNG gửi xuống PLC — mã bị loại bỏ hoàn toàn.
     /// </summary>
     Halted = 7,
+
+    /// <summary>Mã hợp lệ nhưng PLC chưa xác nhận Pass; không tiêu thụ mã PO.</summary>
+    PlcError = 8,
 }

@@ -3,7 +3,9 @@ using Microsoft.Data.Sqlite;
 
 namespace ClassLibraryMT.Print;
 
-/// <summary>Trạng thái in nằm riêng trong từng DB PO, không dùng ActivatedUtc.</summary>
+/// <summary>
+/// Trạng thái in nằm riêng trong từng DB PO; cột Code lưu nguyên CodeContent.
+/// </summary>
 public sealed class PrintQueueStore
 {
     private readonly PoStore _poStore;
@@ -28,13 +30,12 @@ public sealed class PrintQueueStore
             {
                 select.Transaction = (SqliteTransaction)tx;
                 select.CommandText = """
-                    SELECT pc.Code, pc.Gtin, pc.Serial,
-                           COALESCE(ps.State, 0), COALESCE(ps.Attempts, 0)
+                    SELECT pc.Code AS CodeContent, COALESCE(ps.Attempts, 0)
                     FROM PoCodes pc
                     LEFT JOIN PrintCodeStates ps ON ps.Code = pc.Code
                     WHERE pc.ActivatedUtc IS NULL
                       AND COALESCE(ps.State, 0) = $pending
-                    ORDER BY pc.Serial, pc.Code
+                    ORDER BY pc.Code COLLATE BINARY
                     LIMIT $quantity;
                     """;
                 select.Parameters.AddWithValue("$pending", (int)PrintCodeState.Pending);
@@ -44,8 +45,8 @@ public sealed class PrintQueueStore
                 {
                     items.Add(new PrintQueueItem
                     {
-                        Code = reader.GetString(0), Gtin = reader.GetString(1), Serial = reader.GetString(2),
-                        State = PrintCodeState.Pending, Attempts = reader.GetInt32(4) + 1,
+                        CodeContent = reader.GetString(0),
+                        State = PrintCodeState.Pending, Attempts = reader.GetInt32(1) + 1,
                     });
                 }
             }
@@ -61,7 +62,7 @@ public sealed class PrintQueueStore
                         State = excluded.State, BatchId = excluded.BatchId, PrinterId = excluded.PrinterId,
                         SentUtc = excluded.SentUtc, Attempts = excluded.Attempts, LastError = NULL;
                     """;
-                upsert.Parameters.AddWithValue("$code", item.Code);
+                upsert.Parameters.AddWithValue("$code", item.CodeContent);
                 upsert.Parameters.AddWithValue("$sent", (int)PrintCodeState.Sent);
                 upsert.Parameters.AddWithValue("$batch", batchId);
                 upsert.Parameters.AddWithValue("$printer", printerId);

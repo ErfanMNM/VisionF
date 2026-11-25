@@ -129,7 +129,7 @@ internal sealed partial class ProductionInfoViewModel : ViewModelBase, IDisposab
     /// </summary>
     public bool CanCancel => Orders.CanCancel;
 
-    /// <summary>True khi máy đã bị dừng do mã trùng lịch sử quét.</summary>
+    /// <summary>True khi hệ thống đang giữ trạng thái dừng để bảo vệ dữ liệu sản xuất.</summary>
     public bool IsHalted => Orders.IsHalted;
 
     /// <summary>True khi đang xử lý (disable nút).</summary>

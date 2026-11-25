@@ -125,15 +125,15 @@ public sealed class PrintService
         {
             try
             {
-                var result = await _printer.SendCodeAsync(item.Code, ct).ConfigureAwait(false);
-                await _store.RecordSendResponseAsync(order.OrderNo, order.CreatedUtc, batch.BatchId, item.Code, result.Response, ct).ConfigureAwait(false);
-                if (result.Accepted) accepted++; else waiting.Add(item.Code);
+                var result = await _printer.SendCodeAsync(item.CodeContent, ct).ConfigureAwait(false);
+                await _store.RecordSendResponseAsync(order.OrderNo, order.CreatedUtc, batch.BatchId, item.CodeContent, result.Response, ct).ConfigureAwait(false);
+                if (result.Accepted) accepted++; else waiting.Add(item.CodeContent);
             }
             catch (Exception ex)
             {
-                _logger?.LogWarning(ex, "Gửi mã in thất bại {Code}", item.Code);
-                await _store.RecordSendResponseAsync(order.OrderNo, order.CreatedUtc, batch.BatchId, item.Code, ex.Message, ct).ConfigureAwait(false);
-                waiting.Add(item.Code);
+                _logger?.LogWarning(ex, "Gửi mã in thất bại {CodeContent}", item.CodeContent);
+                await _store.RecordSendResponseAsync(order.OrderNo, order.CreatedUtc, batch.BatchId, item.CodeContent, ex.Message, ct).ConfigureAwait(false);
+                waiting.Add(item.CodeContent);
             }
         }
         var noResponse = await _store.ReconcileActivatedAcrossOrdersAsync(ct).ConfigureAwait(false);

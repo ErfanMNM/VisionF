@@ -56,7 +56,9 @@ internal sealed class ScanSendStatusStore : IScanSendStatusStore
                    SendTimeUtc, SendAttemptUtc
             FROM ScanRecords
             {where}
-            ORDER BY ReceivedUtc ASC, Id ASC
+            -- Retry the least recently attempted rows first. Rows retained as Pending
+            -- for missing metadata/content must not monopolize every later batch.
+            ORDER BY COALESCE(SendAttemptUtc, '') ASC, ReceivedUtc ASC, Id ASC
             LIMIT $limit;
             """;
         AddParameters(cmd, parameters);
@@ -91,9 +93,15 @@ internal sealed class ScanSendStatusStore : IScanSendStatusStore
                 parameters.Add(("$sendStatus", filter.SendStatus));
             }
 
+            if (filter.CodeContentEquals is not null)
+            {
+                where += " AND (CASE WHEN Raw <> '' THEN Raw ELSE Code END) = $codeContent COLLATE BINARY";
+                parameters.Add(("$codeContent", filter.CodeContentEquals));
+            }
+
             if (!string.IsNullOrWhiteSpace(filter.CodeContains))
             {
-                where += " AND (Code LIKE $code OR Serial LIKE $code OR Raw LIKE $code)";
+                where += " AND (Code LIKE $code OR Raw LIKE $code)";
                 parameters.Add(("$code", $"%{filter.CodeContains}%"));
             }
 
@@ -228,19 +236,30 @@ internal sealed class ScanSendStatusStore : IScanSendStatusStore
             .OpenAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        await using var cmd = connection.CreateCommand();
-        cmd.CommandText = """
-            UPDATE ScanRecords
-            SET SendStatus = $pending,
-                SendStatusCode = 0,
-                SendMessage = ''
-            WHERE Id IN $ids;
-            """;
-
-        cmd.Parameters.AddWithValue("$pending", ScanSendStatuses.Pending);
-        cmd.Parameters.AddWithValue("$ids", ids.ToArray());
-
-        return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = (SqliteTransaction)await connection
+            .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        var changed = 0;
+        // SQLite parameters represent individual scalar values, not an IN-list.
+        // Bound each command so large multi-selection stays below variable limits.
+        foreach (var chunk in ids.Distinct().Chunk(500))
+        {
+            await using var cmd = connection.CreateCommand();
+            cmd.Transaction = transaction;
+            var names = Enumerable.Range(0, chunk.Length).Select(index => "$id" + index).ToArray();
+            cmd.CommandText = $"""
+                UPDATE ScanRecords
+                SET SendStatus = $pending,
+                    SendStatusCode = 0,
+                    SendMessage = ''
+                WHERE Id IN ({string.Join(",", names)});
+                """;
+            cmd.Parameters.AddWithValue("$pending", ScanSendStatuses.Pending);
+            for (var index = 0; index < chunk.Length; index++)
+                cmd.Parameters.AddWithValue(names[index], chunk[index]);
+            changed += await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        return changed;
     }
 
     /// <inheritdoc/>
@@ -308,7 +327,7 @@ internal sealed class ScanSendStatusStore : IScanSendStatusStore
     {
         Id = record.GetInt64(0),
         ReceivedUtc = ParseUtc(record.GetString(1)),
-        Code = record.GetString(2),
+        CodeContent = record.GetString(9) is { Length: > 0 } raw ? raw : record.GetString(2),
         Gtin = record.GetString(3),
         Serial = record.GetString(4),
         Status = record.GetString(5),

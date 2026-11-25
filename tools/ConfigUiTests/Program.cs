@@ -89,7 +89,7 @@ Directory.CreateDirectory(Path.Combine(logs, "po"));
 
 File.WriteAllText(Path.Combine(root, "appsettings.json"), """
 {
-  "Camera": { "Ip": "127.0.0.1", "Port": 9000, "DuplicateWindowSeconds": 30 },
+  "Camera": { "Ip": "127.0.0.1", "Port": 9000 },
   "Plc": { "Ip": "127.0.0.1", "Port": 9600, "RemoteNode": 0, "LocalNode": 1, "TimeoutMs": 1000, "Retries": 0, "ResultAddress": "D12", "ReadyAddress": "D16", "RefreshIntervalMs": 1000 },
   "Web": { "Url": "https://estrace.checkee.vn", "Enabled": true },
   "Scanner": { "Enabled": true, "Mode": "TcpServer", "TcpHost": "127.0.0.1", "TcpPort": 6999, "ComPort": "COM3", "BaudRate": 9600 },
@@ -238,6 +238,10 @@ Invoke("Load");
 
 Check("Camera IP nap dung", (string?)FieldValue(vm, "Camera:Ip") == "127.0.0.1", (string?)FieldValue(vm, "Camera:Ip") ?? "");
 Check("Camera Port nap dung", (int?)FieldValue(vm, "Camera:Port") == 9000);
+Check("Form Camera chi co IP va port", AllFieldsOf(vm)
+    .Select(field => (string?)field.GetType().GetProperty("JsonPath")!.GetValue(field))
+    .Where(path => path?.StartsWith("Camera:", StringComparison.Ordinal) == true)
+    .OrderBy(path => path).SequenceEqual(new[] { "Camera:Ip", "Camera:Port" }));
 Check("PLC IP nap dung", (string?)FieldValue(vm, "Plc:Ip") == "127.0.0.1");
 Check("PLC Port nap dung", (int?)FieldValue(vm, "Plc:Port") == 9600);
 Check("PLC Timeout nap dung", (int?)FieldValue(vm, "Plc:TimeoutMs") == 1000);
@@ -313,13 +317,13 @@ Check("Hoan tac sau khi huy -> van dung ket noi cu",
 
 acceptConnectionChanges = true;
 SetField(vm, "Camera:Ip", "192.168.9.50");
-SetField(vm, "Camera:DuplicateWindowSeconds", 60);
+SetField(vm, "Camera:Port", 9001);
 SetField(vm, "Plc:Ip", "192.168.9.9");
 Exec("SaveCommand");
 Check("Xac nhan -> mot lan ap dung bat dong bo", confirmationCount == 2 && deviceApplier.ApplyCount == 1);
 Check("Coordinator nhan dung target Camera/PLC",
     deviceApplier.LastTarget?.Camera.Ip == "192.168.9.50"
-    && deviceApplier.LastTarget.Camera.DuplicateWindowSeconds == 60
+    && deviceApplier.LastTarget.Camera.Port == 9001
     && deviceApplier.LastTarget.Plc.Ip == "192.168.9.9");
 Check("Coordinator nhan runtime cu de rollback",
     deviceApplier.LastRunning?.Camera.Ip == "127.0.0.1"
@@ -348,7 +352,7 @@ SetField(vm, "Plc:TimeoutMs", 3333);
 Exec("ResetCommand");
 Check("Hoan tac giu Camera/PLC da hot-apply du IConfiguration cu",
     (string?)FieldValue(vm, "Camera:Ip") == "192.168.9.50"
-    && (int?)FieldValue(vm, "Camera:DuplicateWindowSeconds") == 60
+    && (int?)FieldValue(vm, "Camera:Port") == 9001
     && (string?)FieldValue(vm, "Plc:Ip") == "192.168.9.9");
 Check("Hoan tac bo thay doi PLC chua luu", (int?)FieldValue(vm, "Plc:TimeoutMs") == 1000);
 Check("Hoan tac khong tu tao banner restart Camera/PLC", (bool?)Get("RestartRequired") == false);

@@ -18,9 +18,9 @@ void Check(bool condition, string description)
 }
 
 static T Read<T>(object owner, string property) => (T)owner.GetType().GetProperty(property)!.GetValue(owner)!;
-static AppConfigSnapshot Snapshot(int cameraPort, int seconds, int plcPort, string result = "D12", string ready = "D16") => new()
+static AppConfigSnapshot Snapshot(int cameraPort, int plcPort, string result = "D12", string ready = "D16") => new()
 {
-    Camera = new CameraConfig { Ip = "127.0.0.1", Port = cameraPort, DuplicateWindowSeconds = seconds },
+    Camera = new CameraConfig { Ip = "127.0.0.1", Port = cameraPort },
     Plc = new PlcConfig
     {
         Enabled = false, Ip = "127.0.0.1", Port = plcPort, RemoteNode = 0, LocalNode = 1,
@@ -46,7 +46,7 @@ try
     builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
     {
         ["Config:BasePath"] = sandbox,
-        ["Camera:Ip"] = "127.0.0.1", ["Camera:Port"] = "19101", ["Camera:DuplicateWindowSeconds"] = "30",
+        ["Camera:Ip"] = "127.0.0.1", ["Camera:Port"] = "19101",
         ["Plc:Enabled"] = "false", ["Plc:Ip"] = "127.0.0.1", ["Plc:Port"] = "19600",
         ["Plc:TimeoutMs"] = "20", ["Plc:Retries"] = "0", ["Plc:RemoteNode"] = "0", ["Plc:LocalNode"] = "1",
         ["Plc:ResultAddress"] = "D12", ["Plc:ReadyAddress"] = "D16", ["Plc:RefreshIntervalMs"] = "1000",
@@ -79,7 +79,6 @@ try
     bool Matches(AppConfigSnapshot expected) => reader.IP == expected.Camera.Ip && reader.Port == expected.Camera.Port
         && Read<string>(cameraOptions, "Ip") == expected.Camera.Ip
         && Read<int>(cameraOptions, "Port") == expected.Camera.Port
-        && Read<int>(cameraOptions, "DuplicateWindowSeconds") == expected.Camera.DuplicateWindowSeconds
         && plc.IpAddress == expected.Plc.Ip && plc.Port == expected.Plc.Port && plc.Enabled == expected.Plc.Enabled
         && Read<bool>(plcOptions, "Enabled") == expected.Plc.Enabled
         && Read<int>(plcOptions, "Port") == expected.Plc.Port
@@ -88,14 +87,14 @@ try
         && Read<int>(plcOptions, "TimeoutMs") == expected.Plc.TimeoutMs
         && Read<int>(plcOptions, "RefreshIntervalMs") == expected.Plc.RefreshIntervalMs;
 
-    var original = Snapshot(19101, 30, 19600);
+    var original = Snapshot(19101, 19600);
     Check(Matches(original) && !intake.IsSuspended, "DI dựng đúng runtime Camera/PLC ban đầu");
     Check(!plc.Enabled && typeof(OmronPlc).GetField("_transport", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(plc) is null,
         "PLC tắt không mở transport trong bài test offline");
     Check(!(bool)typeof(Reader).GetField("_isRunning", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(reader)!,
         "Reader không chạy socket TCP vì host chưa start");
 
-    var target = Snapshot(19102, 60, 19601, "D20", "D24");
+    var target = Snapshot(19102, 19601, "D20", "D24");
     var persisted = 0;
     await applier.ApplyAndSaveAsync(target, original, () =>
     {
@@ -108,13 +107,13 @@ try
         "Áp dụng thành công mới persist đúng một lần");
     Check(!intake.IsSuspended, "Apply thành công mở lại nhận mã");
 
-    var rejectedTarget = Snapshot(19103, 5, 19602, "D30", "D34");
+    var rejectedTarget = Snapshot(19103, 19602, "D30", "D34");
     var saveError = await FailsAsync(() => applier.ApplyAndSaveAsync(rejectedTarget, target, () => false, CancellationToken.None));
     Check(saveError.Message.Contains("khôi phục") && Matches(target), "Persist=false rollback cả Camera/PLC về runtime cũ");
     Check(!intake.IsSuspended && File.ReadAllText(configPath) == "saved-target", "Lưu lỗi giữ file cũ và mở lại intake sau rollback thành công");
 
     var beforeInvalid = File.ReadAllText(configPath);
-    var invalidCamera = Snapshot(19104, 10, 19601, "D20", "D24");
+    var invalidCamera = Snapshot(19104, 19601, "D20", "D24");
     invalidCamera.Camera.Ip = "::1";
     var invalidPersistCalls = 0;
     await FailsAsync(() => applier.ApplyAndSaveAsync(invalidCamera, target, () =>
@@ -127,7 +126,7 @@ try
         "Endpoint camera không hỗ trợ không ghi file hoặc mất runtime cũ");
     Check(!intake.IsSuspended, "Lỗi validate camera giải phóng suspension sau rollback");
 
-    var invalidPlc = Snapshot(19105, 12, 19602, "C12", "D34");
+    var invalidPlc = Snapshot(19105, 19602, "C12", "D34");
     await FailsAsync(() => applier.ApplyAndSaveAsync(invalidPlc, target, () =>
     {
         invalidPersistCalls++;
@@ -176,15 +175,16 @@ try
 
     // Tiêm baseline rollback không hợp lệ để kiểm tra nhánh bảo vệ cuối cùng.
     // Runtime thật và target vẫn PLC disabled nên không phát UDP.
-    var brokenRollbackBaseline = Snapshot(rejectedTarget.Camera.Port, rejectedTarget.Camera.DuplicateWindowSeconds, 0,
+    var brokenRollbackBaseline = Snapshot(rejectedTarget.Camera.Port, 0,
         rejectedTarget.Plc.ResultAddress, rejectedTarget.Plc.ReadyAddress);
-    var recoveryTarget = Snapshot(19106, 15, 19603, "D40", "D44");
+    var recoveryTarget = Snapshot(19106, 19603, "D40", "D44");
     var rollbackError = await FailsAsync(() => applier.ApplyAndSaveAsync(recoveryTarget, brokenRollbackBaseline,
         () => false, CancellationToken.None));
     Check(rollbackError.Message.Contains("tạm dừng") && intake.IsSuspended,
         "Rollback thất bại giữ intake tạm dừng thay vì nhận mã với cấu hình nửa chừng");
     Check(reader.IP == brokenRollbackBaseline.Camera.Ip && reader.Port == brokenRollbackBaseline.Camera.Port
-        && Read<int>(cameraOptions, "DuplicateWindowSeconds") == brokenRollbackBaseline.Camera.DuplicateWindowSeconds,
+        && Read<string>(cameraOptions, "Ip") == brokenRollbackBaseline.Camera.Ip
+        && Read<int>(cameraOptions, "Port") == brokenRollbackBaseline.Camera.Port,
         "Rollback vẫn khôi phục camera dù rollback PLC đã ném lỗi trước đó");
 
     SetSuspended(true);

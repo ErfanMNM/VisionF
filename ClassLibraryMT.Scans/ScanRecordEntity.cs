@@ -11,16 +11,20 @@ public sealed class ScanRecordEntity
     /// <summary>Thời điểm nhận mã từ camera (UTC).</summary>
     public DateTime ReceivedUtc { get; set; }
 
-    /// <summary>Mã / serial quét được (rỗng nếu không đọc được).</summary>
-    public string Code { get; set; } = string.Empty;
+    /// <summary>Nội dung mã đầy đủ, giữ nguyên định danh camera (rỗng nếu không đọc được).</summary>
+    public string CodeContent { get; set; } = string.Empty;
 
-    /// <summary>Mã GTIN nếu parse được (rỗng nếu không).</summary>
+    /// <summary>Tên cũ của <see cref="CodeContent"/>, chỉ giữ cho tích hợp tương thích.</summary>
+    [Obsolete("Use CodeContent; the complete scanned code is the identity.")]
+    public string Code { get => CodeContent; set => CodeContent = value; }
+
+    /// <summary>Metadata GTIN cũ; không dùng làm định danh hoặc kiểm tra mã sản xuất.</summary>
     public string Gtin { get; set; } = string.Empty;
 
-    /// <summary>Số serial nếu parse được (rỗng nếu không).</summary>
+    /// <summary>Metadata serial cũ; không dùng làm định danh hoặc kiểm tra mã sản xuất.</summary>
     public string Serial { get; set; } = string.Empty;
 
-    /// <summary>Trạng thái: Pass / Fail / Overload.</summary>
+    /// <summary>Pass / Duplicate / InvalidForOrder / NoRead; Fail và Overload tương thích lịch sử.</summary>
     public string Status { get; set; } = ScanStatuses.Fail;
 
     /// <summary>
@@ -97,8 +101,11 @@ public sealed class ScanRecordFilter
     /// <summary>Lọc theo trạng thái (null = tất cả).</summary>
     public ScanStatus? Status { get; set; }
 
-    /// <summary>Lọc theo mã/serial chứa chuỗi (null = tất cả).</summary>
+    /// <summary>Lọc theo nội dung mã đầy đủ chứa chuỗi (null = tất cả).</summary>
     public string? CodeContains { get; set; }
+
+    /// <summary>Đối chiếu nguyên CodeContent chính xác, phân biệt hoa thường; null = không lọc.</summary>
+    public string? CodeContentEquals { get; set; }
 
     /// <summary>Lọc theo số batch (null = tất cả).</summary>
     public string? BatchNo { get; set; }

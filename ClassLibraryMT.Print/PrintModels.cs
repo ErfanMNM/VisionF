@@ -79,9 +79,8 @@ public sealed record PrintCodeBatch(
 public sealed class PrintQueueItem
 {
     public long Id { get; init; }
-    public string Code { get; init; } = "";
-    public string Gtin { get; init; } = "";
-    public string Serial { get; init; } = "";
+    /// <summary>Nội dung mã đầy đủ, dùng nguyên vẹn để gửi in và đối chiếu trạng thái.</summary>
+    public string CodeContent { get; init; } = "";
     public PrintCodeState State { get; init; }
     public int Attempts { get; init; }
 }

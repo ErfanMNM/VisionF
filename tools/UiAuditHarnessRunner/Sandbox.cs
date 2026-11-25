@@ -161,7 +161,6 @@ internal static class Sandbox
             {
                 Ip = "127.0.0.1",
                 Port = 59000,          // cổng camera thật (9000) KHÔNG dùng
-                DuplicateWindowSeconds = 30,
             },
             Plc = new
             {

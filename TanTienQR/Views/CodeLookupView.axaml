@@ -44,7 +44,7 @@
                          HorizontalAlignment="Stretch"
                          VerticalContentAlignment="Center"
                          FontSize="14"
-                         PlaceholderText="Nhập toàn bộ mã QR hoặc 1 phần mã..."
+                         PlaceholderText="Nhập chính xác toàn bộ nội dung mã..."
                          Text="{Binding CodeLookup.CodeInput}">
                     <TextBox.InnerLeftContent>
                         <Path Width="17" Height="17"
@@ -96,7 +96,7 @@
 
         <!-- ===== Bảng thông tin mã vừa tra cứu ===== -->
         <Border Grid.Row="2" Classes="panel" Padding="0">
-            <Grid RowDefinitions="Auto,Auto,*">
+            <Grid RowDefinitions="Auto,*,*">
 
                 <!-- Header: tiêu đề + trạng thái kích hoạt -->
                 <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10" Margin="14,12">
@@ -136,27 +136,22 @@
                         Margin="14,0,14,12"
                         Padding="14,12"
                         IsVisible="{Binding CodeLookup.HasResult}">
+                    <ScrollViewer MaxHeight="160"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto">
                     <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="10">
 
-                        <!-- Hàng 1: mã + gtin + po -->
-                        <Grid ColumnDefinitions="*,*,*" ColumnSpacing="14">
+                        <!-- Hàng 1: toàn bộ nội dung mã + PO -->
+                        <Grid ColumnDefinitions="2*,*" ColumnSpacing="14">
                             <StackPanel Grid.Column="0" Spacing="3">
-                                <TextBlock Classes="overline" Text="MÃ / SERIAL" />
+                                <TextBlock Classes="overline" Text="NỘI DUNG MÃ" />
                                 <TextBlock Classes="mono" FontSize="16" FontWeight="Bold"
                                            Foreground="{StaticResource TextPrimary}"
-                                           TextTrimming="CharacterEllipsis"
+                                           TextWrapping="Wrap"
                                            Text="{Binding CodeLookup.Latest.CodeText}" />
                             </StackPanel>
 
                             <StackPanel Grid.Column="1" Spacing="3">
-                                <TextBlock Classes="overline" Text="GTIN" />
-                                <TextBlock Classes="mono" FontSize="14"
-                                           Foreground="{StaticResource TextPrimary}"
-                                           TextTrimming="CharacterEllipsis"
-                                           Text="{Binding CodeLookup.Latest.GtinText}" />
-                            </StackPanel>
-
-                            <StackPanel Grid.Column="2" Spacing="3">
                                 <TextBlock Classes="overline" Text="LỆNH SẢN XUẤT (PO)" />
                                 <TextBlock Classes="mono" FontSize="14"
                                            Foreground="{StaticResource TextPrimary}"
@@ -211,7 +206,7 @@
                                 <TextBlock Classes="overline" Text="NỘI DUNG GỐC CAMERA" />
                                 <TextBlock Classes="mono" FontSize="12"
                                            Foreground="{StaticResource TextSecondary}"
-                                           TextTrimming="CharacterEllipsis"
+                                           TextWrapping="Wrap"
                                            Text="{Binding CodeLookup.Latest.RawText}" />
                             </StackPanel>
 
@@ -223,6 +218,7 @@
                             </StackPanel>
                         </Grid>
                     </Grid>
+                    </ScrollViewer>
                 </Border>
 
                 <!-- Bảng chi tiết các lần quét của mã vừa tra cứu -->
@@ -238,18 +234,17 @@
 
                     <!-- Tiêu đề cột -->
                     <Grid Grid.Row="1"
-                          ColumnDefinitions="160,*,120,110,110,110,120,110"
+                          ColumnDefinitions="160,*,110,80,110,120,100"
                           ColumnSpacing="10"
                           Margin="14,0,14,4"
                           IsVisible="{Binding CodeLookup.HasResult}">
                         <TextBlock Classes="overline" Text="THỜI GIAN" />
-                        <TextBlock Grid.Column="1" Classes="overline" Text="MÃ / SERIAL" />
-                        <TextBlock Grid.Column="2" Classes="overline" Text="GTIN" />
-                        <TextBlock Grid.Column="3" Classes="overline" Text="KẾT QUẢ" />
-                        <TextBlock Grid.Column="4" Classes="overline" Text="PLC" />
-                        <TextBlock Grid.Column="5" Classes="overline" Text="ĐƠN HÀNG" />
-                        <TextBlock Grid.Column="6" Classes="overline" Text="THỜI GIAN XỬ LÝ" />
-                        <TextBlock Grid.Column="7" Classes="overline" Text="CHECKEE" />
+                        <TextBlock Grid.Column="1" Classes="overline" Text="NỘI DUNG MÃ" />
+                        <TextBlock Grid.Column="2" Classes="overline" Text="KẾT QUẢ" />
+                        <TextBlock Grid.Column="3" Classes="overline" Text="PLC" />
+                        <TextBlock Grid.Column="4" Classes="overline" Text="ĐƠN HÀNG" />
+                        <TextBlock Grid.Column="5" Classes="overline" Text="THỜI GIAN XỬ LÝ" />
+                        <TextBlock Grid.Column="6" Classes="overline" Text="CHECKEE" />
                     </Grid>
 
                     <ScrollViewer Grid.Row="2"
@@ -262,55 +257,51 @@
                                     <Border BorderBrush="{StaticResource LineColor}"
                                             BorderThickness="0,0,0,1"
                                             Padding="14,7">
-                                        <Grid ColumnDefinitions="160,*,120,110,110,110,120,110" ColumnSpacing="10">
+                                        <Grid ColumnDefinitions="160,*,110,80,110,120,100" ColumnSpacing="10">
                                             <TextBlock Grid.Column="0"
                                                        Classes="mono"
                                                        FontSize="11"
-                                                       VerticalAlignment="Center"
+                                                       VerticalAlignment="Top"
                                                        Text="{Binding TimeText}" />
                                             <TextBlock Grid.Column="1"
                                                        Classes="mono"
                                                        FontSize="12"
                                                        FontWeight="SemiBold"
                                                        Foreground="{StaticResource TextPrimary}"
-                                                       VerticalAlignment="Center"
-                                                       TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Top"
+                                                       TextWrapping="Wrap"
                                                        Text="{Binding CodeText}" />
-                                            <TextBlock Grid.Column="2"
-                                                       Classes="mono"
-                                                       FontSize="11"
-                                                       VerticalAlignment="Center"
-                                                       TextTrimming="CharacterEllipsis"
-                                                       Text="{Binding GtinText}" />
-                                            <Border Grid.Column="3"
+                                            <Border Grid.Column="2"
                                                     Classes="badge"
                                                     HorizontalAlignment="Left"
+                                                    VerticalAlignment="Top"
                                                     Classes.running="{Binding IsPass}"
                                                     Classes.warning="{Binding IsOverload}"
                                                     Classes.fault="{Binding IsFail}">
                                                 <TextBlock Text="{Binding StatusText}" />
                                             </Border>
-                                            <TextBlock Grid.Column="4"
+                                            <TextBlock Grid.Column="3"
                                                        Classes="label"
                                                        FontSize="11"
-                                                       VerticalAlignment="Center"
+                                                       VerticalAlignment="Top"
                                                        TextTrimming="CharacterEllipsis"
                                                        Text="{Binding PlcText}" />
+                                            <TextBlock Grid.Column="4"
+                                                       Classes="mono"
+                                                       FontSize="11"
+                                                       VerticalAlignment="Top"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Text="{Binding OrderNoText}" />
                                             <TextBlock Grid.Column="5"
                                                        Classes="mono"
                                                        FontSize="11"
-                                                       VerticalAlignment="Center"
-                                                       TextTrimming="CharacterEllipsis"
-                                                       Text="{Binding OrderNoText}" />
-                                            <TextBlock Grid.Column="6"
-                                                       Classes="mono"
-                                                       FontSize="11"
-                                                       VerticalAlignment="Center"
+                                                       VerticalAlignment="Top"
                                                        Text="{Binding ProcessingTimeText}" />
                                             <!-- Trạng thái gửi lên Checkee -->
-                                            <Border Grid.Column="7"
+                                            <Border Grid.Column="6"
                                                     Classes="badge"
                                                     HorizontalAlignment="Left"
+                                                    VerticalAlignment="Top"
                                                     ToolTip.Tip="{Binding SendDetailText}"
                                                     Classes.running="{Binding IsSendSent}"
                                                     Classes.warning="{Binding IsSendPending}"
@@ -424,6 +415,7 @@
 
                 <!-- Bảng danh sách mã lỗi -->
                 <ScrollViewer Grid.Row="1"
+                              MaxHeight="80"
                               HorizontalScrollBarVisibility="Disabled"
                               VerticalScrollBarVisibility="Auto">
                     <ItemsControl ItemsSource="{Binding CodeLookup.ErrorRows}">
@@ -432,43 +424,38 @@
                                 <Border BorderBrush="{StaticResource LineColor}"
                                         BorderThickness="0,0,0,1"
                                         Padding="14,7">
-                                    <Grid ColumnDefinitions="170,*,110,120,110,*" ColumnSpacing="10">
+                                    <Grid ColumnDefinitions="2*,2*,120,110,*" ColumnSpacing="10">
                                         <TextBlock Grid.Column="0"
                                                    Classes="mono"
                                                    FontSize="12"
                                                    FontWeight="SemiBold"
                                                    Foreground="{StaticResource TextPrimary}"
-                                                   VerticalAlignment="Center"
-                                                   TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Top"
+                                                   TextWrapping="Wrap"
                                                    Text="{Binding CodeText}" />
                                         <TextBlock Grid.Column="1"
                                                    Classes="label"
                                                    FontSize="11"
-                                                   VerticalAlignment="Center"
+                                                   VerticalAlignment="Top"
                                                    TextWrapping="Wrap"
                                                    Text="{Binding Message}" />
                                         <TextBlock Grid.Column="2"
                                                    Classes="mono"
                                                    FontSize="11"
-                                                   VerticalAlignment="Center"
-                                                   TextTrimming="CharacterEllipsis"
-                                                   Text="{Binding GtinText}" />
-                                        <TextBlock Grid.Column="3"
-                                                   Classes="mono"
-                                                   FontSize="11"
-                                                   VerticalAlignment="Center"
+                                                   VerticalAlignment="Top"
                                                    TextTrimming="CharacterEllipsis"
                                                    Text="{Binding BatchText}" />
-                                        <Border Grid.Column="4"
+                                        <Border Grid.Column="3"
                                                 Classes="badge"
                                                 HorizontalAlignment="Left"
+                                                VerticalAlignment="Top"
                                                 Classes.fault="True">
                                             <TextBlock Text="{Binding StatusCodeText}" />
                                         </Border>
-                                        <TextBlock Grid.Column="5"
+                                        <TextBlock Grid.Column="4"
                                                    Classes="label"
                                                    FontSize="11"
-                                                   VerticalAlignment="Center"
+                                                   VerticalAlignment="Top"
                                                    TextTrimming="CharacterEllipsis"
                                                    Text="{Binding LastAttemptText}" />
                                     </Grid>

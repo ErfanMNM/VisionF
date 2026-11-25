@@ -5,7 +5,7 @@ public sealed class MesSimulatorOptions
 {
     public const string SectionName = "MesSimulator";
 
-    /// <summary>Bật worker gửi PO mẫu theo chu kỳ.</summary>
+    /// <summary>Bật worker upload một file CodeContent khi khởi động.</summary>
     public bool Enabled { get; set; }
 
     /// <summary>Địa chỉ TanTienQR đang chạy HTTP server nhận PO.</summary>
@@ -14,19 +14,16 @@ public sealed class MesSimulatorOptions
     /// <summary>API key gửi ở header x-api-key (có thể để trống).</summary>
     public string ApiKey { get; set; } = string.Empty;
 
-    /// <summary>Chu kỳ gửi PO mẫu (giây).</summary>
+    /// <summary>Legacy setting retained for configuration compatibility; file uploads are one-shot.</summary>
     public int IntervalSeconds { get; set; } = 30;
 
-    /// <summary>Số mã trong mỗi PO mẫu.</summary>
+    /// <summary>Số dòng mã của file trước lọc trùng.</summary>
     public int OrderQty { get; set; } = 10;
 
-    /// <summary>GTIN dùng cho mã mẫu.</summary>
-    public string Gtin { get; set; } = "08934567890123";
-
-    /// <summary>Tiền tố tên PO và serial mẫu.</summary>
+    /// <summary>Legacy setting retained for configuration compatibility; codes are never generated.</summary>
     public string PoPrefix { get; set; } = "MES-TEST";
 
-    /// <summary>Đường dẫn file CSV/JSON/XLSX/XLS có sẵn; để trống để tự sinh PO.</summary>
+    /// <summary>File CSV/JSON/XLSX một cột CodeContent; bắt buộc khi bật worker.</summary>
     public string CustomFilePath { get; set; } = string.Empty;
 
     /// <summary>Tên PO dùng khi tải file custom.</summary>

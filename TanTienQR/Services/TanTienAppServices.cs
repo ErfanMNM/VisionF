@@ -74,6 +74,8 @@ public static class TanTienAppServices
         // Đăng ký sau AddScanStore vì worker gửi mã đọc trạng thái gửi trong
         // cùng bảng ScanRecords (logs/scans.db).
         services.AddCheckee(configuration);
+        services.AddOptions<CheckeeOutboundOptions>().Configure(o =>
+            o.ProductGtin = ConfigReader.GetString(configuration, "Checkee:ProductGtin", string.Empty));
 
         // ---- HTTP server nhận PO từ MES (POST /api/po) ----
         // Đăng ký SAU AddProductionOrders vì PoHttpServer dùng chung PoStore
@@ -96,12 +98,9 @@ public static class TanTienAppServices
             {
                 o.Ip = ConfigReader.GetString(cfg, $"{CameraSectionName}:Ip", o.Ip);
                 o.Port = ConfigReader.GetInt(cfg, $"{CameraSectionName}:Port", o.Port);
-                o.DuplicateWindowSeconds = ConfigReader.GetInt(
-                    cfg, $"{CameraSectionName}:DuplicateWindowSeconds", o.DuplicateWindowSeconds);
             })
             .Validate(o => !string.IsNullOrWhiteSpace(o.Ip), "Camera:Ip không được để trống.")
             .Validate(o => o.Port is > 0 and <= 65535, "Camera:Port phải từ 1 đến 65535.")
-            .Validate(o => o.DuplicateWindowSeconds > 0, "Camera:DuplicateWindowSeconds phải lớn hơn 0.")
             .ValidateOnStart();
 
         // Reader: singleton, dùng chung một kết nối socket.
@@ -125,6 +124,8 @@ public static class TanTienAppServices
                 o.ResultAddress = ConfigReader.GetString(cfg, $"{PlcSectionName}:ResultAddress", o.ResultAddress);
                 o.ReadyAddress = ConfigReader.GetString(cfg, $"{PlcSectionName}:ReadyAddress", o.ReadyAddress);
                 o.RefreshIntervalMs = ConfigReader.GetInt(cfg, $"{PlcSectionName}:RefreshIntervalMs", o.RefreshIntervalMs);
+                o.CounterAddress = ConfigReader.GetString(cfg, $"{PlcSectionName}:CounterAddress", o.CounterAddress);
+                o.ResetCounterAddress = ConfigReader.GetString(cfg, $"{PlcSectionName}:ResetCounterAddress", o.ResetCounterAddress);
             })
             .Validate(o => !string.IsNullOrWhiteSpace(o.Ip), "Plc:Ip không được để trống.")
             .Validate(o => o.Port is > 0 and <= 65535, "Plc:Port phải từ 1 đến 65535.")
@@ -133,6 +134,8 @@ public static class TanTienAppServices
             .Validate(o => o.RefreshIntervalMs > 0, "Plc:RefreshIntervalMs phải lớn hơn 0.")
             .Validate(o => !string.IsNullOrWhiteSpace(o.ResultAddress), "Plc:ResultAddress không được để trống.")
             .Validate(o => !string.IsNullOrWhiteSpace(o.ReadyAddress), "Plc:ReadyAddress không được để trống.")
+            .Validate(o => ConfigValidation.IsValidPlcWordAddress(o.CounterAddress, 10), "Plc:CounterAddress phải chứa đủ khối 5 Int32.")
+            .Validate(o => string.IsNullOrWhiteSpace(o.ResetCounterAddress) || ConfigValidation.IsValidPlcWordAddress(o.ResetCounterAddress), "Plc:ResetCounterAddress phải là word D hợp lệ.")
             .ValidateOnStart();
 
         // OmronPlc: singleton, dùng chung một kết nối UDP cho cả ghi kết quả

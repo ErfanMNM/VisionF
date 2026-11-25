@@ -133,7 +133,7 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
     public partial string RunningProgressText { get; set; } = "0 / 0";
 
     /// <summary>
-    /// True khi máy đã bị dừng do phát hiện mã đã từng xuất hiện trong lịch sử.
+    /// True khi hệ thống đang giữ trạng thái dừng để bảo vệ dữ liệu sản xuất.
     /// </summary>
     [ObservableProperty]
     public partial bool IsHalted { get; set; }

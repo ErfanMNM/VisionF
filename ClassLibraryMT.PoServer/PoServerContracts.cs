@@ -3,16 +3,8 @@ using System.Text.Json.Serialization;
 namespace ClassLibraryMT.PoServer;
 
 /// <summary>
-/// Yêu cầu nhận Production Order từ MES (body của <c>POST /api/po</c>).
-///
-/// <para>
-/// Tập mã được cung cấp theo MỘT trong hai cách:
-/// <list type="bullet">
-/// <item><c>codes</c> — mảng JSON các chuỗi mã.</item>
-/// <item><c>csv</c> — nội dung CSV (mỗi dòng một mã, có thể có dòng tiêu đề).</item>
-/// </list>
-/// Nếu có cả hai thì <c>codes</c> được ưu tiên.
-/// </para>
+/// Metadata PO đi riêng qua query string hoặc các field multipart.
+/// Tập mã chỉ được đọc từ một file có duy nhất cột CodeContent.
 /// </summary>
 public sealed class PoPushRequest
 {
@@ -29,23 +21,6 @@ public sealed class PoPushRequest
     [JsonPropertyName("orderQty")]
     public int OrderQty { get; set; }
 
-    /// <summary>
-    /// Danh sách mã (cách 1). Mỗi phần tử là một mã đầy đủ.
-    /// </summary>
-    [JsonPropertyName("codes")]
-    public List<string>? Codes { get; set; }
-
-    /// <summary>
-    /// Nội dung CSV chứa tập mã (cách 2) — mỗi dòng một mã,
-    /// dòng đầu có thể là tiêu đề.
-    /// </summary>
-    [JsonPropertyName("csv")]
-    public string? Csv { get; set; }
-
-    /// <summary>GTIN của lô (mã sản phẩm) — lưu vào trường mở rộng.</summary>
-    [JsonPropertyName("gtin")]
-    public string? Gtin { get; set; }
-
     /// <summary>Mã lô / batch code — lưu vào trường mở rộng.</summary>
     [JsonPropertyName("batchCode")]
     public string? BatchCode { get; set; }
@@ -58,12 +33,6 @@ public sealed class PoPushRequest
     [JsonPropertyName("customer")]
     public string? Customer { get; set; }
 
-    /// <summary>
-    /// Các trường mở rộng bổ sung (key → value) — ghi thẳng vào
-    /// <c>ProductionOrder.Additional</c> của PO.
-    /// </summary>
-    [JsonPropertyName("additional")]
-    public Dictionary<string, string>? Additional { get; set; }
 }
 
 /// <summary>

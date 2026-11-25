@@ -1,941 +1,205 @@
-# Tài liệu tích hợp API Nhận PO từ MES
+# API nhận PO từ MES
 
-> **Dành cho:** Đội phát triển MES muốn đẩy Lệnh sản xuất (Production Order) + tập mã
-> xuống máy chạy ứng dụng **TanTienQR** (VisionF).
->
-> **Phiên bản tài liệu:** 1.3 — upload nhiều lần, tự lọc mã trùng và chặn nhận khi còn PO dở dang.
->
-> **Ngày cập nhật:** 2026-11-18
+Cập nhật: 2026-11-26. Phiên bản này thay cơ chế mã GTIN/serial bằng nguyên nội dung `CodeContent` và chỉ nhận tập mã dưới dạng file CSV, JSON hoặc XLSX. Mỗi PO có một cơ sở dữ liệu riêng; mọi lần bổ sung, đối chiếu và lưu trạng thái dùng đúng chuỗi mã đầy đủ.
 
----
+## Endpoint và cấu hình
 
-## 📑 Mục lục
+Máy chạy TanTienQR mở hai endpoint:
 
-1. [Tổng quan nhanh](#1-tổng-quan-nhanh)
-2. [Cấu hình phía máy chạy](#2-cấu-hình-phía-máy-chạy)
-3. [Base URL / Cổng / Xác thực](#3-base-url--cổng--xác-thực)
-4. [Endpoint `GET /api/health`](#4-endpoint-get-apihealth)
-5. [Endpoint `POST /api/po`](#5-endpoint-post-apipo)
-6. [Cách gửi tập mã](#6-cách-gửi-tập-mã)
-7. [Đặc tả định dạng file](#7-đặc-tả-định-dạng-file)
-8. [Quy tắc trùng lặp](#8-quy-tắc-trùng-lặp)
-9. [Mã lỗi (HTTP status codes)](#9-mã-lỗi-http-status-codes)
-10. [Giới hạn & thời gian chờ](#10-giới-hạn--thời-gian-chờ)
-11. [Firewall & URL ACL (Windows)](#11-firewall--url-acl-windows)
-12. [Checklist xử lý sự cố](#12-checklist-xử-lý-sự-cố)
-13. [Changelog](#13-changelog)
-
----
-
-## 1. Tổng quan nhanh
-
-Ứng dụng TanTienQR chạy trên máy chủ production. Ứng dụng này mở một **HTTP server nhỏ**
-(`System.Net.HttpListener`) lắng nghe trên một cổng cố định để **MES chủ động đẩy PO xuống máy**.
-
-Luồng tổng thể:
-
-```
-   ┌──────────┐   POST /api/po        ┌──────────────┐   ghi DB PO local
-   │   MES    │ ────────────────────► │  TanTienQR   │ ──────────────────► logs/po/yyyy-MM/PO-xxx.db
-   └──────────┘   (JSON hoặc file)   └──────────────┘
-```
-
-PO nhận được **ghi thẳng vào DB PO local** của máy, nên nó xuất hiện ngay trong tab
-*"Truy xuất Sản xuất (Local)"* và trong danh sách chọn PO ở tab *"Thông tin sản xuất"* —
-giống hệt PO cào từ server.
-
-### 1.1. English summary
-
-The machine running TanTienQR exposes a small HTTP API so that an MES system can **push**
-Production Orders (and their barcode/serial lists) down to the machine.
-
-| Item | Value |
+| Endpoint | Mục đích |
 |---|---|
-| Default base URL | `http://<machine-ip>:8085` |
-| Auth header | `x-api-key: <key>` (only when `PoServer:ApiKey` is set) |
-| Endpoints | `GET /api/health`, `POST /api/po` |
-| Payload modes | JSON body (`codes` / `csv`), raw file upload (`text/csv`, `application/json`, `application/vnd.ms-excel`, `...spreadsheetml.sheet`), or `multipart/form-data` file field |
-| Accepted file formats | `.csv` (one code per line), `.json` (array of strings **or** array of `{code}` / `{serial}` objects), `.xlsx` / `.xls` (first sheet, first column) |
-| Limits | `MaxBodyMB` (body), `MaxFileMB` (single file), `RequestTimeoutSeconds`, `MaxConcurrentRequests` |
-| Error codes | `200`, `400`, `401`, `404`, `408`, `409`, `413`, `500` |
-| Implementation notes | Files are **streamed to a temp file on disk** (never fully loaded into RAM); all I/O is async and non-blocking; **no reflection** (the app publishes with Native AOT, so Excel parsing is done by a built-in OOXML/BIFF reader instead of ClosedXML/NPOI) |
+| `GET /api/health` | Kiểm tra listener và số lần nhận dữ liệu thành công. |
+| `POST /api/po` | Nhận một file tập mã, tạo PO mới hoặc bổ sung vào PO chưa bắt đầu. |
 
----
+Base URL mặc định là `http://127.0.0.1:8085`. MES trên máy khác dùng IP LAN của máy chạy app sau khi cấu hình listener và firewall.
 
-## 2. Cấu hình phía máy chạy
-
-Section `PoServer` trong `appsettings.json` (và `appsettings.<Env>.json`):
-
-```jsonc
+```json
 {
   "PoServer": {
-    "Enabled": false,                    // Bật server nhận PO từ MES
-    "Port": 8085,                        // Cổng TCP (1-65535)
-    "BindAddress": "127.0.0.1",         // 127.0.0.1 = chỉ local; 0.0.0.0 = mọi interface
-    "ApiKey": "",                        // Rỗng = không xác thực; có giá trị = bắt buộc x-api-key
-    "MaxBodyMB": 64,                     // Giới hạn kích thước body của 1 request
-    "MaxFileMB": 64,                     // Giới hạn kích thước của 1 FILE tải lên
-    "UploadTempDirectory": "",           // Rỗng = %TEMP% của Windows
-    "RequestTimeoutSeconds": 120,        // Thời gian chờ tối đa cho 1 request
-    "MaxConcurrentRequests": 4           // Số request xử lý song song
+    "Enabled": false,
+    "Port": 8085,
+    "BindAddress": "127.0.0.1",
+    "ApiKey": "",
+    "MaxBodyMB": 64,
+    "MaxFileMB": 64,
+    "UploadTempDirectory": "",
+    "RequestTimeoutSeconds": 120,
+    "MaxConcurrentRequests": 4
   }
 }
 ```
 
-| Khóa | Kiểu | Mặc định | Ý nghĩa |
-|---|---|---|---|
-| `Enabled` | bool | `false` | `true` = mở listener. Lỗi bind **không** làm crash app — trạng thái hiển thị ở tab *Server*. |
-| `Port` | int | `8085` | Cổng lắng nghe. |
-| `BindAddress` | string | `127.0.0.1` | `127.0.0.1` chỉ máy cục bộ. `0.0.0.0` / `+` / IP LAN = mọi máy trong mạng (cần URL ACL + firewall). |
-| `ApiKey` | string | `""` | Rỗng = **không** xác thực (chỉ nên dùng trong mạng nội bộ khi cài đặt). Có giá trị = mọi request phải có header `x-api-key` khớp, sai thì trả `401`. |
-| `MaxBodyMB` | int | `64` | Body request vượt → `413`. |
-| `MaxFileMB` | int | `64` | File tải lên vượt → `413`. |
-| `UploadTempDirectory` | string | `""` | Nơi chứa file tạm khi nhận file. File **được xoá ngay** sau khi xử lý. |
-| `RequestTimeoutSeconds` | int | `120` | Request quá hạn → `408`. Nên tăng lên cho PO rất lớn (vài chục nghìn mã). |
-| `MaxConcurrentRequests` | int | `4` | Số request xử lý đồng thời; request vượt sẽ **chờ** (không bị từ chối). |
+Đặt `Enabled` thành `true` để bật listener. `BindAddress` là `127.0.0.1` khi chỉ nhận từ máy cục bộ, hoặc địa chỉ LAN / `0.0.0.0` khi nhận trong mạng. Nếu `ApiKey` có giá trị, mọi request phải có header `x-api-key` khớp chính xác, kể cả health.
 
-> ⚠️ **Lưu ý bảo mật:** `HttpListener` là HTTP thuần (**không mã hoá TLS**).
-> Hãy dùng trong mạng nội bộ (VLAN/PLC network) hoặc đặt sau reverse proxy có TLS
-> (nginx / IIS / HAProxy) nếu cần truy cập từ ngoài mạng công nghiệp.
+`MaxBodyMB` giới hạn toàn bộ request, `MaxFileMB` giới hạn file. File upload được ghi tạm xuống đĩa và dọn sau xử lý. Thư mục tạm mặc định lấy từ hệ điều hành. Request quá thời gian `RequestTimeoutSeconds` bị hủy; không công bố một PO nhập dở. Listener xử lý tối đa `MaxConcurrentRequests` request cùng lúc.
 
----
+## File có đúng một cột CodeContent
 
-## 3. Base URL / Cổng / Xác thực
+Tên cột hoặc thuộc tính phải là **`CodeContent`**, đúng hoa thường. Không cần GTIN, serial hay định dạng QR cụ thể. Mã là chuỗi opaque: dấu câu, Unicode, khoảng trắng đầu/cuối và xuống dòng nằm trong một giá trị hợp lệ được giữ nguyên. Không dùng kết quả tách URL, GTIN hay serial để xác định mã.
 
-### 3.1. Base URL
+Hai mã `Case` và `case` là hai mã khác nhau. Hai URL có cùng hậu tố cũng là hai mã khác nhau. Giá trị rỗng hoặc chỉ có khoảng trắng bị từ chối.
 
-```
-http://<IP-máy-chạy>:<Port>
-```
+### CSV UTF-8
 
-| Tình huống | Base URL ví dụ |
-|---|---|
-| MES chạy **cùng máy** với TanTienQR | `http://127.0.0.1:8085` |
-| MES ở máy khác, `BindAddress = "0.0.0.0"` | `http://192.168.1.50:8085` |
-| Cổng đã đổi | `http://192.168.1.50:9000` |
-
-> Endpoint đầy đủ luôn là: **`{base}/api/po`** và **`{base}/api/health`**.
-
-### 3.2. Xác thực — header `x-api-key`
-
-Nếu `PoServer:ApiKey` **rỗng** → server **không** yêu cầu xác thực.
-
-Nếu `PoServer:ApiKey` **có giá trị** → mọi request (kể cả `GET /api/health`) phải kèm:
-
-```
-x-api-key: <giá trị trong appsettings.json>
-```
-
-- Thiếu header → `401`
-- Sai giá trị → `401`
-
-```bash
-curl -H "x-api-key: secret-key-123" http://192.168.1.50:8085/api/health
-```
-
-```powershell
-curl.exe -H "x-api-key: secret-key-123" http://192.168.1.50:8085/api/health
-```
-
-```csharp
-using var client = new HttpClient { BaseAddress = new Uri("http://192.168.1.50:8085") };
-client.DefaultRequestHeaders.Add("x-api-key", "secret-key-123");
-```
-
-> 🔐 Header là so khớp **chuỗi tuyệt đối** (phân biệt hoa/thường), không phải hàm băm.
-> Khuyến nghị dùng chuỗi ngẫu nhiên dài ≥ 32 ký tự.
-
----
-
-## 4. Endpoint `GET /api/health`
-
-Kiểm tra server còn sống.
-
-**Request**
-
-```http
-GET /api/health HTTP/1.1
-Host: 192.168.1.50:8085
-x-api-key: secret-key-123
-```
-
-**Response `200 OK`**
-
-```json
-{
-  "success": true,
-  "message": "HTTP server nhận PO đang hoạt động.",
-  "prefix": "http://192.168.1.50:8085/",
-  "received": 12,
-  "startedUtc": "2026-11-18T08:00:00.0000000Z"
-}
-```
-
-| Trường | Ý nghĩa |
-|---|---|
-| `success` | `true` nếu server đang chạy. |
-| `prefix` | Prefix server đang lắng nghe. |
-| `received` | Số PO đã nhận được từ lúc bật server. |
-| `startedUtc` | Thời điểm khởi động server (UTC). |
-
-**Ví dụ**
-
-```bash
-curl -s -H "x-api-key: secret-key-123" http://192.168.1.50:8085/api/health
-```
-
-```powershell
-curl.exe -s -H "x-api-key: secret-key-123" http://192.168.1.50:8085/api/health
-```
-
-```csharp
-var resp = await client.GetAsync("/api/health");
-Console.WriteLine(await resp.Content.ReadAsStringAsync());
-```
-
----
-
-## 5. Endpoint `POST /api/po`
-
-Đẩy một PO + tập mã xuống máy.
-
-**Request**
-
-```http
-POST /api/po?poName=PO-001&orderQty=100&ltin=08934567890123 HTTP/1.1
-Host: 192.168.1.50:8085
-x-api-key: secret-key-123
-Content-Type: <xem mục 6>
-```
-
-### 5.1. Tham số metadata
-
-| Tham số | Vị trí | Bắt buộc | Ý nghĩa |
-|---|---|---|---|
-| `poName` | query string **hoặc** field multipart **hoặc** JSON | ✅ | Tên/mã lệnh sản xuất. Cho phép bổ sung mã vào PO chưa bắt đầu; PO đã kết thúc → `409`. Tối đa 200 ký tự. |
-| `orderQty` | query string **hoặc** field multipart **hoặc** JSON | ✅ | Số dòng mã hợp lệ trong lần gửi, kiểm tra trước lọc trùng. Phải `> 0`. Tổng mã lưu là tổng mã duy nhất sau khi bổ sung. |
-| `gtin` | query string / field / JSON | ⬜ | GTIN (mã sản phẩm). Dùng cho **mã trần** (serial không kèm GTIN) và lưu vào trường mở rộng. |
-| `batchCode` | field multipart / JSON | ⬜ | Mã lô. |
-| `productName` | field multipart / JSON | ⬜ | Tên sản phẩm. |
-| `customer` | field multipart / JSON | ⬜ | Tên khách hàng. |
-| `additional` | JSON | ⬜ | Object `key → value` ghi thêm vào trường mở rộng của PO. |
-
-### 5.2. Response thành công — `200 OK`
-
-```json
-{
-  "success": true,
-  "message": "Đã nhận PO PO-001 với 100 mã.",
-  "poName": "PO-001",
-  "accepted": 100
-}
-```
-
-`accepted` là số mã **mới được lưu trong lần gửi**. `ignoredDuplicates` là
-số mã tự động bỏ qua do đã tồn tại trong request hoặc trên máy. Sau lọc trùng,
-`accepted` có thể nhỏ hơn `orderQty`, kể cả bằng 0, và server vẫn trả `200`.
-`400` chỉ áp dụng nếu số dòng mã hợp lệ trước lọc trùng ít hơn `orderQty`.
-
-### 5.3. Ví dụ gửi JSON thuần
-
-```bash
-curl -X POST "http://192.168.1.50:8085/api/po" \
-  -H "x-api-key: secret-key-123" \
-  -H "Content-Type: application/json" \
-  -d '{
-        "poName": "PO-001",
-        "orderQty": 3,
-        "gtin": "08934567890123",
-        "batchCode": "LOT-2026-01",
-        "codes": [
-          "https://digital-link.txng.vn/01/08934567890123/21/SER001",
-          "https://digital-link.txng.vn/01/08934567890123/21/SER002",
-          "https://digital-link.txng.vn/01/08934567890123/21/SER003"
-        ]
-      }'
-```
-
-```powershell
-$body = @'
-{
-  "poName": "PO-001",
-  "orderQty": 3,
-  "gtin": "08934567890123",
-  "codes": ["SER001", "SER002", "SER003"]
-}
-'@
-Invoke-RestMethod -Uri "http://192.168.1.50:8085/api/po" `
-  -Method Post `
-  -Headers @{ "x-api-key" = "secret-key-123" } `
-  -ContentType "application/json" `
-  -Body $body
-```
-
-```csharp
-var payload = new
-{
-    poName = "PO-001",
-    orderQty = 3,
-    gtin = "08934567890123",
-    codes = new[] { "SER001", "SER002", "SER003" },
-};
-
-var req = new HttpRequestMessage(HttpMethod.Post, "/api/po")
-{
-    Content = JsonContent.Create(payload),
-};
-req.Headers.Add("x-api-key", "secret-key-123");
-
-var resp = await client.SendAsync(req);
-Console.WriteLine(await resp.Content.ReadAsStringAsync());
-```
-
----
-
-## 6. Cách gửi tập mã
-
-Có **3 cách**. Server tự nhận diện dựa trên `Content-Type` + header `Content-Disposition`.
-
-### 6.1. Cách A — JSON thuần (body)
-
-`Content-Type: application/json`, body là object PO với `codes` (mảng chuỗi) hoặc `csv` (chuỗi).
-
-> Nếu body JSON là **mảng** (`[...]`) thì server hiểu là **file danh sách mã JSON**
-> và metadata lấy từ query string — xem [mục 6.3](#63-cách-c--file-thuần-kèm-tên-file).
-
-### 6.2. Cách B — `multipart/form-data` (khuyến nghị cho file)
-
-Đây là cách **phổ biến nhất** để gửi file thật từ MES.
-
-```bash
-curl -X POST "http://192.168.1.50:8085/api/po" \
-  -H "x-api-key: secret-key-123" \
-  -F "poName=PO-002" \
-  -F "orderQty=3" \
-  -F "gtin=08934567890123" \
-  -F "file=@codes.csv"
-```
-
-```powershell
-curl.exe -X POST "http://192.168.1.50:8085/api/po" `
-  -H "x-api-key: secret-key-123" `
-  -F "poName=PO-002" `
-  -F "orderQty=3" `
-  -F "gtin=08934567890123" `
-  -F "file=@codes.csv"
-```
-
-```csharp
-// Upload file .xlsx / .csv / .json bằng HttpClient
-using var form = new MultipartFormDataContent();
-form.Add(new StringContent("PO-002"), "poName");
-form.Add(new StringContent("3"), "orderQty");
-form.Add(new StringContent("08934567890123"), "gtin");
-
-var fileBytes = await File.ReadAllBytesAsync(@"C:\data\codes.xlsx");
-form.Add(new ByteArrayContent(fileBytes), "file", "codes.xlsx");
-
-var req = new HttpRequestMessage(HttpMethod.Post, "/api/po") { Content = form };
-req.Headers.Add("x-api-key", "secret-key-123");
-
-var resp = await client.SendAsync(req);
-Console.WriteLine(await resp.Content.ReadAsStringAsync());
-```
-
-**Quy tắc multipart:**
-
-- Tên field chứa file **không bắt buộc** phải là `file` — server tìm **field nào có `filename`**.
-- Phần metadata là field **không có `filename`**; tên field (không phân biệt hoa thường):
-  `poName` (hoặc `po`), `orderQty` (hoặc `qty`), `gtin`, `batchCode`, `productName`, `customer`.
-- Nếu có **nhiều field file** → server dùng field file **đầu tiên** có phần mở rộng được hỗ trợ.
-- Nếu multipart **không có file** → `400`.
-
-### 6.3. Cách C — File thuần kèm tên file
-
-Gửi **nội dung file làm body**, kèm header `Content-Disposition` để server biết định dạng.
-
-| Content-Type | Header bắt buộc | Server hiểu là |
-|---|---|---|
-| `text/csv` hoặc `application/csv` | `Content-Disposition: attachment; filename="codes.csv"` | file CSV |
-| `application/json` | `Content-Disposition: attachment; filename="codes.json"` | file JSON (mảng) |
-| `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` | `Content-Disposition: attachment; filename="codes.xlsx"` | file Excel `.xlsx` |
-| `application/vnd.ms-excel` | `Content-Disposition: attachment; filename="codes.xls"` | file Excel `.xls` |
-
-Metadata PO gửi kèm trong **query string**:
-`?poName=PO-003&orderQty=100&ltin=089...`
-
-```bash
-# CSV
-curl -X POST "http://192.168.1.50:8085/api/po?poName=PO-003&orderQty=2&gtin=08934567890123" \
-  -H "x-api-key: secret-key-123" \
-  -H "Content-Type: text/csv" \
-  -H 'Content-Disposition: attachment; filename="codes.csv"' \
-  --data-binary @codes.csv
-
-# Excel .xlsx
-curl -X POST "http://192.168.1.50:8085/api/po?poName=PO-004&orderQty=5&gtin=08934567890123" \
-  -H "x-api-key: secret-key-123" \
-  -H "Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" \
-  -H 'Content-Disposition: attachment; filename="codes.xlsx"' \
-  --data-binary @codes.xlsx
-```
-
-```powershell
-# Excel .xlsx (PowerShell)
-$uri = "http://192.168.1.50:8085/api/po?poName=PO-004&orderQty=5&gtin=08934567890123"
-curl.exe -X POST $uri `
-  -H "x-api-key: secret-key-123" `
-  -H "Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" `
-  -H 'Content-Disposition: attachment; filename="codes.xlsx"' `
-  --data-binary "@codes.xlsx"
-```
-
-```csharp
-// Upload file .xlsx — C# HttpClient
-var xlsxPath = @"C:\data\codes.xlsx";
-
-using var fileContent = new ByteArrayContent(await File.ReadAllBytesAsync(xlsxPath));
-fileContent.Headers.ContentType =
-    new System.Net.Http.Headers.MediaTypeHeaderValue(
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-fileContent.Headers.ContentDisposition =
-    new System.Net.Http.Headers.ContentDispositionHeaderValue("attachment")
-    {
-        FileName = Path.GetFileName(xlsxPath),
-    };
-
-var uri = "/api/po?poName=PO-004&orderQty=5&gtin=08934567890123";
-var req = new HttpRequestMessage(HttpMethod.Post, uri) { Content = fileContent };
-req.Headers.Add("x-api-key", "secret-key-123");
-
-var resp = await client.SendAsync(req);
-Console.WriteLine($"HTTP {(int)resp.StatusCode}: {await resp.Content.ReadAsStringAsync()}");
-```
-
-> 💡 **Mẹo tương thích:** Nếu MES cũ gửi `Content-Type: text/csv` mà **không** có header
-> `Content-Disposition`, server vẫn hiểu đó là file CSV (tên file mặc định `codes.csv`).
-
----
-
-## 7. Đặc tả định dạng file
-
-Tất cả các định dạng đều tuân theo cùng một nguyên tắc:
-
-- Đọc **cột đầu tiên** / **phần tử đầu tiên**.
-- **Dòng tiêu đề đầu tiên là tuỳ chọn** — nếu dòng đầu tiên *không chứa chữ số* **và** khớp
-  một tên cột thường gặp (`serial`, `serials`, `serialnumber`, `serialno`, `code`, `codes`,
-  `ma`, `mas`, `barcode`, `gtin`, `product`, `productname`, `customer`, `batch`, `batchcode`, `lot`)
-  thì dòng đó **được bỏ qua**.
-- Dòng trống / khoảng trắng thừa **được bỏ qua**.
-- Mã trùng nhau trong cùng file **được de-dup** (giữ lần đầu).
-- File UTF-8 có **BOM** vẫn đọc được (BOM được bỏ qua).
-- Server chấp nhận 3 dạng mã:
-  - Link Digital Link TXNG — `https://digital-link.txng.vn/01/{gtin}/21/{serial}`
-  - GS1 có ngoặc — `(01)08934567890123(21)SER001`
-  - **Mã trần** — chỉ serial; GTIN lấy từ tham số `gtin` của request.
-
-### 7.1. CSV (`.csv`)
-
-Mỗi dòng = một mã.
+Dòng tiêu đề có đúng một cột `CodeContent`. Mỗi bản ghi sau đó có đúng một giá trị. Dùng quy tắc CSV có dấu ngoặc kép khi mã chứa dấu phẩy, dấu ngoặc kép hoặc xuống dòng; dấu `"` bên trong ô được ghi thành `""`.
 
 ```csv
-serial
-SER001
-SER002
-SER003
+CodeContent
+BOX-001
+"https://example.invalid/code?value=a,b"
+"Mã có ""ngoặc kép"""
+"  giữ nguyên khoảng trắng  "
 ```
 
-```csv
-# Không có tiêu đề — hoàn toàn hợp lệ
-SER001
-SER002
-SER003
-```
+Dòng vật lý trống bên ngoài một ô có ngoặc kép được bỏ qua. Ô rỗng `""`, ô chỉ có khoảng trắng, dòng thiếu giá trị, cột thừa hoặc tiêu đề `code`, `serial`, `GTIN` đều không hợp lệ. Xuống dòng bên trong ô có ngoặc kép là một phần của mã và chỉ tính là **một** bản ghi.
 
-> ⚠️ Chỉ hỗ trợ **một cột**; nếu file có nhiều cột, **cột đầu tiên** được lấy
-> (phần còn lại bị bỏ qua). Dùng `;` hoặc `,` làm dấu phân cách đều được — server coi
-> **toàn bộ dòng** là một mã, nên tránh dùng dấu phẩy trong file.
+### JSON UTF-8
 
-### 7.2. JSON (`.json`)
-
-**Dạng 1 — mảng chuỗi:**
-
-```json
-["SER001", "SER002", "SER003"]
-```
-
-**Dạng 2 — mảng đối tượng** (tên field không phân biệt hoa thường):
-`code`, `codes`, `serial`, `serials`, `serialNumber`, `serialNo`, `barcode`, `ma`, `value`, `gtin`.
+File là một mảng object. Mỗi object chứa duy nhất một thuộc tính `CodeContent` có giá trị chuỗi:
 
 ```json
 [
-  { "code": "SER001" },
-  { "serial": "SER002" },
-  { "Code": "SER003" }
+  { "CodeContent": "BOX-001" },
+  { "CodeContent": "https://first.invalid/21/SAME" },
+  { "CodeContent": "https://second.invalid/21/SAME" }
 ]
 ```
 
-Nếu một đối tượng **không có** field nào ở danh sách trên → server lấy **field đầu tiên**
-có giá trị chuỗi.
+Các ví dụ sau bị từ chối:
 
-### 7.3. Excel (`.xlsx` / `.xls`)
+```json
+["BOX-001"]
+```
 
-| Quy tắc | Mô tả |
-|---|---|
-| Sheet | Lấy **sheet đầu tiên** theo thứ tự khai báo trong `xl/workbook.xml` (thường là sheet đầu tiên trong file). |
-| Cột | Lấy **cột đầu tiên** (cột A). |
-| Dòng tiêu đề | Bỏ qua nếu dòng đầu **không chứa chữ số** và khớp tên cột thường gặp (xem mục 7). |
-| Kiểu ô | Hỗ trợ: shared string (`t="s"`), inline string (`t="inlineStr"`), chuỗi (`t="str"`), số (mặc định / `t="n"`). |
-| Ô số | `123` → `"123"`; `1234.5` → `"1234.5"`; dấu phẩy nghìn `1,234` → `"1234"`. |
-| Định dạng | `.xlsx` (OOXML) và `.xls` (BIFF8/BIFF5) đều đọc được — **không cần cài thêm thư viện**. |
+```json
+[{ "CodeContent": "BOX-001", "serial": "001" }]
+```
 
-> 💡 **Ghi chú kỹ thuật:** Ứng dụng được publish dưới dạng **Native AOT** (1 file `.exe`,
-> không cần cài .NET Runtime). Vì vậy server **không** dùng ClosedXML / NPOI / EPPlus
-> (các thư viện này dùng reflection và sẽ làm hỏng bản AOT). Thay vào đó, ứng dụng có sẵn
-> bộ đọc OOXML/BIFF tự viết, dựa trên `System.IO.Compression` + `System.Xml.XmlReader`
-> (100% AOT-safe).
+```json
+{ "poName": "PO-001", "orderQty": 1, "codes": ["BOX-001"] }
+```
 
-**Ví dụ file Excel hợp lệ:**
+Object thiếu thuộc tính, thuộc tính sai hoa thường, thuộc tính trùng, giá trị `null`/số/object/array, mã trống và envelope `codes` hoặc `csv` đều không được nhận. Metadata PO phải nằm ngoài file.
 
-| | A | B | C |
-|---|---|---|---|
-| **1** | serial | note | |
-| **2** | SER001 | ghi chú 1 | |
-| **3** | SER002 | ghi chú 2 | |
-| **4** | SER003 | | |
+### XLSX
 
-→ Server lấy `SER001`, `SER002`, `SER003`.
+Sheet đầu tiên là bảng có duy nhất cột A, ô A1 là `CodeContent`; các dòng tiếp theo chứa mã. Lưu mã bằng kiểu văn bản để giữ số 0 đầu và nội dung chính xác. Không thêm cột GTIN/serial/metadata hoặc dùng công thức làm mã.
 
----
+`.xls` BIFF legacy không được hỗ trợ trong contract mới. Hãy xuất CSV UTF-8, JSON hoặc XLSX một cột.
 
-## 8. Quy tắc trùng lặp và trạng thái sản xuất
+## Metadata PO
 
-### 8.1. Upload nhiều lần vào cùng PO
+Metadata nằm trong query string khi gửi file thuần, hoặc trong các field riêng khi dùng multipart. Body file chỉ chứa tập mã.
 
-PO chưa bắt đầu sản xuất được upload nhiều lần. Server chỉ thêm mã chưa có,
-giữ file database gốc (kể cả PO thuộc tháng cũ), thời điểm tạo, trạng thái mã
-và các trường mở rộng không gửi lại. Tổng số lượng PO lưu trên máy bằng tổng
-mã duy nhất sau khi bổ sung.
+| Tên | Bắt buộc | Ý nghĩa |
+|---|---|---|
+| `poName` | Có | Mã PO không rỗng, tối đa 200 ký tự. |
+| `orderQty` | Có | Số bản ghi mã của **lần upload này**, số nguyên dương, phải khớp chính xác số bản ghi trước lọc trùng. |
+| `batchCode` | Không | Mô tả mã lô của PO. |
+| `productName` | Không | Mô tả tên sản phẩm. |
+| `customer` | Không | Mô tả khách hàng. |
 
-PO đã **huỷ**, **hoàn tất** hoặc **đóng** bị từ chối `409`, kể cả khi file
-chỉ chứa mã mới. Upload không mở lại PO đã kết thúc.
+Không gửi `gtin`, `serial`, `codes` hoặc `csv` trong metadata. Các trường này không thay thế cho file CodeContent. Multipart nhận đúng một file; không gửi nhiều file trong cùng request.
 
-### 8.2. Lọc mã trùng trên toàn bộ máy
+Ví dụ file có 5 dòng mã, trong đó hai dòng giống hệt nhau: `orderQty=5`, `accepted=4`, `ignoredDuplicates=1`. Nếu gửi `orderQty=4` hoặc `6`, server trả `400` và không lưu dữ liệu.
 
-Server so khóa **`GTIN|Serial`** trong cùng request và mọi PO đã có trên máy,
-kể cả các tháng trước hoặc PO đã kết thúc. Mã trần, GS1 và Digital Link có
-cùng GTIN/serial được coi là trùng; cùng serial với GTIN khác nhau được giữ.
-Mã trùng bị bỏ qua, phần mã mới được lưu. Ví dụ gửi hai mã đã có và ba mã mới:
+## Gửi request
+
+Các ví dụ dùng `curl.exe` trên Windows. Thay `<API_KEY>` bằng giá trị cấu hình của máy; bỏ header khi `PoServer:ApiKey` rỗng.
+
+### File CSV với metadata trong query
+
+```powershell
+curl.exe --request POST "http://127.0.0.1:8085/api/po?poName=PO-001&orderQty=4" `
+  --header "x-api-key: <API_KEY>" `
+  --header "Content-Type: text/csv; charset=utf-8" `
+  --data-binary "@codes.csv"
+```
+
+`text/csv` được nhận trực tiếp, không bắt buộc header filename. Khi gửi kiểu file khác, dùng `Content-Disposition: attachment; filename="codes.xlsx"` hoặc `X-Filename` để chỉ rõ định dạng phù hợp.
+
+### File JSON với metadata trong query
+
+```powershell
+curl.exe --request POST "http://127.0.0.1:8085/api/po?poName=PO-JSON-001&orderQty=3" `
+  --header "x-api-key: <API_KEY>" `
+  --header "Content-Type: application/json; charset=utf-8" `
+  --data-binary "@codes.json"
+```
+
+Body vẫn là mảng object CodeContent của file JSON, không phải object PO có `codes`/`csv`.
+
+### Multipart với metadata và một file
+
+```powershell
+curl.exe --request POST "http://127.0.0.1:8085/api/po" `
+  --header "x-api-key: <API_KEY>" `
+  --form "poName=PO-XLSX-001" `
+  --form "orderQty=3" `
+  --form "batchCode=LOT-001" `
+  --form "productName=San pham A" `
+  --form "file=@codes.xlsx;type=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+```
+
+Client tự tạo boundary cho multipart; không tự gán header `Content-Type: multipart/form-data` thiếu boundary.
+
+### C# gửi CSV
+
+```csharp
+using var client = new HttpClient();
+using var file = File.OpenRead("codes.csv");
+using var content = new StreamContent(file);
+content.Headers.ContentType = new("text/csv");
+using var request = new HttpRequestMessage(
+    HttpMethod.Post, "http://127.0.0.1:8085/api/po?poName=PO-001&orderQty=4")
+{
+    Content = content,
+};
+request.Headers.Add("x-api-key", "<API_KEY>");
+using var response = await client.SendAsync(request);
+Console.WriteLine(await response.Content.ReadAsStringAsync());
+response.EnsureSuccessStatusCode();
+```
+
+## Response và quy tắc trùng
+
+Response thành công:
 
 ```json
 {
   "success": true,
-  "message": "Đã nhận thêm 3 mã mới vào PO PO-001; bỏ qua 2 mã trùng.",
+  "message": "Đã nhận PO PO-001 với 4 mã mới.",
   "poName": "PO-001",
-  "accepted": 3,
-  "ignoredDuplicates": 2
+  "accepted": 4,
+  "ignoredDuplicates": 0
 }
 ```
 
-Upload lại toàn bộ file trả `200`, `accepted: 0`, `ignoredDuplicates` là số
-mã bị bỏ qua. Server không tạo PO rỗng nếu toàn bộ mã đã có. `accepted` luôn
-là số mã **mới lưu trong lần gửi**, không phải tổng số mã hiện có trong PO.
+`accepted` là số mã mới lưu vào PO đích trong request này. `ignoredDuplicates` là số dòng bỏ qua do lặp nguyên CodeContent trong cùng file hoặc đã có trong **chính PO đích**. Gửi lại cùng file cho cùng PO chưa bắt đầu có thể trả `200`, `accepted=0`; không ghi lại trạng thái cũ. Nội dung giống nhau trong PO khác vẫn được lưu độc lập theo PO. Số thống kê PO lấy từ bản ghi đã lưu; không dùng bộ đếm tổng của PLC làm số mã PO.
 
-`orderQty` phải dương và không lớn hơn số dòng mã hợp lệ trước lọc trùng;
-sau lọc, số mã thực nhận có thể ít hơn `orderQty`.
+PO đã bắt đầu nhưng chưa kết thúc chặn nhận thêm dữ liệu. Khi còn PO dở dang, server trả `409` cho thao tác nhập. PO đã hoàn tất, hủy hoặc đóng không được mở lại bằng upload. Với PO chưa bắt đầu, việc bổ sung không ghi đè trạng thái mã đã tồn tại.
 
-### 8.3. Chặn nhận khi đang sản xuất hoặc còn PO dở dang
+Một file có bất kỳ bản ghi/schema không hợp lệ làm request bị từ chối toàn bộ: không tạo PO mới và không thêm một phần mã vào PO cũ. `orderQty` phải khớp chính xác số bản ghi hợp lệ trước lọc trùng; không tự bỏ dòng sai để nhập phần còn lại.
 
-Khi bất kỳ PO nào đang chạy, đã có thời điểm bắt đầu hoặc đã quét mã nhưng
-chưa kết thúc, server từ chối **mọi** `POST /api/po` bằng `409`. Áp dụng cho
-PO mới, bổ sung PO cũ, upload lặp và mọi dạng JSON/CSV/Excel/multipart.
+## Health và lỗi
 
-Trạng thái được kiểm tra từ database và lịch sử `Running` đã lưu, nên vẫn
-chặn ngay sau khi mở lại ứng dụng, trước khi khôi phục PO vào bộ nhớ. Hoàn
-tất hoặc huỷ PO đang dở dang để tiếp tục nhận. Các thao tác bắt đầu/kết thúc
-sản xuất và nhận PO dùng chung khóa để tránh ghi xen nhau. Nút tải PO từ
-server trong ứng dụng cũng bị chặn khi còn PO dở dang.
-
-Nếu không đọc được database để xác minh trạng thái hoặc mã trùng, server
-trả `500` và không ghi PO mới. `GET /api/health` vẫn hoạt động khi sản xuất.
-
----
-
-## 9. Mã lỗi (HTTP status codes)
-
-Mọi response đều có cùng một shape JSON:
-
-```json
-{ "success": false, "message": "<thông điệp tiếng Việt>", "poName": "...", "accepted": 0, "ignoredDuplicates": 0 }
+```powershell
+curl.exe --header "x-api-key: <API_KEY>" "http://127.0.0.1:8085/api/health"
 ```
 
-| Mã | Ý nghĩa | Thông điệp mẫu | MES nên làm gì |
-|---|---|---|---|
-| **200** | Đã xử lý upload | `accepted` là số mã mới, `ignoredDuplicates` là số mã bỏ qua. | Toàn mã trùng vẫn trả 200 và không thêm dữ liệu. |
-| **400** | Request sai định dạng / thiếu dữ liệu | `Thiếu trường poName (tên/mã lệnh sản xuất).`<br>`Thiếu tập mã: cần gửi "codes" (mảng JSON), "csv" (nội dung CSV), hoặc tải file .csv/.json/.xlsx/.xls lên.`<br>`Số mã gửi lên (2) ít hơn orderQty (3).`<br>`Định dạng file không được hỗ trợ: 'codes.txt'. Chỉ chấp nhận .csv, .json, .xlsx, .xls.`<br>`Tên file không hợp lệ: Tên file không được chứa đường dẫn.` | Sửa payload rồi gửi lại. **Đây là lỗi của MES.** |
-| **401** | Thiếu / sai API key | `Thiếu hoặc sai API key (header x-api-key).` | Kiểm tra lại header `x-api-key` và giá trị trong `appsettings.json`. |
-| **404** | Endpoint không tồn tại | `Endpoint không tồn tại: GET /api/po. Dùng POST /api/po hoặc GET /api/health.` | Kiểm tra lại URL/method. |
-| **408** | Quá thời gian chờ | `Yêu cầu bị hủy do quá thời gian chờ.` | File quá lớn hoặc mạng chậm → tăng `RequestTimeoutSeconds` / chia nhỏ PO. |
-| **409** | Có PO dở dang, PO đích đã kết thúc hoặc tên file PO xung đột | `Không thể nhận PO khi PO đang sản xuất dở dang.` | Hoàn tất/huỷ PO đang chạy; không gửi bổ sung vào PO đã kết thúc. |
-| **413** | Vượt giới hạn kích thước | `Body vượt quá dung lượng cho phép (64 MB).`<br>`File vượt quá dung lượng cho phép (64 MB).` | Tăng `MaxBodyMB` / `MaxFileMB` phía máy, hoặc chia nhỏ file. |
-| **500** | Lỗi đọc/ghi database | `Không thể xác minh mã trùng trên máy; PO chưa được nhận.` | Kiểm tra database và log trước khi gửi lại. |
+Health trả `success`, `message`, `prefix`, `received`, `startedUtc`. `received` là số lần nhận có ghi dữ liệu thành công từ lúc bật listener, không phải số mã hay số PO duy nhất.
 
-### 9.1. Ví dụ response đầy đủ từng mã
-
-**400 — thiếu `poName`**
-
-```json
-{
-  "success": false,
-  "message": "Thiếu trường poName (tên/mã lệnh sản xuất).",
-  "poName": "",
-  "accepted": 0
-}
-```
-
-**401 — sai API key**
-
-```json
-{
-  "success": false,
-  "message": "Thiếu hoặc sai API key (header x-api-key).",
-  "poName": "",
-  "accepted": 0
-}
-```
-
-**404 — endpoint sai**
-
-```json
-{
-  "success": false,
-  "message": "Endpoint không tồn tại: GET /api/po. Dùng POST /api/po hoặc GET /api/health.",
-  "poName": "",
-  "accepted": 0
-}
-```
-
-**408 — timeout**
-
-```json
-{
-  "success": false,
-  "message": "Yêu cầu bị hủy do quá thời gian chờ.",
-  "poName": "",
-  "accepted": 0
-}
-```
-
-**409 — PO đã kết thúc**
-
-```json
-{
-  "success": false,
-  "message": "PO 'PO-001' đã kết thúc (hoàn tất, huỷ hoặc đóng); không thể nhận thêm mã.",
-  "poName": "PO-001",
-  "accepted": 0
-}
-```
-
-**413 — quá lớn**
-
-```json
-{
-  "success": false,
-  "message": "File vượt quá dung lượng cho phép (64 MB).",
-  "poName": "",
-  "accepted": 0
-}
-```
-
-**500 — lỗi server**
-
-```json
-{
-  "success": false,
-  "message": "Lỗi khi lưu PO: <chi tiết lỗi>",
-  "poName": "PO-001",
-  "accepted": 0
-}
-```
-
----
-
-## 10. Giới hạn & thời gian chờ
-
-| Hạng mục | Mặc định | Cấu hình | Ghi chú |
-|---|---|---|---|
-| Kích thước body request | 64 MB | `MaxBodyMB` | Toàn bộ body (kể cả multipart). |
-| Kích thước 1 file tải lên | 64 MB | `MaxFileMB` | Áp dụng cho file CSV/JSON/Excel. |
-| Thời gian chờ 1 request | 120 s | `RequestTimeoutSeconds` | Kể từ lúc bắt đầu nhận body. |
-| Số request song song | 4 | `MaxConcurrentRequests` | Request vượt sẽ **xếp hàng chờ**, không bị từ chối. |
-| Số ký tự `poName` | 200 | — | Dài hơn → `400`. |
-
-### 10.1. Về mặt kỹ thuật (quan trọng cho máy công nghiệp)
-
-- **Không nạp trọn file vào RAM.** Body/file được ghi **tăng dần** (streaming) xuống file tạm
-  trên đĩa, rồi parser đọc lại theo luồng. RAM chỉ tăng **O(1)** bất kể file 1 KB hay 500 MB.
-  → Máy công nghiệp cấu hình yếu vẫn chịu được PO rất lớn.
-- **File tạm được xoá ngay** sau khi xử lý xong (kể cả khi lỗi). Khi app khởi động lại,
-  các file tạm sót lại (> 6 giờ) sẽ được dọn tự động.
-- **Mọi I/O đều async / không block** luồng UI. Trong lúc nhận PO, giao diện vẫn phản hồi.
-- **Không dùng reflection** — tương thích Native AOT.
-
-### 10.2. Khuyến nghị cho PO lớn
-
-| Số mã | Gợi ý |
+| HTTP | Trường hợp |
 |---|---|
-| ≤ 10.000 | Gửi 1 request bình thường. |
-| 10.000 – 100.000 | Tăng `RequestTimeoutSeconds` lên `300`. Có thể chia thành nhiều PO nhỏ. |
-| > 100.000 | Cân nhắc chia PO thành nhiều PO nhỏ hơn, hoặc nâng `MaxFileMB`. |
-
----
-
-## 11. Firewall & URL ACL (Windows)
-
-### 11.1. Điều kiện để MES truy cập được
-
-1. `PoServer:Enabled = true`
-2. `PoServer:BindAddress` = `0.0.0.0` (hoặc IP LAN của máy) — nếu để `127.0.0.1`
-   thì **chỉ máy cục bộ** truy cập được.
-3. **URL ACL**: `HttpListener` trên Windows cần quyền đăng ký prefix.
-4. **Firewall**: mở cổng TCP cho MES.
-
-### 11.2. Đăng ký URL ACL (chạy PowerShell **quyền Administrator**)
-
-```powershell
-netsh http add urlacl url=http://+:8085/ user=Everyone
-```
-
-Hoặc giới hạn theo tài khoản dịch vụ:
-
-```powershell
-netsh http add urlacl url=http://+:8085/ user=DOMAIN\svc-tantien
-```
-
-Xoá lại:
-
-```powershell
-netsh http delete urlacl url=http://+:8085/
-```
-
-> 💡 **Mẹo:** Có thể **không cần** đăng ký URL ACL nếu chạy ứng dụng với **quyền
-> Administrator** — nhưng khi đó phải chạy app bằng tài khoản quản trị, không khuyến nghị
-> cho máy production. Nên dùng URL ACL.
-
-### 11.3. Mở Firewall
-
-```powershell
-# Mở cho mọi mạng (nhanh, để test)
-New-NetFirewallRule -DisplayName "TanTienQR PO Server 8085" `
-  -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8085
-
-# Giới hạn theo IP của MES (khuyến nghị)
-New-NetFirewallRule -DisplayName "TanTienQR PO Server 8085 (from MES)" `
-  -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8085 `
-  -RemoteAddress 192.168.1.20
-```
-
-Xoá:
-
-```powershell
-Remove-NetFirewallRule -DisplayName "TanTienQR PO Server 8085"
-```
-
-### 11.4. Kiểm tra nhanh
-
-```powershell
-# 1) Server còn sống?
-curl.exe -s http://127.0.0.1:8085/api/health
-
-# 2) Từ máy MES, port có mở?
-Test-NetConnection 192.168.1.50 -Port 8085
-```
-
-### 11.5. Lỗi bind thường gặp
-
-| Lỗi Windows | Nguyên nhân | Cách sửa |
-|---|---|---|
-| `Access is denied` (mã 5) | Thiếu URL ACL | `netsh http add urlacl ...` hoặc chạy app bằng Administrator. |
-| `Prefix already reserved` (mã 183) | Prefix đã được đăng ký bởi app khác | `netsh http delete urlacl ...` hoặc đổi `Port`. |
-| `Address already in use` (mã 10048) | Cổng đang bị chiếm | Đổi `PoServer:Port` hoặc tắt ứng dụng khác. |
-
-Trạng thái lỗi bind được hiển thị ở tab **Server** trong ứng dụng (chữ đỏ), **không** làm crash app.
-
----
-
-## 12. Checklist xử lý sự cố
-
-### 12.1. Không kết nối được
-
-- [ ] `PoServer:Enabled = true`?
-- [ ] `PoServer:BindAddress` khác `127.0.0.1` nếu MES ở máy khác?
-- [ ] Đã đăng ký URL ACL? (`netsh http list urlacl`)
-- [ ] Đã mở firewall cho cổng?
-- [ ] `Test-NetConnection <ip> -Port <port>` từ máy MES?
-- [ ] `curl http://127.0.0.1:8085/api/health` từ chính máy chạy — nếu cũng không được thì là lỗi cấu hình/bind.
-
-### 12.2. Trả `401`
-
-- [ ] Đã gửi header `x-api-key` chưa?
-- [ ] Giá trị có **khớp chính xác** `PoServer:ApiKey` (phân biệt hoa/thường, không có khoảng trắng thừa) không?
-- [ ] Header có đúng tên `x-api-key` (không phải `X-Api-Key` — tuy HTTP không phân biệt, nhưng hãy dùng đúng tên trong tài liệu này) không?
-
-### 12.3. Trả `400`
-
-- [ ] Đã gửi `poName` và `orderQty > 0` chưa?
-- [ ] Số mã trong file có **>= `orderQty`** không?
-- [ ] File có đúng phần mở rộng `.csv` / `.json` / `.xlsx` / `.xls` không?
-- [ ] File có **nội dung** (không rỗng) không?
-- [ ] Tên file không chứa đường dẫn (`..\..\evil.csv` bị từ chối)?
-
-### 12.4. Trả `409`
-
-- [ ] Có PO đang chạy hoặc còn lịch sử `Running` từ lần trước? Hoàn tất hoặc huỷ PO đó.
-- [ ] PO đích đã huỷ/hoàn tất/đóng? PO đã kết thúc không nhận bổ sung.
-- [ ] Tên PO sau chuẩn hoá trùng tên file của PO khác? Dùng tên PO khác.
-
-Mã trùng được tự động bỏ qua với `200`; đọc `accepted` và `ignoredDuplicates`.
-
-### 12.5. Trả `413` / `408`
-
-- [ ] File có vượt `MaxFileMB` không? → Tăng `MaxFileMB` hoặc chia nhỏ file.
-- [ ] Mạng có chậm không? → Tăng `RequestTimeoutSeconds`.
-- [ ] MES có timeout client ngắn hơn server không? → Đặt timeout client ≥ 120 s.
-
-### 12.6. File tải lên không ra mã
-
-- [ ] Mã có nằm ở **cột đầu tiên** / **phần tử đầu tiên** chưa?
-- [ ] Dòng đầu tiên là **tiêu đề** không nhận diện được (VD `Ma Serial`) → dòng đó bị coi là **mã** và
-      sẽ gây lỗi "không tìm được mã nào hợp lệ"? → Sửa tiêu đề thành `serial` hoặc xoá dòng tiêu đề.
-- [ ] File Excel có **nhiều sheet**? → Dữ liệu phải nằm ở **sheet đầu tiên**.
-- [ ] File `.xlsx` có phải ZIP hỏng không? → Thử mở lại bằng Excel và lưu lại.
-
-### 12.7. PO đã nhận nhưng không thấy trên UI
-
-- [ ] UI có tự tải lại danh sách không? (Ứng dụng phát event tự động khi nhận PO.)
-- [ ] Đang xem đúng tab (*"Truy xuất Sản xuất (Local)"* / *"Thông tin sản xuất"*) chưa?
-- [ ] PO có bị từ chối một phần không? → Xem log ứng dụng.
-
-### 12.8. Xem log
-
-Log ứng dụng nằm trong thư mục `logs/` cạnh file `.exe`:
-
-| File | Nội dung |
-|---|---|
-| `logs/app.log` | Log chung (kèm dòng *"Đã nhận PO ... từ MES"*). |
-| `logs/po/yyyy-MM/PO-xxx.db` | DB SQLite của từng PO (mã + trạng thái). |
-
----
-
-## 13. Changelog
-
-### 1.3 — Upload lặp và khóa sản xuất
-
-- Cho phép bổ sung PO chưa bắt đầu, lọc mã trùng toàn máy theo `GTIN|Serial`.
-- Phản hồi `accepted`/`ignoredDuplicates`; toàn mã trùng không tạo PO rỗng.
-- Chặn mọi lượt nhận khi còn PO dở dang và từ chối sửa PO đã kết thúc.
-- Giữ đúng database tháng cũ, ghi mã và metadata trong cùng transaction.
-
-
-### v1.2 — 2026-11-18
-
-**Tính năng mới**
-
-- ✅ Hỗ trợ **upload file thật** từ MES:
-  - `.csv` — một mã mỗi dòng, tiêu đề tuỳ chọn.
-  - `.json` — mảng chuỗi **hoặc** mảng đối tượng `{code}` / `{serial}`.
-  - `.xlsx` / `.xls` — **sheet đầu tiên**, **cột đầu tiên**, tiêu đề tuỳ chọn.
-- ✅ Ba cách gửi: JSON thuần, `multipart/form-data`, file thuần kèm `Content-Disposition`.
-- ✅ Bộ đọc Excel **tự viết, AOT-safe** (OOXML qua `ZipArchive` + `XmlReader`;
-  BIFF8/BIFF5 tự parse) — **không** phụ thuộc ClosedXML/NPOI/EPPlus.
-- ✅ Kiểm tra phần mở rộng file, tên file (chặn path traversal), kích thước file.
-- ✅ Thêm cấu hình `PoServer:MaxFileMB` và `PoServer:UploadTempDirectory`.
-- ✅ File được **stream xuống đĩa tạm** (không nạp trọn vào RAM) và tự xoá sau khi xử lý.
-- ✅ Dọn file tạm sót lại khi khởi động server.
-
-**Tương thích ngược**
-
-- ✅ `POST /api/po` với `codes` / `csv` trong JSON thuần — **không đổi**.
-- ✅ `Content-Type: text/csv` không kèm `Content-Disposition` — vẫn hoạt động.
-- ✅ `multipart/form-data` với field `file` — **không đổi** (nay hỗ trợ thêm `.xlsx`/`.xls`).
-- ✅ Tất cả mã trạng thái HTTP và shape response **không đổi**.
-
-### v1.1 — 2026-11-17
-
-- ✅ Từ chối PO trùng **mã** với PO khác (`409`), có thông điệp nêu số mã trùng,
-  tên PO chứa mã trùng và ví dụ mã.
-- ✅ So khớp mã theo khoá `GTIN|Serial` → mã trần và Digital Link cùng mã được coi là trùng.
-- ✅ Kiểm tra PO trùng ở **tháng khác** trong `logs/po/yyyy-MM/`.
-- ✅ PO đã huỷ giữ nguyên trạng thái `Cancelled` khi MES gửi lại.
-
-### v1.0 — 2026-11-16
-
-- ✅ Phát hành lần đầu: `POST /api/po`, `GET /api/health`, xác thực `x-api-key`,
-  giới hạn body/timeout/số request đồng thời, ghi PO vào DB PO local.
-
----
-
-## Phụ lục — Lệnh kiểm tra nhanh (copy-paste)
-
-```bash
-# Health
-curl -s -H "x-api-key: secret-key-123" http://192.168.1.50:8085/api/health
-
-# JSON thuần
-curl -s -X POST "http://192.168.1.50:8085/api/po" \
-  -H "x-api-key: secret-key-123" -H "Content-Type: application/json" \
-  -d '{"poName":"PO-001","orderQty":2,"gtin":"08934567890123","codes":["S1","S2"]}'
-
-# Upload CSV (multipart)
-curl -s -X POST "http://192.168.1.50:8085/api/po" \
-  -H "x-api-key: secret-key-123" \
-  -F "poName=PO-002" -F "orderQty=2" -F "gtin=08934567890123" -F "file=@codes.csv"
-
-# Upload XLSX (multipart)
-curl -s -X POST "http://192.168.1.50:8085/api/po" \
-  -H "x-api-key: secret-key-123" \
-  -F "poName=PO-003" -F "orderQty=5" -F "gtin=08934567890123" -F "file=@codes.xlsx"
-
-# Upload XLSX (file thuần + filename)
-curl -s -X POST "http://192.168.1.50:8085/api/po?poName=PO-004&orderQty=5&gtin=08934567890123" \
-  -H "x-api-key: secret-key-123" \
-  -H "Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" \
-  -H 'Content-Disposition: attachment; filename="codes.xlsx"' \
-  --data-binary @codes.xlsx
-```
-
-```powershell
-# PowerShell — upload CSV bằng Invoke-RestMethod (Form tự tạo)
-$form = @{
-  poName   = "PO-005"
-  orderQty = "2"
-  gtin     = "08934567890123"
-  file     = Get-Item "C:\data\codes.csv"
-}
-Invoke-RestMethod -Uri "http://192.168.1.50:8085/api/po" `
-  -Method Post -Headers @{ "x-api-key" = "secret-key-123" } -Form $form
-```
-
-```csharp
-// C# — upload .xlsx tổng quát
-static async Task<(int Status, string Body)> PushPoAsync(
-    HttpClient client, string apiKey, string poName, int qty, string filePath)
-{
-    using var form = new MultipartFormDataContent();
-    form.Add(new StringContent(poName), "poName");
-    form.Add(new StringContent(qty.ToString()), "orderQty");
-
-    var bytes = await File.ReadAllBytesAsync(filePath);
-    var file = new ByteArrayContent(bytes);
-    file.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
-        "application/octet-stream");
-    form.Add(file, "file", Path.GetFileName(filePath));
-
-    using var req = new HttpRequestMessage(HttpMethod.Post, "/api/po") { Content = form };
-    req.Headers.Add("x-api-key", apiKey);
-
-    var resp = await client.SendAsync(req);
-    return ((int)resp.StatusCode, await resp.Content.ReadAsStringAsync());
-}
-```
+| `200` | Nhận thành công, kể cả upload lại cùng PO và không có mã mới. |
+| `400` | Metadata không hợp lệ, sai schema/số dòng, file lỗi/không được hỗ trợ, inline envelope hoặc nhiều file. |
+| `401` | Thiếu hoặc sai `x-api-key`. |
+| `404` | Endpoint không tồn tại. |
+| `408` | Request quá hạn hoặc bị hủy trước khi hoàn tất. |
+| `409` | Còn PO dở dang hoặc PO đích đã kết thúc. |
+| `413` | Request hoặc file vượt dung lượng cấu hình. |
+| `500` | Lỗi lưu/đọc dữ liệu; xem log trên máy chạy. |
+
+Response lỗi vẫn có `success=false`, `message`, `poName`, `accepted=0` và `ignoredDuplicates`. Hãy đọc `message` để xác định lỗi thực tế. Nếu timeout phía MES, kiểm tra lại PO và có thể gửi lại cùng file; việc lọc trùng trong PO ngăn thêm lại mã đã lưu.
+
+Trên Windows, lỗi bind địa chỉ LAN cần kiểm tra URL ACL và firewall cho đúng cổng được cấu hình. Health không truy cập được thì xử lý listener/kết nối trước khi kiểm tra file. Health hoạt động nhưng POST bị `400` thì kiểm tra tên cột `CodeContent`, metadata bên ngoài file, số bản ghi và định dạng UTF-8.

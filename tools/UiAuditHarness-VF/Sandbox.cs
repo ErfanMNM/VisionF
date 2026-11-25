@@ -136,8 +136,7 @@ internal static class Sandbox
         {
           "Camera": {
             "Ip": "127.0.0.1",
-            "Port": 1,
-            "DuplicateWindowSeconds": 30
+            "Port": 1
           },
           "Plc": {
             "Ip": "127.0.0.1",

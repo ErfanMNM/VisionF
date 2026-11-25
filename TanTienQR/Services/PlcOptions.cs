@@ -16,11 +16,15 @@ internal sealed class PlcOptions
     public string ReadyAddress { get; set; } = "D16";    // 1 = Ready, 0 = chưa sẵn sàng
     public int RefreshIntervalMs { get; set; } = 1000;   // chu kỳ ghi D16
 
+    public string CounterAddress { get; set; } = "D100";
+    public string ResetCounterAddress { get; set; } = string.Empty;
+
     public PlcOptions Copy() => new()
     {
         Enabled = Enabled, Ip = Ip, Port = Port, RemoteNode = RemoteNode, LocalNode = LocalNode,
         TimeoutMs = TimeoutMs, Retries = Retries, ResultAddress = ResultAddress,
         ReadyAddress = ReadyAddress, RefreshIntervalMs = RefreshIntervalMs,
+        CounterAddress = CounterAddress, ResetCounterAddress = ResetCounterAddress,
     };
 
     public void CopyTo(PlcOptions target)
@@ -35,6 +39,8 @@ internal sealed class PlcOptions
         target.ResultAddress = ResultAddress;
         target.ReadyAddress = ReadyAddress;
         target.RefreshIntervalMs = RefreshIntervalMs;
+        target.CounterAddress = CounterAddress;
+        target.ResetCounterAddress = ResetCounterAddress;
     }
 
     public static PlcOptions FromConfig(PlcConfig target)
@@ -48,6 +54,9 @@ internal sealed class PlcOptions
             throw new ArgumentException("Thông số kết nối PLC ngoài phạm vi cho phép.", nameof(target));
         if (!IsWordAddress(target.ResultAddress) || !IsWordAddress(target.ReadyAddress))
             throw new ArgumentException("Địa chỉ kết quả và Ready phải là word D0–D32767 (VD: D12, D16).", nameof(target));
+        if (!ConfigValidation.IsValidPlcWordAddress(target.CounterAddress, 10)
+            || !string.IsNullOrWhiteSpace(target.ResetCounterAddress) && !IsWordAddress(target.ResetCounterAddress))
+            throw new ArgumentException("Địa chỉ bộ đếm/reset phải là word D0–D32767.", nameof(target));
         return new PlcOptions
         {
             Enabled = target.Enabled, Ip = target.Ip.Trim(), Port = target.Port,
@@ -55,6 +64,7 @@ internal sealed class PlcOptions
             TimeoutMs = target.TimeoutMs, Retries = target.Retries,
             ResultAddress = target.ResultAddress.Trim(), ReadyAddress = target.ReadyAddress.Trim(),
             RefreshIntervalMs = target.RefreshIntervalMs,
+            CounterAddress = target.CounterAddress.Trim(), ResetCounterAddress = target.ResetCounterAddress?.Trim() ?? string.Empty,
         };
     }
 

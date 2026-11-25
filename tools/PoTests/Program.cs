@@ -1,12 +1,6 @@
-using System.Globalization;
-using System.Reflection;
-using System.Text.Json;
 using ClassLibraryMT.Po;
 using ClassLibraryMT.Scans;
 using Microsoft.Data.Sqlite;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging.Abstractions;
 
 // ===================================================================
 // Test harness cho lưu đồng PO local-first.
@@ -44,9 +38,9 @@ var order = new ProductionOrder
 };
 var codes = new List<PoCode>
 {
-    new() { Code = "/01/08934567890123/21/S001", Gtin = "08934567890123", Serial = "S001" },
-    new() { Code = "/01/08934567890123/21/S002", Gtin = "08934567890123", Serial = "S002" },
-    new() { Code = "/01/08934567890123/21/S003", Gtin = "08934567890123", Serial = "S003" },
+    new() { CodeContent = "/01/08934567890123/21/S001" },
+    new() { CodeContent = "/01/08934567890123/21/S002" },
+    new() { CodeContent = "/01/08934567890123/21/S003" },
 };
 
 await store.EnsurePoDbAsync(order, codes);
@@ -59,7 +53,7 @@ Check("Chua quet => ScannedCodes = 0", locals.Count == 1 && locals[0].ScannedCod
 // Sync lai: them ma moi, ma cu phai giu nguyen.
 var codes2 = new List<PoCode>(codes)
 {
-    new() { Code = "/01/08934567890123/21/S004", Gtin = "08934567890123", Serial = "S004" },
+    new() { CodeContent = "/01/08934567890123/21/S004" },
 };
 await store.EnsurePoDbAsync(order, codes2);
 var locals2 = await store.ListLocalOrdersAsync();
@@ -76,18 +70,18 @@ var cache = new PoCodeCache();
 Check("Cache moi rong", cache.ValidCount == 0 && cache.ScannedCount == 0);
 
 var flags = codes.Select(c => new KeyValuePair<string, PoCodeCache.Flags>(
-    $"{c.Gtin}|{c.Serial}", PoCodeCache.Flags.None)).ToList();
+    c.CodeContent, PoCodeCache.Flags.None)).ToList();
 cache.LoadOrder("PO-TEST-001", flags);
 Check("Nap 3 ma vao cache", cache.ValidCount == 3, $"{cache.ValidCount}");
-Check("Contains ma hop le", cache.Contains("08934567890123|S001"));
-Check("Contains ma khong ton tai = false", !cache.Contains("08934567890123|XXX"));
-Check("Chua quet => IsScanned false", !cache.IsScanned("08934567890123|S001"));
+Check("Contains ma hop le", cache.Contains(codes[0].CodeContent));
+Check("Contains ma khong ton tai = false", !cache.Contains("/01/08934567890123/21/XXX"));
+Check("Chua quet => IsScanned false", !cache.IsScanned(codes[0].CodeContent));
 
-cache.MarkScanned("08934567890123|S001");
+cache.MarkScanned(codes[0].CodeContent);
 Check("MarkScanned => ScannedCount = 1", cache.ScannedCount == 1, $"{cache.ScannedCount}");
 Check("MarkScanned lan 2 tra false (truong) [dung cho chong race]",
-    !cache.MarkScanned("08934567890123|S001"));
-Check("IsScanned sau khi quet", cache.IsScanned("08934567890123|S001"));
+    !cache.MarkScanned(codes[0].CodeContent));
+Check("IsScanned sau khi quet", cache.IsScanned(codes[0].CodeContent));
 
 cache.Clear();
 Check("Clear() xoa het cache", cache.ValidCount == 0 && cache.ScannedCount == 0);
@@ -124,7 +118,7 @@ Check("Trang thai PO-TEST-001 = Completed",
     string.Join(", ", runs.Select(r => $"{r.OrderNo}={r.Status}")));
 
 // ---------------------------------------------------------------
-// [4] ScanStore: migration cot OrderNo + GetSeenSerialsAsync
+// [4] ScanStore: migration cot OrderNo + GetSeenCodeContentsAsync
 // ---------------------------------------------------------------
 Console.WriteLine("\n[4] ScanStore: migration OrderNo + truy van lich su quet");
 
@@ -169,20 +163,20 @@ await using (var conn = await scanStore.OpenAsync())
     Check("Migration: ProcessingTimeMs la REAL",
         cols.Contains("ProcessingTimeMs"));
 
-    // Ghi ban ghi Pass cua PO cu -> phai duoc GetSeenSerialsAsync tra ve.
+    // Ghi ban ghi Pass cua PO cu -> phai duoc GetSeenCodeContentsAsync tra ve.
     await scanStore.InsertBatchAsync(conn, new List<ScanRecordEntity>
     {
-        new() { ReceivedUtc = DateTime.UtcNow, Serial = "OLD001", Gtin = "G1",
+        new() { ReceivedUtc = DateTime.UtcNow, CodeContent = "OLD001",
                 Status = ScanStatuses.Pass, OrderNo = "PO-OLD" },
-        new() { ReceivedUtc = DateTime.UtcNow, Serial = "OLD002", Gtin = "G1",
+        new() { ReceivedUtc = DateTime.UtcNow, CodeContent = "OLD002",
                 Status = ScanStatuses.Pass, OrderNo = "PO-OLD" },
-        new() { ReceivedUtc = DateTime.UtcNow, Serial = "FAIL01", Gtin = "G1",
+        new() { ReceivedUtc = DateTime.UtcNow, CodeContent = "FAIL01",
                 Status = ScanStatuses.Fail, OrderNo = "PO-OLD" },
     }, ct: default);
 }
 
-var seen = await scanStore.GetSeenSerialsAsync("PO-NEW");
-Check("GetSeenSerialsAsync tra ve 2 serial Pass", seen.Count == 2, $"{seen.Count}");
+var seen = await scanStore.GetSeenCodeContentsAsync("PO-NEW");
+Check("GetSeenCodeContentsAsync tra ve 2 complete Pass codes", seen.Count == 2, $"{seen.Count}");
 Check("Chua chua serial Fail", !seen.Contains("FAIL01"));
 
 // Ban ghi cung PO -> bi loai (mua cua PO do hop le)
@@ -190,11 +184,11 @@ await using (var conn = await scanStore.OpenAsync())
 {
     await scanStore.InsertBatchAsync(conn, new List<ScanRecordEntity>
     {
-        new() { ReceivedUtc = DateTime.UtcNow, Serial = "S001", Gtin = "08934567890123",
+        new() { ReceivedUtc = DateTime.UtcNow, CodeContent = "/01/08934567890123/21/S001",
                 Status = ScanStatuses.Pass, OrderNo = "PO-NEW" },
     }, ct: default);
 }
-seen = await scanStore.GetSeenSerialsAsync("PO-NEW");
+seen = await scanStore.GetSeenCodeContentsAsync("PO-NEW");
 Check("Ban ghi cung PO bi loai khoi ket qua", seen.Count == 2, $"{seen.Count}");
 
 // ---------------------------------------------------------------
@@ -222,9 +216,9 @@ var svcOrder = new ProductionOrder
 };
 var svcCodes = new List<PoCode>
 {
-    new() { Code = "/01/G/21/A1", Gtin = "G", Serial = "A1" },
-    new() { Code = "/01/G/21/A2", Gtin = "G", Serial = "A2" },
-    new() { Code = "/01/G/21/A3", Gtin = "G", Serial = "A3" },
+    new() { CodeContent = "/01/G/21/A1" },
+    new() { CodeContent = "/01/G/21/A2" },
+    new() { CodeContent = "/01/G/21/A3" },
 };
 await svcStore.EnsurePoDbAsync(svcOrder, svcCodes);
 
@@ -237,24 +231,24 @@ Check("TotalCount = 3", svc.TotalCount == 3, $"{svc.TotalCount}");
 
 // Validate code
 Check("Ma hop le => Valid",
-    svc.ValidateCode("G", "A1") == PoCodeValidation.Valid);
+    svc.ValidateCode("/01/G/21/A1") == PoCodeValidation.Valid);
 Check("Ma ngoai PO => InvalidForOrder",
-    svc.ValidateCode("G", "ZZZ") == PoCodeValidation.InvalidForOrder);
-Check("Chua co PO => NoProductionOrder",
-    svc.ValidateCode("G", "A1") == PoCodeValidation.Valid);
+    svc.ValidateCode("/01/G/21/ZZZ") == PoCodeValidation.InvalidForOrder);
 
 // Quet 2 ma -> chua du 100%, van chay
-await svc.MarkCodeScannedAsync("G", "A1");
-await svc.MarkCodeScannedAsync("G", "A2");
+await svc.ProcessCodeAsync("/01/G/21/A1", _ => Task.FromResult(true));
+await svc.ProcessCodeAsync("/01/G/21/A2", _ => Task.FromResult(true));
 Check("Sau 2 ma: van dang chay", svc.IsProductionRunning);
 Check("Sau 2 ma: ScannedCount = 2", svc.ScannedCount == 2, $"{svc.ScannedCount}");
 Check("Ma da quet => Duplicate",
-    svc.ValidateCode("G", "A1") == PoCodeValidation.Duplicate);
+    svc.ValidateCode("/01/G/21/A1") == PoCodeValidation.Duplicate);
 
 // Quet ma cuoi => tu dong hoan thanh
-await svc.MarkCodeScannedAsync("G", "A3");
+await svc.ProcessCodeAsync("/01/G/21/A3", _ => Task.FromResult(true));
 Check("Quet du 100% => tu hoan tat", !svc.IsProductionRunning);
 Check("CurrentOrder = null sau khi hoan tat", svc.CurrentOrder is null);
+Check("Chua co PO => NoProductionOrder",
+    svc.ValidateCode("/01/G/21/A1") == PoCodeValidation.NoProductionOrder);
 Check("Cache Clear() sau khi hoan tat (RAM bounded)", svcCache.ValidCount == 0,
     $"{svcCache.ValidCount}");
 
@@ -276,8 +270,8 @@ var cancelOrder = new ProductionOrder
 };
 await svcStore.EnsurePoDbAsync(cancelOrder, new List<PoCode>
 {
-    new() { Code = "/01/G/21/B1", Gtin = "G", Serial = "B1" },
-    new() { Code = "/01/G/21/B2", Gtin = "G", Serial = "B2" },
+    new() { CodeContent = "/01/G/21/B1" },
+    new() { CodeContent = "/01/G/21/B2" },
 });
 
 var cancelled = await svc.CancelProductionAsync("PO-CANCEL-001");
@@ -306,8 +300,8 @@ var resumeOrder = new ProductionOrder
 };
 await svcStore.EnsurePoDbAsync(resumeOrder, new List<PoCode>
 {
-    new() { Code = "/01/G/21/C1", Gtin = "G", Serial = "C1" },
-    new() { Code = "/01/G/21/C2", Gtin = "G", Serial = "C2" },
+    new() { CodeContent = "/01/G/21/C1" },
+    new() { CodeContent = "/01/G/21/C2" },
 });
 await svcHistory.StartRunAsync("PO-RESUME-001", 2, resumeOrder.CreatedUtc);
 
@@ -321,16 +315,16 @@ Check("PO chay lai => IsProductionRunning", svc2.IsProductionRunning);
 Check("Cache nap lai ma cua PO", svc2.TotalCount == 2, $"{svc2.TotalCount}");
 
 // ---------------------------------------------------------------
-// [8] Dung may khi ma da tung xuat hien
+// [8] Scan history from a different PO must not block local membership.
 // ---------------------------------------------------------------
-Console.WriteLine("\n[8] Dung may: ma da tung quet trong lich su");
+Console.WriteLine("\n[8] Lich su PO khac khong chan CodeContent cua PO hien tai");
 
 var haltStore = new PoStore(Path.Combine(workDir, "po-halt"));
 var haltHistory = new PoHistoryStore(Path.Combine(workDir, "po-halt"));
 var haltCache = new PoCodeCache();
 var haltSvc = new ProductionOrderService(
     fakeClient, haltStore, haltHistory, haltCache,
-    new FakeScanHistoryReader(new[] { "TRUNG01" }));
+    new FakeScanHistoryReader(new[] { "/01/G/21/TRUNG01" }));
 
 var haltOrder = new ProductionOrder
 {
@@ -340,8 +334,8 @@ var haltOrder = new ProductionOrder
 };
 await haltStore.EnsurePoDbAsync(haltOrder, new List<PoCode>
 {
-    new() { Code = "/01/G/21/TRUNG01", Gtin = "G", Serial = "TRUNG01" },
-    new() { Code = "/01/G/21/OK01", Gtin = "G", Serial = "OK01" },
+    new() { CodeContent = "/01/G/21/TRUNG01" },
+    new() { CodeContent = "/01/G/21/OK01" },
 });
 
 await haltSvc.StartProductionAsync("PO-HALT-001");
@@ -350,17 +344,18 @@ Check("Bat dau PO de test halt", haltSvc.IsProductionRunning);
 var conflicts = new List<string>();
 haltSvc.HistoryConflict += (_, s) => conflicts.AddRange(s);
 
+Check("Unscanned codes are not activated", await haltSvc.ActivatePendingAsync() == 0);
+var independentPass = await haltSvc.ProcessCodeAsync("/01/G/21/TRUNG01", _ => Task.FromResult(true));
+Check("Code seen in another PO remains eligible", independentPass.Committed);
 var activated = await haltSvc.ActivatePendingAsync();
-Check("ActivatePendingAsync khong gui len server", activated == 0, $"{activated}");
-Check("IsHalted = true", haltSvc.IsHalted);
-Check("Co su kien HistoryConflict", conflicts.Count > 0, $"{conflicts.Count}");
-Check("Conflict chua serial bi trung", conflicts.Contains("TRUNG01"),
-    string.Join(",", conflicts));
-Check("Da dung may => ValidateCode tra Halted",
-    haltSvc.ValidateCode("G", "OK01") == PoCodeValidation.Halted);
-Check("PO bi huy sau khi dung may",
-    await haltStore.IsCancelledAsync("PO-HALT-001", haltOrder.CreatedUtc));
-Check("Cache Clear() sau khi dung may", haltCache.ValidCount == 0, $"{haltCache.ValidCount}");
+Check("Activation uses scanned current PO codes", activated == 1, $"{activated}");
+Check("Global scan history does not halt production", !haltSvc.IsHalted);
+Check("No obsolete global-history conflict event", conflicts.Count == 0);
+Check("Another current PO code remains valid",
+    haltSvc.ValidateCode("/01/G/21/OK01") == PoCodeValidation.Valid);
+Check("Current PO is not cancelled by global history",
+    !await haltStore.IsCancelledAsync("PO-HALT-001", haltOrder.CreatedUtc));
+Check("Active cache stays scoped to current PO", haltCache.ValidCount == 2);
 
 // ---------------------------------------------------------------
 // [9] Local-first: doc danh sach PO tu local, khong goi mang
@@ -380,7 +375,7 @@ Check("Danh sach co PO hoan tat",
 // ---------------------------------------------------------------
 // [10] PoActivationPolicy: worker chi chay khi co the goi duoc server
 // ---------------------------------------------------------------
-Console.WriteLine("\n[10] PoActivationPolicy: chan worker khi PoServer cung may tat");
+Console.WriteLine("\n[10] PoActivationPolicy: activation không phụ thuộc ingestion listener");
 
 Check("Loopback: localhost", PoActivationPolicy.IsLoopbackBaseUrl("http://localhost:5080"));
 Check("Loopback: 127.0.0.1", PoActivationPolicy.IsLoopbackBaseUrl("http://127.0.0.1:5080"));
@@ -399,17 +394,15 @@ var loopbackOptions = new PoOptions { BaseUrl = "http://127.0.0.1:5080", AutoAct
 var lanOptions = new PoOptions { BaseUrl = "http://10.0.0.30:5080", AutoActivate = true };
 
 Check("AutoActivate=false => khong chay",
-    !PoActivationPolicy.ShouldRun(new PoOptions { AutoActivate = false }, poServerEnabled: true));
-Check("PoServer tat + BaseUrl loopback => khong chay",
-    !PoActivationPolicy.ShouldRun(loopbackOptions, poServerEnabled: false));
-Check("PoServer bat + BaseUrl loopback => chay",
-    PoActivationPolicy.ShouldRun(loopbackOptions, poServerEnabled: true));
-Check("PoServer tat + BaseUrl LAN => chay",
+    !PoActivationPolicy.ShouldRun(new PoOptions { AutoActivate = false }));
+Check("AutoActivate=true + external localhost server => chay, ingestion listener tat",
+    PoActivationPolicy.ShouldRun(loopbackOptions, poServerEnabled: false));
+Check("AutoActivate=true + BaseUrl LAN => chay",
     PoActivationPolicy.ShouldRun(lanOptions, poServerEnabled: false));
-Check("PoServer bat + BaseUrl LAN => chay",
-    PoActivationPolicy.ShouldRun(lanOptions, poServerEnabled: true));
 
 // ---------------------------------------------------------------
+await CodeContentLifecycleChecks.RunAsync(workDir, Check);
+
 Console.WriteLine("\n========================================");
 Console.WriteLine($"  KET QUA: {passed} pass, {failed} fail");
 Console.WriteLine("========================================");
@@ -462,10 +455,10 @@ sealed class FakeScanHistoryReader : IPoScanHistoryReader
 
     public FakeScanHistoryReader(IEnumerable<string>? seen = null)
     {
-        _seen = new HashSet<string>(seen ?? [], StringComparer.OrdinalIgnoreCase);
+        _seen = new HashSet<string>(seen ?? [], StringComparer.Ordinal);
     }
 
-    public Task<IReadOnlyList<string>> GetSeenSerialsAsync(
+    public Task<IReadOnlyList<string>> GetSeenCodeContentsAsync(
         string orderNo, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<string>>(_seen.ToList());
 }

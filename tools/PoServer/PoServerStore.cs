@@ -1,277 +1,285 @@
+using System.Globalization;
+using System.Text.Json;
 using ClassLibraryMT.Po;
+using ClassLibraryMT.PoServer;
 using Microsoft.Data.Sqlite;
 
 namespace PoServer;
 
-/// <summary>
-/// Lưu trữ PO + tập mã của server giả lập bằng SQLite (file <c>logs/po-server.db</c>).
-///
-/// <para>
-/// Bảng <c>Orders</c>: <c>OrderNo</c> (PK), <c>OrderQty</c>, <c>CreatedUtc</c>,
-/// <c>IssuedUtc</c>, <c>CompletedUtc</c>, <c>Status</c>.
-/// </para>
-///
-/// <para>
-/// Bảng <c>Codes</c>: <c>OrderNo</c>, <c>Code</c> (PK), <c>Gtin</c>,
-/// <c>Serial</c>, <c>ActivatedUtc</c>.
-/// </para>
-/// </summary>
+/// <summary>Persistent test-server orders; each PO owns exact, complete CodeContent values.</summary>
 public sealed class PoServerStore
 {
-    /// <summary>GTIN mặc định cho mã mẫu.</summary>
-    public const string DefaultGtin = "08934567890123";
-
     private readonly string _dbPath;
 
     public PoServerStore(string dbPath)
     {
-        _dbPath = dbPath;
+        _dbPath = Path.GetFullPath(dbPath);
+        Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
         EnsureSchema();
     }
 
-    /// <summary>Đường dẫn file database.</summary>
     public string DbPath => _dbPath;
 
-    /// <summary>Tạo schema nếu chưa có.</summary>
-    private void EnsureSchema()
+    private SqliteConnection Open()
     {
-        var dir = Path.GetDirectoryName(_dbPath);
-        if (!string.IsNullOrEmpty(dir))
-            Directory.CreateDirectory(dir);
-
-        using var connection = new SqliteConnection($"Data Source={_dbPath}");
+        var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = _dbPath, ForeignKeys = true, DefaultTimeout = 5,
+        }.ToString());
         connection.Open();
-
-        using var cmd = connection.CreateCommand();
-        cmd.CommandText = """
-            CREATE TABLE IF NOT EXISTS Orders (
-                OrderNo      TEXT NOT NULL PRIMARY KEY,
-                OrderQty     INTEGER NOT NULL DEFAULT 0,
-                CreatedUtc   TEXT NOT NULL,
-                IssuedUtc    TEXT NULL,
-                CompletedUtc TEXT NULL,
-                Status       TEXT NOT NULL DEFAULT 'Available'
-            );
-
-            CREATE TABLE IF NOT EXISTS Codes (
-                OrderNo     TEXT NOT NULL,
-                Code        TEXT NOT NULL PRIMARY KEY,
-                Gtin        TEXT NOT NULL DEFAULT '',
-                Serial      TEXT NOT NULL DEFAULT '',
-                ActivatedUtc TEXT NULL,
-                FOREIGN KEY (OrderNo) REFERENCES Orders (OrderNo) ON DELETE CASCADE
-            );
-
-            CREATE INDEX IF NOT EXISTS IX_Codes_OrderNo ON Codes (OrderNo);
-            """;
-        cmd.ExecuteNonQuery();
+        using var pragma = connection.CreateCommand();
+        pragma.CommandText = "PRAGMA busy_timeout=5000; PRAGMA journal_mode=WAL;";
+        pragma.ExecuteNonQuery();
+        return connection;
     }
 
-    /// <summary>
-    /// Tạo PO mới kèm tập mã sinh tự động theo format TXNG Digital Link.
-    /// </summary>
-    public ProductionOrder CreateOrder(string orderNo, int orderQty, string gtin = DefaultGtin)
+    private void EnsureSchema()
     {
-        orderNo = (orderNo ?? "").Trim();
-        if (orderNo.Length == 0)
-            throw new ArgumentException("orderNo không được để trống.", nameof(orderNo));
+        using var db = Open();
+        using (var schema = db.CreateCommand())
+        {
+            schema.CommandText = """
+                CREATE TABLE IF NOT EXISTS Orders (
+                    OrderNo TEXT NOT NULL PRIMARY KEY,
+                    OrderQty INTEGER NOT NULL DEFAULT 0,
+                    CreatedUtc TEXT NOT NULL,
+                    IssuedUtc TEXT NULL,
+                    CompletedUtc TEXT NULL,
+                    Status TEXT NOT NULL DEFAULT 'Available',
+                    Additional TEXT NOT NULL DEFAULT '{}'
+                );
+                CREATE TABLE IF NOT EXISTS Codes (
+                    OrderNo TEXT NOT NULL,
+                    Code TEXT NOT NULL,
+                    Gtin TEXT NOT NULL DEFAULT '',
+                    Serial TEXT NOT NULL DEFAULT '',
+                    ActivatedUtc TEXT NULL,
+                    PRIMARY KEY (OrderNo, Code),
+                    FOREIGN KEY (OrderNo) REFERENCES Orders(OrderNo) ON DELETE CASCADE
+                );
+                """;
+            schema.ExecuteNonQuery();
+        }
 
-        if (orderQty <= 0)
-            orderQty = 100;
+        bool hasAdditional;
+        using (var columns = db.CreateCommand())
+        {
+            columns.CommandText = "PRAGMA table_info(Orders);";
+            using var reader = columns.ExecuteReader();
+            hasAdditional = false;
+            while (reader.Read()) hasAdditional |= reader.GetString(1) == "Additional";
+        }
+        if (!hasAdditional)
+        {
+            using var add = db.CreateCommand();
+            add.CommandText = "ALTER TABLE Orders ADD COLUMN Additional TEXT NOT NULL DEFAULT '{}';";
+            add.ExecuteNonQuery();
+        }
 
-        var now = DateTime.UtcNow;
+        // The old sample server made Code globally unique. Rebuild only that table,
+        // retaining the original full code, legacy metadata and activation timestamps.
+        var keyColumns = new List<(int Position, string Name)>();
+        using (var columns = db.CreateCommand())
+        {
+            columns.CommandText = "PRAGMA table_info(Codes);";
+            using var reader = columns.ExecuteReader();
+            while (reader.Read())
+                if (reader.GetInt32(5) > 0) keyColumns.Add((reader.GetInt32(5), reader.GetString(1)));
+        }
+        if (!keyColumns.OrderBy(x => x.Position).Select(x => x.Name).SequenceEqual(["OrderNo", "Code"]))
+        {
+            using var tx = db.BeginTransaction(deferred: false);
+            using var migrate = db.CreateCommand();
+            migrate.Transaction = tx;
+            migrate.CommandText = """
+                CREATE TABLE Codes_CodeContentMigration (
+                    OrderNo TEXT NOT NULL, Code TEXT NOT NULL,
+                    Gtin TEXT NOT NULL DEFAULT '', Serial TEXT NOT NULL DEFAULT '',
+                    ActivatedUtc TEXT NULL, PRIMARY KEY (OrderNo, Code),
+                    FOREIGN KEY (OrderNo) REFERENCES Orders(OrderNo) ON DELETE CASCADE
+                );
+                INSERT INTO Codes_CodeContentMigration (OrderNo,Code,Gtin,Serial,ActivatedUtc)
+                    SELECT OrderNo,Code,Gtin,Serial,ActivatedUtc FROM Codes;
+                DROP TABLE Codes;
+                ALTER TABLE Codes_CodeContentMigration RENAME TO Codes;
+                """;
+            migrate.ExecuteNonQuery();
+            tx.Commit();
+        }
+        using var index = db.CreateCommand();
+        index.CommandText = "CREATE INDEX IF NOT EXISTS IX_Codes_OrderNo ON Codes(OrderNo);";
+        index.ExecuteNonQuery();
+    }
 
-        using var connection = new SqliteConnection($"Data Source={_dbPath}");
-        connection.Open();
+    public PoPushResponse ImportOrder(string orderNo, int orderQty, IReadOnlyList<string> codeContents,
+        IReadOnlyDictionary<string, string>? additional = null)
+    {
+        orderNo = (orderNo ?? string.Empty).Trim();
+        if (orderNo.Length is 0 or > 200)
+            throw new ArgumentException("poName phải có 1-200 ký tự.");
+        ArgumentNullException.ThrowIfNull(codeContents);
+        if (orderQty <= 0 || orderQty != codeContents.Count || codeContents.Any(string.IsNullOrWhiteSpace))
+            throw new ArgumentException("orderQty phải bằng số dòng CodeContent không rỗng trước lọc trùng.");
 
-        using var tx = connection.BeginTransaction();
-
-        using (var existing = connection.CreateCommand())
+        using var db = Open();
+        using var tx = db.BeginTransaction(deferred: false);
+        string? canonical = null;
+        string? status = null;
+        var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        using (var existing = db.CreateCommand())
         {
             existing.Transaction = tx;
-            existing.CommandText = "SELECT COUNT(*) FROM Orders WHERE OrderNo = $orderNo;";
-            existing.Parameters.AddWithValue("$orderNo", orderNo);
-            if (Convert.ToInt64(existing.ExecuteScalar()) > 0)
+            existing.CommandText = "SELECT OrderNo,Status,Additional FROM Orders WHERE OrderNo=$order COLLATE NOCASE;";
+            existing.Parameters.AddWithValue("$order", orderNo);
+            using var reader = existing.ExecuteReader();
+            if (reader.Read())
             {
-                tx.Rollback();
-                throw new InvalidOperationException($"PO '{orderNo}' đã tồn tại.");
+                canonical = reader.GetString(0);
+                status = reader.GetString(1);
+                var old = JsonSerializer.Deserialize(reader.GetString(2), PoServerJsonContext.Default.DictionaryStringString);
+                if (old is not null) foreach (var pair in old) metadata[pair.Key] = pair.Value;
+                if (reader.Read()) throw new InvalidOperationException("Có nhiều PO khác nhau chỉ bởi hoa thường; hãy đối soát DB thử nghiệm.");
             }
         }
+        if (status is "Completed" or "Closed" or "Cancelled")
+            throw new InvalidOperationException($"PO '{canonical}' đã kết thúc; không nhận thêm mã.");
+        orderNo = canonical ?? orderNo;
+        if (additional is not null)
+            foreach (var pair in additional) if (!string.IsNullOrWhiteSpace(pair.Value)) metadata[pair.Key] = pair.Value;
 
-        using (var insertOrder = connection.CreateCommand())
+        if (canonical is null)
         {
-            insertOrder.Transaction = tx;
-            insertOrder.CommandText = """
-                INSERT INTO Orders (OrderNo, OrderQty, CreatedUtc, Status)
-                VALUES ($orderNo, $qty, $createdUtc, 'Available');
-                """;
-            insertOrder.Parameters.AddWithValue("$orderNo", orderNo);
-            insertOrder.Parameters.AddWithValue("$qty", orderQty);
-            insertOrder.Parameters.AddWithValue("$createdUtc", now.ToString("O"));
-            insertOrder.ExecuteNonQuery();
+            using var create = db.CreateCommand();
+            create.Transaction = tx;
+            create.CommandText = "INSERT INTO Orders(OrderNo,OrderQty,CreatedUtc,Status) VALUES($order,0,$utc,'Available');";
+            create.Parameters.AddWithValue("$order", orderNo);
+            create.Parameters.AddWithValue("$utc", DateTime.UtcNow.ToString("O"));
+            create.ExecuteNonQuery();
         }
-
-        using (var insertCode = connection.CreateCommand())
+        var accepted = 0;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        using (var insert = db.CreateCommand())
         {
-            insertCode.Transaction = tx;
-            insertCode.CommandText = """
-                INSERT INTO Codes (OrderNo, Code, Gtin, Serial, ActivatedUtc)
-                VALUES ($orderNo, $code, $gtin, $serial, NULL);
-                """;
-            var pOrder = insertCode.Parameters.Add("$orderNo", SqliteType.Text);
-            var pCode = insertCode.Parameters.Add("$code", SqliteType.Text);
-            var pGtin = insertCode.Parameters.Add("$gtin", SqliteType.Text);
-            var pSerial = insertCode.Parameters.Add("$serial", SqliteType.Text);
-
-            for (var i = 1; i <= orderQty; i++)
+            insert.Transaction = tx;
+            insert.CommandText = "INSERT OR IGNORE INTO Codes(OrderNo,Code) VALUES($order,$code);";
+            insert.Parameters.AddWithValue("$order", orderNo);
+            var value = insert.Parameters.Add("$code", SqliteType.Text);
+            foreach (var code in codeContents)
             {
-                var serial = $"PO{orderNo}{i:D6}";
-                pOrder.Value = orderNo;
-                pCode.Value = BuildDigitalLink(gtin, serial);
-                pGtin.Value = gtin;
-                pSerial.Value = serial;
-                insertCode.ExecuteNonQuery();
+                if (!seen.Add(code)) continue;
+                value.Value = code;
+                accepted += insert.ExecuteNonQuery();
             }
         }
-
+        using (var update = db.CreateCommand())
+        {
+            update.Transaction = tx;
+            update.CommandText = """
+                UPDATE Orders SET OrderQty=(SELECT COUNT(*) FROM Codes WHERE OrderNo=$order),Additional=$additional
+                WHERE OrderNo=$order;
+                """;
+            update.Parameters.AddWithValue("$order", orderNo);
+            update.Parameters.AddWithValue("$additional", JsonSerializer.Serialize(metadata, PoServerJsonContext.Default.DictionaryStringString));
+            update.ExecuteNonQuery();
+        }
         tx.Commit();
-
-        return new ProductionOrder
+        return new PoPushResponse
         {
-            OrderNo = orderNo,
-            OrderQty = orderQty,
-            CreatedUtc = now,
+            Success = true, PoName = orderNo, Accepted = accepted,
+            IgnoredDuplicates = codeContents.Count - accepted,
+            Message = $"Đã nhận {accepted} mã mới vào PO {orderNo}.",
         };
     }
 
-    /// <summary>
-    /// Danh sách PO còn hiệu lực (chưa hoàn tất / chưa đóng).
-    /// </summary>
     public List<ProductionOrder> ListOrders(bool includeCompleted = false)
     {
-        using var connection = new SqliteConnection($"Data Source={_dbPath}");
-        connection.Open();
-
-        using var cmd = connection.CreateCommand();
-        cmd.CommandText = includeCompleted
-            ? "SELECT OrderNo, OrderQty, CreatedUtc FROM Orders ORDER BY CreatedUtc DESC;"
-            : """
-              SELECT OrderNo, OrderQty, CreatedUtc FROM Orders
-              WHERE Status NOT IN ('Completed', 'Closed')
-              ORDER BY CreatedUtc DESC;
-              """;
-
-        var list = new List<ProductionOrder>();
-        using var reader = cmd.ExecuteReader();
-        while (reader.Read())
+        using var db = Open();
+        using var command = db.CreateCommand();
+        command.CommandText = "SELECT OrderNo,OrderQty,CreatedUtc,Additional FROM Orders"
+            + (includeCompleted ? "" : " WHERE Status NOT IN ('Completed','Closed','Cancelled')")
+            + " ORDER BY CreatedUtc DESC;";
+        var result = new List<ProductionOrder>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read()) result.Add(new ProductionOrder
         {
-            list.Add(new ProductionOrder
-            {
-                OrderNo = reader.GetString(0),
-                OrderQty = reader.GetInt32(1),
-                CreatedUtc = DateTime.Parse(
-                    reader.GetString(2), null, System.Globalization.DateTimeStyles.RoundtripKind),
-            });
-        }
-
-        return list;
+            OrderNo = reader.GetString(0), OrderQty = reader.GetInt32(1), CreatedUtc = ParseUtc(reader.GetString(2)),
+            Additional = JsonSerializer.Deserialize(reader.GetString(3), PoServerJsonContext.Default.DictionaryStringString) ?? [],
+        });
+        return result;
     }
 
-    /// <summary>
-    /// Lấy tập mã của một PO.
-    /// </summary>
     public List<PoCode> GetCodes(string orderNo)
     {
-        using var connection = new SqliteConnection($"Data Source={_dbPath}");
-        connection.Open();
-
-        using var cmd = connection.CreateCommand();
-        cmd.CommandText = """
-            SELECT Code, Gtin, Serial, ActivatedUtc FROM Codes
-            WHERE OrderNo = $orderNo ORDER BY Serial;
-            """;
-        cmd.Parameters.AddWithValue("$orderNo", orderNo);
-
-        var list = new List<PoCode>();
-        using var reader = cmd.ExecuteReader();
-        while (reader.Read())
+        using var db = Open();
+        using var command = db.CreateCommand();
+        command.CommandText = "SELECT Code,ActivatedUtc FROM Codes WHERE OrderNo=$order COLLATE NOCASE ORDER BY Code COLLATE BINARY;";
+        command.Parameters.AddWithValue("$order", orderNo);
+        var codes = new List<PoCode>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read()) codes.Add(new PoCode
         {
-            list.Add(new PoCode
-            {
-                Code = reader.GetString(0),
-                Gtin = reader.GetString(1),
-                Serial = reader.GetString(2),
-                ActivatedUtc = reader.IsDBNull(3)
-                    ? null
-                    : DateTime.Parse(
-                        reader.GetString(3), null,
-                        System.Globalization.DateTimeStyles.RoundtripKind),
-            });
-        }
-
-        return list;
+            CodeContent = reader.GetString(0), ActivatedUtc = reader.IsDBNull(1) ? null : ParseUtc(reader.GetString(1)),
+        });
+        return codes;
     }
 
-    /// <summary>
-    /// Đánh dấu một danh sách mã của PO đã được kích hoạt.
-    /// </summary>
-    public int Activate(string orderNo, IReadOnlyList<string> serials)
+    public int Activate(string orderNo, IReadOnlyList<string> codeContents)
     {
-        if (serials.Count == 0)
-            return 0;
-
-        var now = DateTime.UtcNow.ToString("O");
-
-        using var connection = new SqliteConnection($"Data Source={_dbPath}");
-        connection.Open();
-
-        using var tx = connection.BeginTransaction();
-
-        using var cmd = connection.CreateCommand();
-        cmd.Transaction = tx;
-        cmd.CommandText = """
-            UPDATE Codes SET ActivatedUtc = $activatedUtc
-            WHERE OrderNo = $orderNo AND (Serial = $serial OR Code = $serial)
-              AND ActivatedUtc IS NULL;
-            """;
-        var pActivated = cmd.Parameters.Add("$activatedUtc", SqliteType.Text);
-        var pOrder = cmd.Parameters.Add("$orderNo", SqliteType.Text);
-        var pSerial = cmd.Parameters.Add("$serial", SqliteType.Text);
-
-        var count = 0;
-        foreach (var serial in serials)
+        ArgumentException.ThrowIfNullOrWhiteSpace(orderNo);
+        ArgumentNullException.ThrowIfNull(codeContents);
+        if (codeContents.Count == 0 || codeContents.Any(string.IsNullOrWhiteSpace))
+            throw new ArgumentException("codeContents phải chứa mã đầy đủ không rỗng.");
+        using var db = Open();
+        using var tx = db.BeginTransaction(deferred: false);
+        var unique = codeContents.Distinct(StringComparer.Ordinal).ToArray();
+        using (var exists = db.CreateCommand())
         {
-            pActivated.Value = now;
-            pOrder.Value = orderNo;
-            pSerial.Value = serial;
-            count += cmd.ExecuteNonQuery();
+            exists.Transaction = tx;
+            exists.CommandText = "SELECT COUNT(*) FROM Codes WHERE OrderNo=$order COLLATE NOCASE AND Code=$code COLLATE BINARY;";
+            exists.Parameters.AddWithValue("$order", orderNo);
+            var code = exists.Parameters.Add("$code", SqliteType.Text);
+            foreach (var value in unique)
+            {
+                code.Value = value;
+                if (Convert.ToInt64(exists.ExecuteScalar()) != 1)
+                    throw new ArgumentException("Có CodeContent không thuộc PO; chưa áp dụng lượt kích hoạt này.");
+            }
         }
-
+        var count = 0;
+        using (var activate = db.CreateCommand())
+        {
+            activate.Transaction = tx;
+            activate.CommandText = "UPDATE Codes SET ActivatedUtc=$utc WHERE OrderNo=$order COLLATE NOCASE AND Code=$code COLLATE BINARY AND ActivatedUtc IS NULL;";
+            activate.Parameters.AddWithValue("$order", orderNo);
+            activate.Parameters.AddWithValue("$utc", DateTime.UtcNow.ToString("O"));
+            var code = activate.Parameters.Add("$code", SqliteType.Text);
+            foreach (var value in unique) { code.Value = value; count += activate.ExecuteNonQuery(); }
+        }
+        using (var complete = db.CreateCommand())
+        {
+            complete.Transaction = tx;
+            complete.CommandText = """
+                UPDATE Orders SET Status='Completed',CompletedUtc=COALESCE(CompletedUtc,$utc)
+                WHERE OrderNo=$order COLLATE NOCASE AND NOT EXISTS
+                    (SELECT 1 FROM Codes WHERE OrderNo=Orders.OrderNo AND ActivatedUtc IS NULL);
+                """;
+            complete.Parameters.AddWithValue("$order", orderNo);
+            complete.Parameters.AddWithValue("$utc", DateTime.UtcNow.ToString("O"));
+            complete.ExecuteNonQuery();
+        }
         tx.Commit();
         return count;
     }
 
-    /// <summary>
-    /// Đánh dấu PO đã được cấp (issued) cho SCADA.
-    /// </summary>
     public void MarkIssued(string orderNo)
     {
-        using var connection = new SqliteConnection($"Data Source={_dbPath}");
-        connection.Open();
-
-        using var cmd = connection.CreateCommand();
-        cmd.CommandText = """
-            UPDATE Orders SET IssuedUtc = $issuedUtc, Status = 'Downloaded'
-            WHERE OrderNo = $orderNo AND IssuedUtc IS NULL;
-            """;
-        cmd.Parameters.AddWithValue("$issuedUtc", DateTime.UtcNow.ToString("O"));
-        cmd.Parameters.AddWithValue("$orderNo", orderNo);
-        cmd.ExecuteNonQuery();
+        using var db = Open();
+        using var command = db.CreateCommand();
+        command.CommandText = "UPDATE Orders SET IssuedUtc=COALESCE(IssuedUtc,$utc),Status=CASE WHEN Status='Available' THEN 'Downloaded' ELSE Status END WHERE OrderNo=$order COLLATE NOCASE;";
+        command.Parameters.AddWithValue("$utc", DateTime.UtcNow.ToString("O"));
+        command.Parameters.AddWithValue("$order", orderNo);
+        command.ExecuteNonQuery();
     }
 
-    /// <summary>
-    /// Sinh link TXNG Digital Link theo chuẩn <c>/01/{gtin}/21/{serial}</c>.
-    /// </summary>
-    public static string BuildDigitalLink(string gtin, string serial)
-        => $"https://digital-link.txng.vn/01/{gtin}/21/{serial}";
+    private static DateTime ParseUtc(string value) => DateTime.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
 }

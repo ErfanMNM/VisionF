@@ -12,10 +12,10 @@ using TanTienQR.Models;
 namespace TanTienQR.Services;
 
 /// <summary>
-/// Nhận tín hiệu từ camera, phân tích mã và gửi kết quả xuống PLC.
+/// Nhận nguyên CodeContent từ camera, đối chiếu PO và gửi kết quả xuống PLC.
 ///
-/// Không gọi API Checkee: mã đọc được coi là Pass (D12 = 1), mã lỗi hoặc
-/// sai định dạng coi là Fail (D12 = 0).
+/// Không phân tích GTIN/serial: mã tồn tại và chưa kích hoạt trong PO được Pass;
+/// mã trùng, không tồn tại hoặc NoRead/FAIL được Fail (D12 = 0).
 ///
 /// Ghi PLC được thực hiện trong <see cref="ProcessQueueAsync"/> (luồng riêng qua
 /// <see cref="Channel{T}"/>) chứ không phải trong callback của camera — vì ghi
@@ -73,9 +73,6 @@ internal sealed class CameraSignalWorker : BackgroundService
             SingleReader = true,
         });
 
-    // Mã đã quét gần đây, dùng để phát hiện mã trùng.
-    private readonly Dictionary<string, DateTime> _recent = new();
-
     // Số mã đã nhận nhưng chưa xử lý xong (đang chờ trong hàng đợi + đang xử lý).
     //
     // Dùng Interlocked vì được đọc/ghi từ 2 luồng: luồng callback của camera
@@ -86,6 +83,7 @@ internal sealed class CameraSignalWorker : BackgroundService
     // tử chờ -> không bao giờ chạm giới hạn 512, không lo mất mã do
     // DropOldest.
     private int _inFlight;
+    private IDisposable? _scanFaultSuspension;
     private readonly ScanIntakeGate _intake;
 
     public CameraSignalWorker(
@@ -118,15 +116,13 @@ internal sealed class CameraSignalWorker : BackgroundService
 
     /// <summary>
     /// Áp dụng camera trong phiên hiện tại. Coordinator phải chặn nhận mã mới
-    /// trước khi gọi; worker/queue và lịch sử chống trùng được giữ nguyên.
+    /// trước khi gọi; worker/queue được giữ nguyên.
     /// </summary>
     internal async Task ApplyConfigurationAsync(CameraConfig target, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(target);
         if (!_intake.IsSuspended)
             throw new InvalidOperationException("Cần tạm dừng nhận mã trước khi đổi cấu hình camera.");
-        if (target.DuplicateWindowSeconds is < 1 or > 3600)
-            throw new ArgumentOutOfRangeException(nameof(target), "Cửa sổ trùng mã phải từ 1 đến 3600 giây.");
 
         await DrainAsync(ct).ConfigureAwait(false);
         await _camera.ReconfigureAsync(target.Ip, target.Port, ct).ConfigureAwait(false);
@@ -134,7 +130,6 @@ internal sealed class CameraSignalWorker : BackgroundService
         // Giữ cùng options instance cho các consumer như camera web/PLC settings.
         _opt.Ip = target.Ip;
         _opt.Port = target.Port;
-        _opt.DuplicateWindowSeconds = target.DuplicateWindowSeconds;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -183,126 +178,94 @@ internal sealed class CameraSignalWorker : BackgroundService
     private async Task HandleAsync(ScanRequest request, CancellationToken ct)
     {
         var raw = request.Raw;
+        var orderNo = _po.CurrentOrder?.OrderNo ?? string.Empty;
+        if (_po.IsHalted)
+        {
+            _counters.AddScan(pass: false);
+            Publish(raw, ScanOutcome.Halted, request.ReceivedUtc, false, MeasureProcessingMs(request), orderNo);
+            return;
+        }
 
-        // Camera báo lỗi đọc mã ("NoRead" hoặc "FAIL") → Fail.
         if (QrParser.IsNoRead(raw))
         {
-            _logger.LogWarning("Camera không đọc được mã, gửi Fail xuống PLC: {Data}", raw);
-
-            // Đo thời gian xử lý TRƯỚC khi ghi PLC (đúng định nghĩa:
-            // "từ khi nhận mã đến trước khi gửi xuống PLC").
             var processingMs = MeasureProcessingMs(request);
-
             var written = await _plc.WriteResultAsync(pass: false, ct);
             _counters.AddScan(pass: false);
-            Publish(raw, null, null, ScanOutcome.NoRead, request.ReceivedUtc, written, processingMs);
+            _logger.LogWarning("Camera không đọc được mã, gửi Fail xuống PLC: CodeContent={CodeContent}", raw);
+            Publish(raw, ScanOutcome.NoRead, request.ReceivedUtc, written, processingMs, orderNo);
             return;
         }
 
-        // Mã không khớp pattern TXNG/GS1 → Fail.
-        if (!QrParser.TryParse(raw, out var gtin, out var serial))
+        var passAttempted = false;
+        var passWritten = false;
+        var passProcessingMs = 0.0;
+        PoCodeValidation validation;
+        try
         {
-            _logger.LogWarning("QR không đúng định dạng TXNG, gửi Fail xuống PLC: {Data}", raw);
-
-            var processingMs = MeasureProcessingMs(request);
-
-            var written = await _plc.WriteResultAsync(pass: false, ct);
-            _counters.AddScan(pass: false);
-            Publish(raw, null, null, ScanOutcome.InvalidFormat, request.ReceivedUtc, written, processingMs);
-            return;
+            // Backend giữ khóa vòng đời PO xuyên suốt validate → PLC ACK → commit DB.
+            // PLC từ chối chắc chắn (false) không tiêu thụ mã hay tăng số đếm PO.
+            // Pass mất ACK hoặc phản hồi không xác định phải throw để giữ quarantine.
+            var result = await _po.ProcessCodeAsync(raw, async token =>
+            {
+                orderNo = _po.CurrentOrder?.OrderNo ?? orderNo;
+                passProcessingMs = MeasureProcessingMs(request);
+                passAttempted = true;
+                passWritten = await _plc.WriteResultAsync(pass: true, token).ConfigureAwait(false);
+                return passWritten;
+            }, ct).ConfigureAwait(false);
+            validation = result.Validation;
+            orderNo = result.OrderNo;
+            if (validation == PoCodeValidation.Valid)
+            {
+                var accepted = result.PlcWritten == true && result.Committed;
+                _counters.AddScan(pass: accepted);
+                _logger.LogInformation("CodeContent={CodeContent}: PLC Pass={PlcWritten}, PO committed={Committed}",
+                    raw, result.PlcWritten, result.Committed);
+                if (result.ProductionHalted)
+                {
+                    // This Pass is already committed. Keep that outcome truthful,
+                    // but stop admission while the separate completion fault is reconciled.
+                    _scanFaultSuspension ??= _intake.Suspend();
+                    _logger.LogCritical(
+                        "DỪNG NHẬN MÃ: Pass đã ghi PLC và commit PO nhưng hoàn tất PO gặp lỗi. PO={OrderNo}, CodeContent={CodeContent}. {Message}",
+                        orderNo, raw, result.Message);
+                    try { await _plc.WriteReadyAsync(0, CancellationToken.None).ConfigureAwait(false); }
+                    catch (Exception readyError) { _logger.LogError(readyError, "Không ghi được Ready=0 sau lỗi hoàn tất PO."); }
+                }
+                Publish(raw, accepted ? ScanOutcome.Pass : ScanOutcome.PlcError,
+                    request.ReceivedUtc, result.PlcWritten == true, passProcessingMs, orderNo);
+                return;
+            }
         }
-
-        // ===== GATE PRODUCTION ORDER =====
-        // Kiểm tra PO TRƯỚC khi check trùng cửa sổ thời gian: nếu chưa bắt đầu
-        // sản xuất thì mọi mã đều bị loại bỏ (không ghi PLC).
-        var poResult = _po.ValidateCode(gtin, serial);
-
-        if (poResult == PoCodeValidation.Halted)
+        catch (Exception ex) when (passAttempted || _po.IsHalted)
         {
-            // Máy đã bị dừng do phát hiện mã đã từng xuất hiện trong lịch sử
-            // quét của hệ thống → KHÔNG ghi kết quả xuống PLC.
-            _logger.LogError(
-                "Máy đã dừng (mã trùng lịch sử), loại mã (không ghi PLC): GTIN={Gtin} Serial={Serial}",
-                gtin, serial);
-
-            var processingMs = MeasureProcessingMs(request);
-
+            // PLC có thể đã nhận Pass nhưng trạng thái bền vững không xác nhận được.
+            // Giữ lease đến hết tiến trình: không tự mở lại intake bằng hotapply/resume.
+            _scanFaultSuspension ??= _intake.Suspend();
+            _logger.LogCritical(ex,
+                "DỪNG NHẬN MÃ: không xác nhận được commit sau PLC Pass. PO={OrderNo}, CodeContent={CodeContent}. Cần đối soát PLC và DB trước khi chạy lại.",
+                orderNo, raw);
             _counters.AddScan(pass: false);
-            Publish(raw, gtin, serial, ScanOutcome.Halted, request.ReceivedUtc, plcWritten: false, processingMs);
+            Publish(raw, ScanOutcome.Halted, request.ReceivedUtc, passWritten,
+                passProcessingMs > 0 ? passProcessingMs : MeasureProcessingMs(request), orderNo);
+            try { await _plc.WriteReadyAsync(0, ct).ConfigureAwait(false); }
+            catch (Exception readyError) { _logger.LogError(readyError, "Không ghi được Ready=0 sau lỗi commit mã."); }
             return;
         }
 
-        if (poResult == PoCodeValidation.NoProductionOrder)
+        var outcome = validation switch
         {
-            _logger.LogWarning(
-                "Chưa bắt đầu sản xuất, loại mã (không ghi PLC): GTIN={Gtin} Serial={Serial}",
-                gtin, serial);
-
-            var processingMs = MeasureProcessingMs(request);
-
-            // KHÔNG ghi PLC — mã bị loại bỏ hoàn toàn.
-            _counters.AddScan(pass: false);
-            Publish(raw, gtin, serial, ScanOutcome.NoProductionOrder, request.ReceivedUtc, plcWritten: false, processingMs);
-            return;
-        }
-
-        if (poResult == PoCodeValidation.InvalidForOrder)
-        {
-            _logger.LogWarning(
-                "Mã không thuộc PO đang chạy, gửi Fail xuống PLC: GTIN={Gtin} Serial={Serial}",
-                gtin, serial);
-
-            var processingMs = MeasureProcessingMs(request);
-
-            var written = await _plc.WriteResultAsync(pass: false, ct);
-            _counters.AddScan(pass: false);
-            Publish(raw, gtin, serial, ScanOutcome.InvalidForOrder, request.ReceivedUtc, written, processingMs);
-            return;
-        }
-
-        if (poResult == PoCodeValidation.Duplicate)
-        {
-            _logger.LogWarning(
-                "Mã đã quét trong PO đang chạy, gửi Fail xuống PLC: GTIN={Gtin} Serial={Serial}",
-                gtin, serial);
-
-            var processingMs = MeasureProcessingMs(request);
-
-            var written = await _plc.WriteResultAsync(pass: false, ct);
-            _counters.AddScan(pass: false);
-            Publish(raw, gtin, serial, ScanOutcome.Duplicate, request.ReceivedUtc, written, processingMs);
-            return;
-        }
-
-        // Mã trùng (quét lại trong cửa sổ thời gian) → Fail.
-        if (IsDuplicate($"{gtin}|{serial}"))
-        {
-            _logger.LogInformation("Mã vừa quét gần đây, gửi Fail xuống PLC: {Serial}", serial);
-
-            var processingMs = MeasureProcessingMs(request);
-
-            var dupWritten = await _plc.WriteResultAsync(pass: false, ct);
-            _counters.AddScan(pass: false);
-            Publish(raw, gtin, serial, ScanOutcome.Duplicate, request.ReceivedUtc, dupWritten, processingMs);
-            return;
-        }
-
-        // Đọc được mã hợp lệ → Pass (không cần gọi API để quyết định).
-        var passProcessingMs = MeasureProcessingMs(request);
-
-        // Đánh dấu mã đã quét TRƯỚC khi ghi PLC: việc ghi DB PO là I/O
-        // chậm hơn, không nên chặn việc báo kết quả xuống PLC.
-        await _po.MarkCodeScannedAsync(gtin, serial, ct);
-
-        var ok = await _plc.WriteResultAsync(pass: true, ct);
-        _counters.AddScan(pass: true);
-        _logger.LogInformation(
-            ok
-                ? "Mã hợp lệ, gửi Pass xuống PLC: GTIN={Gtin} Serial={Serial}"
-                : "Mã hợp lệ nhưng ghi PLC thất bại: GTIN={Gtin} Serial={Serial}",
-            gtin, serial);
-
-        Publish(raw, gtin, serial, ScanOutcome.Pass, request.ReceivedUtc, ok, passProcessingMs);
+            PoCodeValidation.Duplicate => ScanOutcome.Duplicate,
+            PoCodeValidation.InvalidForOrder => ScanOutcome.InvalidForOrder,
+            PoCodeValidation.Halted => ScanOutcome.Halted,
+            _ => ScanOutcome.NoProductionOrder,
+        };
+        var processing = MeasureProcessingMs(request);
+        var writesFailure = outcome is ScanOutcome.Duplicate or ScanOutcome.InvalidForOrder;
+        var plcWritten = writesFailure && await _plc.WriteResultAsync(pass: false, ct).ConfigureAwait(false);
+        _counters.AddScan(pass: false);
+        _logger.LogWarning("CodeContent={CodeContent}: {Outcome}; PLC={PlcWritten}", raw, outcome, plcWritten);
+        Publish(raw, outcome, request.ReceivedUtc, plcWritten, processing, orderNo);
     }
 
     /// <summary>
@@ -336,17 +299,14 @@ internal sealed class CameraSignalWorker : BackgroundService
     /// </param>
     private void Publish(
         string raw,
-        string? gtin,
-        string? serial,
         ScanOutcome outcome,
         DateTime receivedUtc,
         bool plcWritten,
-        double processingMs)
+        double processingMs,
+        string? orderNo = null)
     {
         _feed.Publish(new ScanRecord(
             raw,
-            gtin,
-            serial,
             outcome,
             receivedUtc,
             plcWritten,
@@ -355,13 +315,14 @@ internal sealed class CameraSignalWorker : BackgroundService
         _scanWriter.Enqueue(new ScanRecordEntity
         {
             ReceivedUtc = receivedUtc,
-            Code = serial ?? raw,
-            Gtin = gtin ?? string.Empty,
-            Serial = serial ?? string.Empty,
+            CodeContent = raw,
             Status = outcome switch
             {
                 ScanOutcome.Pass => ScanStatuses.Pass,
                 ScanOutcome.Overload => ScanStatuses.Overload,
+                ScanOutcome.Duplicate => ScanStatuses.Duplicate,
+                ScanOutcome.InvalidForOrder => ScanStatuses.InvalidForOrder,
+                ScanOutcome.NoRead => ScanStatuses.NoRead,
                 _ => ScanStatuses.Fail,
             },
             ProcessingTimeMs = processingMs,
@@ -379,29 +340,8 @@ internal sealed class CameraSignalWorker : BackgroundService
 
             // Lưu PO của mã để cơ chế chống trùng lịch sử toàn cục biết mã
             // này từng thuộc PO nào.
-            OrderNo = _po.CurrentOrder?.OrderNo ?? string.Empty,
+            OrderNo = orderNo ?? _po.CurrentOrder?.OrderNo ?? string.Empty,
         });
-    }
-
-    /// <summary>
-    /// Kiểm tra mã vừa quét có trùng với mã đã quét gần đây không.
-    ///
-    /// Mã trùng được tính là Fail (D12 = 0). Cửa sổ trùng lấy từ
-    /// <see cref="CameraOptions.DuplicateWindowSeconds"/>.
-    /// </summary>
-    private bool IsDuplicate(string key)
-    {
-        var now = DateTime.UtcNow;
-        var window = TimeSpan.FromSeconds(Math.Max(1, _opt.DuplicateWindowSeconds));
-
-        // Dọn các mã đã cũ hơn cửa sổ trùng.
-        foreach (var k in _recent.Where(kv => now - kv.Value > window).Select(kv => kv.Key).ToList())
-            _recent.Remove(k);
-
-        if (_recent.ContainsKey(key)) return true;
-
-        _recent[key] = now;
-        return false;
     }
 
     private void OnCameraEvent(eReaderState state, string data)
@@ -458,8 +398,6 @@ internal sealed class CameraSignalWorker : BackgroundService
             // Mã bị từ chối: vẫn ghi vào DB + hiện ra UI, nhưng KHÔNG ghi PLC.
             Publish(
                 data,
-                null,
-                null,
                 ScanOutcome.Overload,
                 receivedUtc,
                 plcWritten: false,

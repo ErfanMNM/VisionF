@@ -145,7 +145,8 @@ internal sealed class FinsUdpTransport : IDisposable
     /// Gui lenh ghi word.
     /// </summary>
     public FinsTransportResult Write(
-        byte remoteNode, byte localNode, int wordAddress, ReadOnlySpan<ushort> words)
+        byte remoteNode, byte localNode, int wordAddress, ReadOnlySpan<ushort> words,
+        bool retry = true)
     {
         var sw = Stopwatch.StartNew();
 
@@ -154,7 +155,9 @@ internal sealed class FinsUdpTransport : IDisposable
 
         var lastCode = "TIMEOUT";
         var lastMessage = "Không nhận được phản hồi từ PLC.";
-        var totalAttempts = _retries + 1;
+        // Production Pass may trigger physical handling. Never retransmit it
+        // after a missing/invalid ACK: the first datagram may already be applied.
+        var totalAttempts = retry ? _retries + 1 : 1;
 
         for (var attempt = 0; attempt < totalAttempts; attempt++)
         {

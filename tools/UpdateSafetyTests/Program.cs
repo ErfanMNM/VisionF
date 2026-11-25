@@ -49,7 +49,7 @@ try
         await scans.VerifyHealthyAsync(timeout.Token);
         await logs.VerifyHealthyAsync(timeout.Token);
         if (!File.Exists(scanPath) || !File.Exists(logPath)) throw new Exception("Chưa mở DB thật.");
-        scans.Enqueue(new ScanRecordEntity { Code = "UPDATE-SAFETY", ReceivedUtc = DateTime.UtcNow });
+        scans.Enqueue(new ScanRecordEntity { CodeContent = "UPDATE-SAFETY", ReceivedUtc = DateTime.UtcNow });
         logs.Enqueue(new AppLogEntry { Message = "Kiểm tra cập nhật", TimestampUtc = DateTime.UtcNow });
         await scans.VerifyHealthyAsync(timeout.Token);
         await logs.VerifyHealthyAsync(timeout.Token);
@@ -72,7 +72,7 @@ try
         using var scans = NewScans(path);
         await scans.VerifyHealthyAsync(timeout.Token);
         await Execute(path, "CREATE TRIGGER fail_write BEFORE INSERT ON ScanRecords BEGIN SELECT RAISE(ABORT, 'test failure'); END;");
-        scans.Enqueue(new ScanRecordEntity { Code = "FAILED", ReceivedUtc = DateTime.UtcNow });
+        scans.Enqueue(new ScanRecordEntity { CodeContent = "FAILED", ReceivedUtc = DateTime.UtcNow });
         await scans.FlushAsync(timeout.Token);
         await Execute(path, "DROP TRIGGER fail_write;");
         await MustFail(() => scans.VerifyHealthyAsync(timeout.Token));
@@ -94,7 +94,7 @@ try
     {
         using var scans = NewScans(Path.Combine(root, "overflow-scans.db"), capacity: 1);
         await scans.VerifyHealthyAsync(timeout.Token);
-        for (var i = 0; i < 5000; i++) scans.Enqueue(new ScanRecordEntity { Code = i.ToString() });
+        for (var i = 0; i < 5000; i++) scans.Enqueue(new ScanRecordEntity { CodeContent = i.ToString() });
         await MustFail(() => scans.VerifyHealthyAsync(timeout.Token));
     });
 

@@ -23,10 +23,13 @@
                                Classes="pageTitle" />
                     <TextBlock Text="Nhận tín hiệu camera và gửi kết quả xuống PLC Omron (D12 = kết quả, D16 = Ready)"
                                Classes="label"
+                               TextWrapping="Wrap"
                                FontSize="13" />
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Button Classes="chip" Content="Xóa số PLC" Command="{Binding ResetPlcCountersCommand}"
+                            ToolTip.Tip="Ghi lệnh reset=1 đến địa chỉ PLC đã cấu hình; cần quyền chỉnh PLC." />
                     <Border Classes="pill" Classes.ok="{Binding IsReady}" Classes.warn="{Binding !IsReady}">
                         <TextBlock Text="{Binding AppStateText}" />
                     </Border>
@@ -45,23 +48,29 @@
                 <Grid ColumnDefinitions="*,*,*,*">
                     <!-- Tổng số lần quét -->
                     <StackPanel Grid.Column="0" Margin="18,12" Spacing="8">
-                        <TextBlock Classes="overline" Text="TỔNG SỐ LẦN QUÉT" />
-                        <TextBlock Classes="mono" FontSize="34" FontWeight="Bold"
-                                   Foreground="{StaticResource TextPrimary}" Text="{Binding TotalScans}" />
+                        <TextBlock Classes="overline" Text="TỔNG SỐ · PLC" />
+                        <Viewbox Height="44" Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Left">
+                            <TextBlock Classes="mono" FontSize="34" FontWeight="Bold"
+                                   Foreground="{StaticResource TextPrimary}" Text="{Binding TotalScansText}" />
+                        </Viewbox>
                     </StackPanel>
 
                     <!-- Pass -->
                     <StackPanel Grid.Column="1" Margin="18,12" Spacing="8">
                         <TextBlock Classes="overline" Text="PASS" />
-                        <TextBlock Classes="mono" FontSize="34" FontWeight="Bold"
-                                   Foreground="{StaticResource Ok}" Text="{Binding PassCount}" />
+                        <Viewbox Height="44" Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Left">
+                            <TextBlock Classes="mono" FontSize="34" FontWeight="Bold"
+                                   Foreground="{StaticResource Ok}" Text="{Binding PassCountText}" />
+                        </Viewbox>
                     </StackPanel>
 
                     <!-- Fail -->
                     <StackPanel Grid.Column="2" Margin="18,12" Spacing="8">
                         <TextBlock Classes="overline" Text="FAIL" />
-                        <TextBlock Classes="mono" FontSize="34" FontWeight="Bold"
-                                   Foreground="{StaticResource Danger}" Text="{Binding FailCount}" />
+                        <Viewbox Height="44" Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Left">
+                            <TextBlock Classes="mono" FontSize="34" FontWeight="Bold"
+                                   Foreground="{StaticResource Danger}" Text="{Binding FailCountText}" />
+                        </Viewbox>
                     </StackPanel>
 
                     <!-- Tỷ lệ đạt -->
@@ -70,7 +79,7 @@
                         <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                             <TextBlock Classes="mono" FontSize="34" FontWeight="Bold"
                                        VerticalAlignment="Center"
-                                       Foreground="{StaticResource Warn}" Text="{Binding PassRate}" />
+                                       Foreground="{StaticResource Warn}" Text="{Binding PassRateText}" />
                             <!-- FontSize 14 + canh giữa: ky tu "%" co dau nang can 25px,
                                  can 19px se bi cat mat 6px (UI-011). -->
                             <TextBlock Classes="mono" FontSize="14" FontWeight="SemiBold"
@@ -98,18 +107,20 @@
                                        Text="LỊCH SỰ MÃ QUÉT" />
                             <Border Background="{StaticResource BgRaised}"
                                     CornerRadius="10"
+                                    VerticalAlignment="Top"
                                     Padding="10,3">
                                 <TextBlock FontSize="12" FontWeight="SemiBold"
                                            Foreground="{StaticResource TextPrimary}"
-                                           Text="{Binding TotalScans, StringFormat='Tổng: {0}'}" />
+                                           Text="{Binding TotalScansText, StringFormat='PLC: {0}'}" />
                             </Border>
                         </StackPanel>
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                        <StackPanel Grid.Column="1" Spacing="3" MaxWidth="260">
                             <TextBlock Classes="label" FontSize="13" VerticalAlignment="Center" Text="Mã cuối:" />
-                            <TextBlock Classes="mono" FontSize="13" FontWeight="Bold"
-                                       Foreground="{StaticResource TextPrimary}"
-                                       VerticalAlignment="Center"
-                                       Text="{Binding LastScanText}" />
+                            <ScrollViewer MaxHeight="72" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                <TextBlock Classes="mono" FontSize="13" FontWeight="Bold"
+                                           Foreground="{StaticResource TextPrimary}"
+                                           TextWrapping="Wrap" Text="{Binding LastScanText}" />
+                            </ScrollViewer>
                             <TextBlock Classes="label mono" FontSize="11"
                                        VerticalAlignment="Center" Text="{Binding LastScanTimeText}" />
                         </StackPanel>
@@ -354,7 +365,7 @@
                     Padding="16,14">
                 <StackPanel Spacing="12">
 
-                    <!-- Cảnh báo: máy đã dừng do phát hiện mã trùng lịch sử quét -->
+                    <!-- Cảnh báo: hệ thống đang giữ trạng thái dừng để đối soát an toàn -->
                     <Border IsVisible="{Binding ProductionInfo.IsHalted}"
                             Background="{StaticResource BgPanel}"
                             BorderBrush="{StaticResource Danger}"
@@ -368,7 +379,7 @@
                             <TextBlock FontSize="12"
                                        Foreground="{StaticResource TextSecondary}"
                                        TextWrapping="Wrap"
-                                       Text="Phát hiện mã đã từng quét trong lịch sử hệ thống. Đã dừng ghi kết quả xuống PLC và huỷ PO. Vui lòng kiểm tra và xử lý." />
+                                       Text="Hệ thống đã dừng xử lý mã để bảo vệ trạng thái sản xuất. Vui lòng đối soát mã, kết quả PLC và dữ liệu PO theo nhật ký lỗi trước khi tiếp tục." />
                         </StackPanel>
                     </Border>
 

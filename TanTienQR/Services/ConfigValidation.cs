@@ -164,12 +164,28 @@ public static class ConfigValidation
 
                 break;
 
+            case "PlcWordAddress":
+            case "PlcCounterAddress":
+                if (!IsValidPlcWordAddress(trimmed, field.Validation == "PlcCounterAddress" ? 10 : 1))
+                    return $"{field.Label} phải là word D hợp lệ đủ vùng dữ liệu.";
+                break;
+
             case "Path":
                 // Đường dẫn chỉ cần khác rỗng (đã kiểm tra ở trên).
                 break;
         }
 
         return null;
+    }
+
+    public static bool IsValidPlcWordAddress(string? address, int wordCount = 1)
+    {
+        var value = address?.Trim();
+        if (string.IsNullOrEmpty(value)) return false;
+        var prefix = value.StartsWith("DM", StringComparison.OrdinalIgnoreCase) ? 2
+            : value.StartsWith("D", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+        return prefix > 0 && int.TryParse(value.AsSpan(prefix), NumberStyles.None, CultureInfo.InvariantCulture,
+            out var word) && word >= 0 && wordCount > 0 && word <= 32768 - wordCount;
     }
 
     /// <summary>

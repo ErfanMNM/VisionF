@@ -79,7 +79,7 @@ Directory.CreateDirectory(Path.Combine(logs, "po"));
 
 File.WriteAllText(Path.Combine(root, "appsettings.json"), """
 {
-  "Camera": { "Ip": "127.0.0.1", "Port": 9000, "DuplicateWindowSeconds": 30 },
+  "Camera": { "Ip": "127.0.0.1", "Port": 9000 },
   "Plc": { "Ip": "127.0.0.1", "Port": 9600, "RemoteNode": 0, "LocalNode": 1, "TimeoutMs": 1000, "Retries": 0, "ResultAddress": "D12", "ReadyAddress": "D16", "RefreshIntervalMs": 1000 },
   "Web": { "Url": "https://estrace.checkee.vn", "Enabled": false },
   "Scanner": { "Enabled": false, "Mode": "TcpServer", "TcpHost": "127.0.0.1", "TcpPort": 6999, "ComPort": "COM3", "BaudRate": 9600 },

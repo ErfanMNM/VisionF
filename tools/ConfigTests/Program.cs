@@ -1,9 +1,12 @@
 using System.Text.Json;
 using ClassLibraryMT.Print;
+using ClassLibraryMT.Scans;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using TanTienQR.Services;
+using TanTienQR.Services.Config;
+using TanTienQR.Models;
 using TanTienQR.ViewModels;
 
 // ===================================================================
@@ -36,7 +39,7 @@ Console.WriteLine("========================================");
 
 AppConfigSnapshot NewSnapshot() => new()
 {
-    Camera = new CameraConfig { Ip = "192.168.1.50", Port = 9000, DuplicateWindowSeconds = 30 },
+    Camera = new CameraConfig { Ip = "192.168.1.50", Port = 9000 },
     Plc = new PlcConfig
     {
         Ip = "192.168.1.10",
@@ -48,6 +51,8 @@ AppConfigSnapshot NewSnapshot() => new()
         ResultAddress = "D12",
         ReadyAddress = "D16",
         RefreshIntervalMs = 1000,
+        CounterAddress = "D100",
+        ResetCounterAddress = "D200",
     },
     Scanner = new ScannerConfig
     {
@@ -118,8 +123,8 @@ s.Camera.Port = 70000;
 Check("Camera Port > 65535 -> bao loi", !ConfigValidation.Validate(s, out var e5) && e5!.Contains("Port TCP"), e5 ?? "");
 
 s = NewSnapshot();
-s.Camera.DuplicateWindowSeconds = 0;
-Check("Cua so trung ma <= 0 -> bao loi", !ConfigValidation.Validate(s, out var e6), e6 ?? "");
+s.Camera.Port = 65535;
+Check("Camera Port 65535 -> hop le", ConfigValidation.Validate(s, out var e6), e6 ?? "");
 
 s = NewSnapshot();
 s.Plc.Ip = "192.168.1.999";
@@ -152,6 +157,34 @@ Check("Dia chi vung D rong -> bao loi", !ConfigValidation.Validate(s, out var e1
 s = NewSnapshot();
 s.Plc.RefreshIntervalMs = 0;
 Check("Heartbeat <= 0 -> bao loi", !ConfigValidation.Validate(s, out var e14), e14 ?? "");
+
+foreach (var address in new[] { "D0", "D100", "D32758", "DM32758", " dm100 " })
+{
+    s = NewSnapshot();
+    s.Plc.CounterAddress = address;
+    Check("CounterAddress du 10 word hop le: " + address, ConfigValidation.Validate(s, out var counterError), counterError ?? "");
+}
+foreach (var address in new[] { "", "D32759", "D32767", "D32768", "D-1", "C100", "D100.1", "D+100" })
+{
+    s = NewSnapshot();
+    s.Plc.CounterAddress = address;
+    Check("CounterAddress sai/khong du 10 word bi tu choi: " + address,
+        !ConfigValidation.Validate(s, out var counterError), counterError ?? "");
+}
+foreach (var address in new[] { "", " ", "D0", "D32767", "DM32767", " d200 " })
+{
+    s = NewSnapshot();
+    s.Plc.ResetCounterAddress = address;
+    Check("ResetCounterAddress tuy chon hoac mot word hop le: " + address,
+        ConfigValidation.Validate(s, out var resetError), resetError ?? "");
+}
+foreach (var address in new[] { "D32768", "D-1", "C100", "D100.1", "D+100" })
+{
+    s = NewSnapshot();
+    s.Plc.ResetCounterAddress = address;
+    Check("ResetCounterAddress sai bi tu choi: " + address,
+        !ConfigValidation.Validate(s, out var resetError), resetError ?? "");
+}
 
 s = NewSnapshot();
 s.Scanner.TcpPort = 0;
@@ -276,6 +309,22 @@ Check("Bat/tat PLC, node va dia chi Ready deu hot-apply", diff.Count == 0, strin
 Check("Thong so PLC hot-apply van danh dau dirty", !ConfigDiff.AreEquivalent(before, after));
 
 after = NewSnapshot();
+after.Plc.CounterAddress = "DM300";
+Check("Doi CounterAddress hot-apply, khong restart",
+    ConfigDiff.DescribeCriticalChanges(before, after).Count == 0
+    && !ConfigDiff.AreEquivalent(before, after)
+    && DeviceConfigurationChanges.Describe(before, after, "Plc").Count == 1);
+after = NewSnapshot();
+after.Plc.ResetCounterAddress = "D400";
+Check("Doi ResetCounterAddress hot-apply, khong restart",
+    ConfigDiff.DescribeCriticalChanges(before, after).Count == 0
+    && !ConfigDiff.AreEquivalent(before, after)
+    && DeviceConfigurationChanges.Describe(before, after, "Plc").Count == 1);
+Check("Schema counter/reset cung hot-apply, reset khong bat buoc",
+    ConfigSchemaProvider.FindField("Plc:CounterAddress") is { RequiresRestart: false, Required: true }
+    && ConfigSchemaProvider.FindField("Plc:ResetCounterAddress") is { RequiresRestart: false, Required: false });
+
+after = NewSnapshot();
 after.Scanner.TcpHost = "10.0.0.20";
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
 Check("Doi host scanner -> co thay doi", diff.Contains("Host TCP"), string.Join(",", diff));
@@ -320,15 +369,16 @@ after.Auth.SeedAdminPassword = "changed-secret";
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
 Check("Doi seed password -> co thay doi restart", diff.Contains("Mật khẩu seed"), string.Join(",", diff));
 
-// Toàn bộ mục Camera được áp dụng cùng kết nối, bao gồm cửa sổ trùng mã.
+// Camera đổi đồng thời IP và port vẫn được áp dụng cùng một kết nối.
 after = NewSnapshot();
-after.Camera.DuplicateWindowSeconds = 60;
+after.Camera.Ip = "10.0.0.9";
+after.Camera.Port = 9001;
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
 Check(
-    "Doi duplicate window -> hot-apply, khong restart",
+    "Doi IP va port camera -> hot-apply, khong restart",
     diff.Count == 0,
     string.Join(",", diff));
-Check("Duplicate window van la thay doi can luu", !ConfigDiff.AreEquivalent(before, after));
+Check("Doi ket noi camera van la thay doi can luu", !ConfigDiff.AreEquivalent(before, after));
 
 after.Scanner.TcpPort++;
 diff = ConfigDiff.DescribeCriticalChanges(before, after);
@@ -391,6 +441,10 @@ Console.WriteLine("\n[6] Persist: round-trip JSON appsettings");
 
 var json = JsonSerializer.Serialize(baseSnapshot, AppConfigJsonContext.Default.AppConfigSnapshot);
 var restored = JsonSerializer.Deserialize(json, AppConfigJsonContext.Default.AppConfigSnapshot);
+using var snapshotJson = JsonDocument.Parse(json);
+Check("Camera JSON chi luu IP va port", snapshotJson.RootElement.GetProperty("Camera")
+    .EnumerateObject().Select(property => property.Name).OrderBy(name => name)
+    .SequenceEqual(new[] { "Ip", "Port" }));
 
 Check("Doc lai snapshot tu JSON thanh cong", restored is not null);
 if (restored is not null)
@@ -398,6 +452,10 @@ if (restored is not null)
     Check("Camera IP giu nguyen qua JSON", restored.Camera.Ip == baseSnapshot.Camera.Ip);
     Check("Camera Port giu nguyen qua JSON", restored.Camera.Port == baseSnapshot.Camera.Port);
     Check("PLC Timeout giu nguyen qua JSON", restored.Plc.TimeoutMs == baseSnapshot.Plc.TimeoutMs);
+    Check("PLC counter/reset giu nguyen qua JSON", restored.Plc.CounterAddress == baseSnapshot.Plc.CounterAddress
+        && restored.Plc.ResetCounterAddress == baseSnapshot.Plc.ResetCounterAddress
+        && snapshotJson.RootElement.GetProperty("Plc").GetProperty("CounterAddress").GetString() == "D100"
+        && snapshotJson.RootElement.GetProperty("Plc").GetProperty("ResetCounterAddress").GetString() == "D200");
     Check("Scanner host/port giu nguyen qua JSON",
         restored.Scanner.TcpHost == baseSnapshot.Scanner.TcpHost
         && restored.Scanner.TcpPort == baseSnapshot.Scanner.TcpPort);
@@ -442,7 +500,7 @@ Directory.CreateDirectory(sandbox);
 var testConfig = Path.Combine(sandbox, "appsettings.json");
 File.WriteAllText(testConfig, """
 {
-  "Camera": { "Ip": "1.1.1.1", "Port": 9000, "DuplicateWindowSeconds": 30 },
+  "Camera": { "Ip": "1.1.1.1", "Port": 9000 },
   "Plc": { "Ip": "2.2.2.2", "Port": 9600, "RemoteNode": 0, "LocalNode": 1, "TimeoutMs": 1000, "Retries": 0, "ResultAddress": "D12", "ReadyAddress": "D16", "RefreshIntervalMs": 1000 },
   "Web": { "Url": "https://estrace.checkee.vn", "Enabled": true },
   "Scanner": { "Enabled": true, "Mode": "TcpServer", "TcpHost": "127.0.0.1", "TcpPort": 6999, "ComPort": "COM3", "BaudRate": 9600 },
@@ -500,6 +558,66 @@ try
         && remoteSaved.RootElement.GetProperty("FutureSection").GetProperty("value").GetInt32() == 7);
 }
 finally { Directory.Delete(remoteConfigDirectory, recursive: true); }
+
+Console.WriteLine("\n[9] Migration cau hinh camera cu va bao toan key la");
+var migrationDirectory = Path.Combine(Path.GetTempPath(), "visionf-camera-config-migration-" + Guid.NewGuid().ToString("N"));
+Directory.CreateDirectory(migrationDirectory);
+try
+{
+    // Tên key đã loại bỏ chỉ xuất hiện trong fixture migration để kiểm tra nâng cấp config cũ.
+    const string retiredCameraKey = "DuplicateWindowSeconds";
+    var configPath = Path.Combine(migrationDirectory, "appsettings.json");
+    File.WriteAllText(configPath, """{"Camera":{"Ip":"127.0.0.1","Port":9000,"DuplicateWindowSeconds":30,"FutureCameraSetting":"keep"},"FutureSection":{"value":7}}""");
+    var storeType = typeof(AppConfigSnapshot).Assembly.GetType("TanTienQR.Services.ConfigStore")!;
+    var loggerType = typeof(Microsoft.Extensions.Logging.Abstractions.NullLogger<>).MakeGenericType(storeType);
+    var configStore = Activator.CreateInstance(storeType, Activator.CreateInstance(loggerType), migrationDirectory)!;
+    var detailed = (ConfigLoadResult)storeType.GetMethod("LoadDetailed")!.Invoke(configStore, null)!;
+    Check("Camera schema chi co hai field ket noi", ConfigSchemaProvider.FindSection("Camera")!.Fields
+        .Select(field => field.JsonKey).OrderBy(key => key).SequenceEqual(new[] { "Ip", "Port" }));
+    Check("LoadDetailed bo key camera cu khoi raw va flat",
+        detailed.Raw?["Camera"]?[retiredCameraKey] is null && !detailed.Flat.ContainsKey("Camera:" + retiredCameraKey));
+    Check("LoadDetailed van giu key la thuc su", detailed.Flat["Camera:FutureCameraSetting"] == "keep"
+        && detailed.Flat["FutureSection:value"] == "7");
+    Check("SaveMerged migration thanh cong", (bool)storeType.GetMethod("SaveMerged")!.Invoke(configStore, [detailed.Snapshot])!);
+    using var saved = JsonDocument.Parse(File.ReadAllText(configPath));
+    Check("SaveMerged xoa key cu tren dia nhung bao toan key la",
+        !saved.RootElement.GetProperty("Camera").TryGetProperty(retiredCameraKey, out _)
+        && saved.RootElement.GetProperty("Camera").GetProperty("FutureCameraSetting").GetString() == "keep"
+        && saved.RootElement.GetProperty("FutureSection").GetProperty("value").GetInt32() == 7);
+}
+finally { Directory.Delete(migrationDirectory, recursive: true); }
+
+Console.WriteLine("\n[10] UI row giu nguyen CodeContent va outcome PO");
+var fullCodeContent = "  Việt/01/01234567890123/21/SAME\u001d?case=VALUE&part=one|two  " + new string('x', 1500);
+foreach (var (outcome, label) in new[]
+{
+    (ScanOutcome.Pass, "Pass"), (ScanOutcome.Duplicate, "Trùng"),
+    (ScanOutcome.InvalidForOrder, "Không tồn tại"), (ScanOutcome.NoRead, "NoRead"),
+})
+{
+    var row = new ScanRowViewModel(new ScanRecord(fullCodeContent, outcome, DateTime.UtcNow, true, 0.333));
+    Check("Scan row hien tron CodeContent va nhan " + label,
+        row.CodeText == fullCodeContent && row.OutcomeText == label && row.PlcText == "Đã ghi");
+}
+foreach (var outcome in new[] { ScanOutcome.NoProductionOrder, ScanOutcome.Halted, ScanOutcome.Overload })
+{
+    var row = new ScanRowViewModel(new ScanRecord(fullCodeContent, outcome, DateTime.UtcNow, false));
+    Check("Scan row PLC bo qua khi " + outcome, row.PlcText == "Bỏ qua" && row.CodeText == fullCodeContent);
+}
+Check("Scan row PLC loi chi khi da thu ghi", new ScanRowViewModel(new ScanRecord(fullCodeContent,
+    ScanOutcome.InvalidForOrder, DateTime.UtcNow, false)).PlcText == "Lỗi");
+var lookupEntity = new ScanRecordEntity
+{
+    CodeContent = fullCodeContent, Serial = "SAME", Gtin = "LEGACY-METADATA",
+    Raw = "must-not-replace-CodeContent", ReceivedUtc = DateTime.UtcNow,
+    Status = ScanStatuses.Duplicate, PlcResult = ScanPlcResults.Skipped,
+};
+var lookupRow = new CodeLookupRowViewModel(lookupEntity);
+Check("CodeLookup row lay tron CodeContent thay vi Serial/Raw", lookupRow.CodeText == fullCodeContent
+    && lookupRow.StatusText == "Trùng" && lookupRow.PlcText == "Bỏ qua");
+lookupEntity.Status = ScanStatuses.InvalidForOrder;
+Check("CodeLookup row hien nhan Khong ton tai", new CodeLookupRowViewModel(lookupEntity).StatusText == "Không tồn tại");
+Check("Dong gui loi cung giu tron CodeContent", new CodeSendErrorRowViewModel(lookupEntity).CodeText == fullCodeContent);
 
 // Không Start host nên không mở kết nối/worker; xác minh disposal cả TCP và remote đã resolve.
 var disposalBuilder = Host.CreateApplicationBuilder();

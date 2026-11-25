@@ -41,12 +41,15 @@ public sealed class PoCodeCache
 
         /// <summary>Mã đã được gửi kích hoạt lên server.</summary>
         Activated = 1 << 1,
+
+        /// <summary>PLC Pass outcome is unresolved.</summary>
+        PendingPass = 1 << 2,
     }
 
     private readonly Lock _gate = new();
 
-    /// <summary>Key = "gtin|serial", value = cờ trạng thái.</summary>
-    private readonly Dictionary<string, Flags> _codes = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Key = complete CodeContent, value = persisted per-code state flags.</summary>
+    private readonly Dictionary<string, Flags> _codes = new(StringComparer.Ordinal);
 
     /// <summary>Mã PO mà cache đang phục vụ (để kiểm tra nhầm lẫn).</summary>
     private string _orderNo = string.Empty;
@@ -62,7 +65,7 @@ public sealed class PoCodeCache
     {
         ArgumentNullException.ThrowIfNull(codes);
 
-        var map = new Dictionary<string, Flags>(StringComparer.OrdinalIgnoreCase);
+        var map = new Dictionary<string, Flags>(StringComparer.Ordinal);
         foreach (var (key, flags) in codes)
         {
             map[key] = flags;
@@ -154,6 +157,37 @@ public sealed class PoCodeCache
         }
     }
 
+    public bool HasPendingPass
+    {
+        get
+        {
+            lock (_gate)
+                return _codes.Values.Any(flags => (flags & Flags.PendingPass) != 0);
+        }
+    }
+
+    public bool MarkPassPending(string code)
+    {
+        lock (_gate)
+        {
+            if (!_codes.TryGetValue(code, out var flags)
+                || (flags & (Flags.Scanned | Flags.Activated | Flags.PendingPass)) != 0)
+                return false;
+
+            _codes[code] = flags | Flags.PendingPass;
+            return true;
+        }
+    }
+
+    public void ClearPassPending(string code)
+    {
+        lock (_gate)
+        {
+            if (_codes.TryGetValue(code, out var flags))
+                _codes[code] = flags & ~Flags.PendingPass;
+        }
+    }
+
     /// <summary>
     /// Đánh dấu mã đã quét. Trả về true nếu mã mới (chưa từng quét).
     /// </summary>
@@ -171,7 +205,7 @@ public sealed class PoCodeCache
                 return false;
             }
 
-            _codes[code] = flags | Flags.Scanned;
+            _codes[code] = (flags | Flags.Scanned) & ~Flags.PendingPass;
             return true;
         }
     }

@@ -52,7 +52,7 @@ public interface IScanRecordQuery
     Task<Dictionary<string, long>> CountByStatusAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Lấy tập serial đã từng xuất hiện trong lịch sử quét với kết quả Pass.
+    /// Lấy tập nội dung mã đầy đủ đã từng xuất hiện trong lịch sử với kết quả Pass.
     ///
     /// <para>
     /// Dùng cho cơ chế chống trùng lịch sử toàn cục của luồng PO: trước khi
@@ -63,7 +63,14 @@ public interface IScanRecordQuery
     /// </summary>
     /// <param name="orderNo">Mã PO hiện tại (bỏ qua bản ghi của PO này).</param>
     /// <param name="cancellationToken">Token hủy.</param>
-    Task<IReadOnlyList<string>> GetSeenSerialsAsync(
+    Task<IReadOnlyList<string>> GetSeenCodeContentsAsync(
         string orderNo,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Tên API cũ, trả về nội dung mã đầy đủ thay vì serial đã tách.</summary>
+    [Obsolete("Use GetSeenCodeContentsAsync; production identity is the complete code.")]
+    Task<IReadOnlyList<string>> GetSeenSerialsAsync(
+        string orderNo,
+        CancellationToken cancellationToken = default) =>
+        GetSeenCodeContentsAsync(orderNo, cancellationToken);
 }

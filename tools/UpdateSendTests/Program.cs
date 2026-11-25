@@ -144,7 +144,8 @@ sealed class Fixture : IDisposable
         var options = new CheckeeOptions { ApiKey = "fake", ClientId = "fake", BaseUrl = "https://checkee.test" };
         _http = new HttpClient(Http) { BaseAddress = new Uri("https://checkee.test/") };
         _client = new CheckeeClient(_http, options);
-        Worker = new CheckeeSendWorker(_client, Store, Writer, Options.Create(options), Intake,
+        Worker = new CheckeeSendWorker(_client, Store, Writer, Options.Create(options),
+            Options.Create(new CheckeeOutboundOptions { ProductGtin = "1234" }), Intake,
             NullLogger<CheckeeSendWorker>.Instance);
     }
 
@@ -195,7 +196,7 @@ sealed class FakeStore : IScanSendStatusStore
     {
         Interlocked.Increment(ref ReadCount);
         if (ThrowOnRead) throw new IOException("Lỗi đọc giả lập.");
-        return Task.FromResult<IReadOnlyList<ScanRecordEntity>>([new ScanRecordEntity { Id = 1, Code = "TEST", Gtin = "1234", Serial = "001", BatchNo = "BATCH" }]);
+        return Task.FromResult<IReadOnlyList<ScanRecordEntity>>([new ScanRecordEntity { Id = 1, CodeContent = "TEST", BatchNo = "BATCH" }]);
     }
     public async Task MarkSentAsync(long id, string message, CancellationToken cancellationToken = default)
     {

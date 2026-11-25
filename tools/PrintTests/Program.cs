@@ -10,26 +10,51 @@ try
 {
     var store = new PoStore(root);
     var order = new ProductionOrder { OrderNo = "PO-PRINT-001", OrderQty = 3, CreatedUtc = DateTime.UtcNow };
-    var codes = Enumerable.Range(1, 3).Select(i => new PoCode { Code = $"089|SER{i:000}", Gtin = "089", Serial = $"SER{i:000}" }).ToArray();
+    string[] codeContents = ["BOX/one?payload=A:001", "opaque|Case-SENSITIVE,b", "zzz-free form 003"];
+    var codes = codeContents.Select(code => new PoCode { CodeContent = code }).ToArray();
     await store.EnsurePoDbAsync(order, codes);
     var print = new PrintQueueStore(store);
 
     var batch = await print.ClaimNextAsync(order.OrderNo, order.CreatedUtc, "g10-1", 2);
     Check(batch is not null && batch.Items.Count == 2, "Claim đúng số lượng chưa in/chưa active");
+    Check(batch!.Items.Select(item => item.CodeContent).SequenceEqual(codeContents.Take(2)),
+        "Hàng đợi giữ nguyên CodeContent tùy ý, không tách GTIN/serial");
     var summary = await print.GetSummaryAsync(order.OrderNo, order.CreatedUtc);
     Check(summary.Pending == 1 && summary.Sent == 2, "Ghi Sent trước khi truyền");
 
-    await print.MarkPrintedAsync(order.OrderNo, order.CreatedUtc, batch!.BatchId, [batch.Items[0].Code], "BACK|OK");
+    await print.MarkPrintedAsync(order.OrderNo, order.CreatedUtc, batch!.BatchId, [batch.Items[0].CodeContent], "BACK|OK");
     summary = await print.GetSummaryAsync(order.OrderNo, order.CreatedUtc);
     Check(summary.Printed == 1 && summary.Sent == 1, "Ghi Printed sau xác nhận máy in");
 
-    await store.MarkActivatedAsync(order.OrderNo, order.CreatedUtc, [batch.Items[1].Serial]);
+    await store.MarkScannedAsync(order.OrderNo, order.CreatedUtc, batch.Items[1].CodeContent);
+    await store.MarkActivatedAsync(order.OrderNo, order.CreatedUtc, [batch.Items[1].CodeContent]);
     var changed = await print.ReconcileActivatedAcrossOrdersAsync();
     summary = await print.GetSummaryAsync(order.OrderNo, order.CreatedUtc);
     Check(changed == 1 && summary.NoResponse == 1 && summary.Sent == 0, "Active nhưng không có xác nhận -> NoResponse");
 
     var next = await print.ClaimNextAsync(order.OrderNo, order.CreatedUtc, "g10-1", 10);
-    Check(next is not null && next.Items.Count == 1 && next.Items[0].Serial == "SER003", "Không lấy lại mã đã Printed/NoResponse");
+    Check(next is not null && next.Items.Count == 1 && next.Items[0].CodeContent == codeContents[2], "Không lấy lại mã đã Printed/NoResponse");
+
+    var identityOrder = new ProductionOrder { OrderNo = "PO-PRINT-IDENTITY", OrderQty = 4, CreatedUtc = order.CreatedUtc };
+    string[] identityContents = ["https://first/21/SAME", "https://second/21/SAME", "opaque:Case", "opaque:case"];
+    await store.EnsurePoDbAsync(identityOrder, identityContents.Select(code => new PoCode { CodeContent = code }).ToArray());
+    var identityBatch = await print.ClaimNextAsync(identityOrder.OrderNo, identityOrder.CreatedUtc, "g10-1", 10);
+    Check(identityBatch is not null && identityBatch.Items.Count == identityContents.Length,
+        "Các mã chung hậu tố và khác hoa thường có trạng thái in riêng");
+    foreach (var codeContent in new[] { identityContents[0], identityContents[2] })
+        await store.MarkScannedAsync(identityOrder.OrderNo, identityOrder.CreatedUtc, codeContent);
+    await store.MarkActivatedAsync(identityOrder.OrderNo, identityOrder.CreatedUtc, [identityContents[0], identityContents[2]]);
+    var identityCodes = await store.GetCodesAsync(identityOrder.OrderNo, identityOrder.CreatedUtc);
+    Check(identityCodes.Where(code => code.ActivatedUtc is not null).Select(code => code.CodeContent)
+            .ToHashSet(StringComparer.Ordinal).SetEquals([identityContents[0], identityContents[2]]),
+        "Kích hoạt bằng CodeContent đầy đủ không đụng mã cùng hậu tố hoặc khác hoa thường");
+    Check(await print.MarkNoResponseForActivatedAsync(identityOrder.OrderNo, identityOrder.CreatedUtc) == 2,
+        "Chỉ hai mã kích hoạt chính xác được chuyển NoResponse");
+    await print.MarkPrintedAsync(identityOrder.OrderNo, identityOrder.CreatedUtc, identityBatch!.BatchId,
+        [identityContents[3]], "BACK|OK");
+    var identitySummary = await print.GetSummaryAsync(identityOrder.OrderNo, identityOrder.CreatedUtc);
+    Check(identitySummary.NoResponse == 2 && identitySummary.Printed == 1 && identitySummary.Sent == 1,
+        "Xác nhận in phân biệt hoa thường và không gộp mã cùng hậu tố");
 
     // Lệnh điều khiển START/STOP phải đi đúng protocol G10 legacy.
     var listener = new TcpListener(IPAddress.Loopback, 0);

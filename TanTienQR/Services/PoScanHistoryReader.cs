@@ -21,8 +21,8 @@ internal sealed class PoScanHistoryReader : IPoScanHistoryReader
         _query = query;
     }
 
-    public Task<IReadOnlyList<string>> GetSeenSerialsAsync(
+    public Task<IReadOnlyList<string>> GetSeenCodeContentsAsync(
         string orderNo,
         CancellationToken ct = default) =>
-        _query.GetSeenSerialsAsync(orderNo, ct);
+        _query.GetSeenCodeContentsAsync(orderNo, ct);
 }

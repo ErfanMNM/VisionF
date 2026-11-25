@@ -1,4 +1,5 @@
 using ClassLibraryMT.DeviceStatus;
+using ClassLibraryMT.Po;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -9,6 +10,7 @@ namespace TanTienQR.Services;
 internal sealed class PlcHeartbeatService : BackgroundService
 {
     private readonly PlcWriter _writer;
+    private readonly ProductionOrderService? _po;
     private readonly ILogger<PlcHeartbeatService> _logger;
 
     public PlcHeartbeatService(PlcWriter writer, IOptions<PlcOptions> options,
@@ -16,6 +18,12 @@ internal sealed class PlcHeartbeatService : BackgroundService
     {
         _writer = writer;
         _logger = logger;
+    }
+
+    public PlcHeartbeatService(PlcWriter writer, IOptions<PlcOptions> options,
+        ILogger<PlcHeartbeatService> logger, ProductionOrderService po) : this(writer, options, logger)
+    {
+        _po = po;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -67,7 +75,8 @@ internal sealed class PlcHeartbeatService : BackgroundService
     private async Task TickAsync(CancellationToken ct)
     {
         var before = GlobalVariables.PLCStatus;
-        await _writer.WriteReadyAsync(GlobalVariables.Ready, ct).ConfigureAwait(false);
+        await _writer.WriteReadyAsync(_po?.IsHalted == true ? 0 : GlobalVariables.Ready, ct).ConfigureAwait(false);
+        await _writer.ReadCountersAsync(ct).ConfigureAwait(false);
         var after = GlobalVariables.PLCStatus;
         if (after == PLCStatus.Connected)
         {

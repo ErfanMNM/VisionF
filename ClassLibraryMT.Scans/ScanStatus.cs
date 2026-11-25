@@ -9,7 +9,7 @@ public enum ScanStatus
     Pass = 0,
 
     /// <summary>
-    /// Mã lỗi (NoRead / sai định dạng / trùng) → Fail (đã ghi D12 = 0).
+    /// Trạng thái lỗi tổng hợp của dữ liệu cũ (đã ghi D12 = 0).
     /// </summary>
     Fail = 1,
 
@@ -19,6 +19,15 @@ public enum ScanStatus
     /// Không ghi xuống PLC — mã bị bỏ qua hoàn toàn.
     /// </summary>
     Overload = 2,
+
+    /// <summary>Mã đã được kích hoạt trong PO đang chạy (D12 = 0).</summary>
+    Duplicate = 3,
+
+    /// <summary>Nội dung mã không nằm trong PO đang chạy (D12 = 0).</summary>
+    InvalidForOrder = 4,
+
+    /// <summary>Camera không đọc được mã (D12 = 0).</summary>
+    NoRead = 5,
 }
 
 /// <summary>
@@ -38,6 +47,15 @@ public static class ScanStatuses
     /// <summary>Mã bị từ chối do quá tải (đang xử lý mã khác).</summary>
     public const string Overload = "Overload";
 
+    /// <summary>Mã đã được kích hoạt trong PO đang chạy.</summary>
+    public const string Duplicate = "Duplicate";
+
+    /// <summary>Mã không thuộc PO đang chạy.</summary>
+    public const string InvalidForOrder = "InvalidForOrder";
+
+    /// <summary>Camera không đọc được mã.</summary>
+    public const string NoRead = "NoRead";
+
     /// <summary>
     /// Chuyển enum sang chuỗi ổn định để lưu vào database.
     /// </summary>
@@ -48,6 +66,9 @@ public static class ScanStatuses
         ScanStatus.Pass => Pass,
         ScanStatus.Fail => Fail,
         ScanStatus.Overload => Overload,
+        ScanStatus.Duplicate => Duplicate,
+        ScanStatus.InvalidForOrder => InvalidForOrder,
+        ScanStatus.NoRead => NoRead,
         _ => Fail,
     };
 }

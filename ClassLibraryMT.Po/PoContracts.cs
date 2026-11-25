@@ -5,14 +5,26 @@ namespace ClassLibraryMT.Po;
 /// </summary>
 public sealed class PoCode
 {
-    /// <summary>Mã đầy đủ (GTIN + serial, dùng để so sánh/đếm).</summary>
-    public string Code { get; set; } = "";
+    /// <summary>Complete imported code content used as the exact PO identity.</summary>
+    public string CodeContent { get; set; } = "";
 
-    /// <summary>GTIN của mã (mã sản phẩm).</summary>
+    /// <summary>Legacy storage compatibility alias for <see cref="CodeContent"/>.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    [Obsolete("Use CodeContent.")]
+    public string Code { get => CodeContent; set => CodeContent = value ?? string.Empty; }
+
+    /// <summary>Legacy compatibility field; not used for PO identity.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    [Obsolete("GTIN is not part of PO code identity.")]
     public string Gtin { get; set; } = "";
 
-    /// <summary>Serial của mã (mã serial của lô / PO).</summary>
+    /// <summary>Legacy compatibility field; not used for PO identity.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    [Obsolete("Serial is not part of PO code identity.")]
     public string Serial { get; set; } = "";
+
+    /// <summary>When the code was marked as scanned in its PO database.</summary>
+    public DateTime? ScannedUtc { get; set; }
 
     /// <summary>
     /// Thời điểm mã được kích hoạt trên server (UTC). Null nghĩa là chưa kích hoạt.
@@ -40,8 +52,13 @@ public sealed class PoActivateRequest
     /// <summary>Mã lệnh sản xuất.</summary>
     public string OrderNo { get; set; } = "";
 
-    /// <summary>Danh sách serial (hoặc mã đầy đủ) cần kích hoạt.</summary>
-    public List<string> Serials { get; set; } = [];
+    /// <summary>Complete CodeContent values to activate.</summary>
+    public List<string> CodeContents { get; set; } = [];
+
+    /// <summary>Legacy API compatibility alias.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    [Obsolete("Use CodeContents.")]
+    public List<string> Serials { get => CodeContents; set => CodeContents = value ?? []; }
 }
 
 /// <summary>
@@ -57,4 +74,24 @@ public sealed class PoActivateResult
 
     /// <summary>Thông báo (tuỳ chọn).</summary>
     public string Message { get; set; } = "";
+}
+
+/// <summary>Outcome of coordinating validation, PLC Pass, and durable PO scan state.</summary>
+public sealed record PoScanResult(
+    PoCodeValidation Validation,
+    bool? PlcWritten,
+    bool Committed,
+    string OrderNo,
+    bool ProductionHalted = false,
+    string? Message = null);
+
+/// <summary>
+/// The PLC Pass may have been written, but its PO state could not be confirmed.
+/// </summary>
+public sealed class PoScanProcessingException : Exception
+{
+    public PoScanProcessingException(string message, PoScanResult result, Exception? innerException = null)
+        : base(message, innerException) => Result = result;
+
+    public PoScanResult Result { get; }
 }

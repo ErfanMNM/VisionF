@@ -11,6 +11,13 @@ public sealed partial class OmronPlc
     public PlcResult WriteInt16(string address, short value) =>
         WriteWords(address, FinsData.FromInt16(value));
 
+    /// <summary>
+    /// Ghi 1 word đúng một lần, không retry khi thiếu ACK. Dùng cho lệnh có
+    /// tác động vật lý không thể gửi lại an toàn; caller phải đối soát lỗi transport.
+    /// </summary>
+    public PlcResult WriteInt16Once(string address, short value) =>
+        WriteWords(address, FinsData.FromInt16(value), retry: false);
+
     /// <summary>Ghi 1 word (ushort).</summary>
     public PlcResult WriteUInt16(string address, ushort value) =>
         WriteWords(address, FinsData.FromUInt16(value));
@@ -246,7 +253,10 @@ public sealed partial class OmronPlc
     /// <summary>
     /// Ghi mang word tho (raw).
     /// </summary>
-    public PlcResult WriteWords(string address, ushort[] values)
+    public PlcResult WriteWords(string address, ushort[] values) =>
+        WriteWords(address, values, retry: true);
+
+    private PlcResult WriteWords(string address, ushort[] values, bool retry)
     {
         ArgumentNullException.ThrowIfNull(values);
 
@@ -263,11 +273,12 @@ public sealed partial class OmronPlc
             return PlcResult.Fail("ARG",
                 $"Ghi {values.Length} word tu '{address}' sẽ tràn qua giới hạn vùng D (32767).", default);
 
-        return WriteWordsCore(parsed.WordAddress, values, default);
+        return WriteWordsCore(parsed.WordAddress, values, default, retry);
     }
 
     /// <summary>Ghi word (noi bo, da kiem tra pham vi).</summary>
-    private PlcResult WriteWordsCore(int wordAddress, ReadOnlySpan<ushort> words, TimeSpan elapsed)
+    private PlcResult WriteWordsCore(int wordAddress, ReadOnlySpan<ushort> words, TimeSpan elapsed,
+        bool retry = true)
     {
         lock (_sync)
         {
@@ -284,7 +295,7 @@ public sealed partial class OmronPlc
             while (offset < words.Length)
             {
                 var chunk = Math.Min(words.Length - offset, Fins.MaxWordsPerRequest);
-                var result = _transport!.Write(_remoteNode, _localNode, current, words.Slice(offset, chunk));
+                var result = _transport!.Write(_remoteNode, _localNode, current, words.Slice(offset, chunk), retry);
 
                 if (!result.IsSuccess)
                     return PlcResult.Fail(result.ErrorCode, result.Message, sw.Elapsed + elapsed);

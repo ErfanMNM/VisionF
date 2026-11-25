@@ -20,7 +20,12 @@ public interface IPoScanHistoryReader
     /// </param>
     /// <param name="ct">Token hủy.</param>
     /// <returns>Danh sách serial đã từng quét.</returns>
+    Task<IReadOnlyList<string>> GetSeenCodeContentsAsync(
+        string orderNo,
+        CancellationToken ct = default) => GetSeenSerialsAsync(orderNo, ct);
+
+    /// <summary>Legacy compatibility hook; implementations should return full code content.</summary>
     Task<IReadOnlyList<string>> GetSeenSerialsAsync(
         string orderNo,
-        CancellationToken ct = default);
+        CancellationToken ct = default) => Task.FromResult<IReadOnlyList<string>>([]);
 }

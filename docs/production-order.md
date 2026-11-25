@@ -1,229 +1,65 @@
-# Quy trình Production Order (PO) — TanTienQR
+# Quy trình Production Order với CodeContent
 
-Tài liệu mô tả luồng quản lý lệnh sản xuất (Production Order — PO) cho SCADA
-TanTienQR theo mô hình **local-first**: server chỉ dùng để *cào* (sync một
-chiều) dữ liệu về máy, mọi lần đọc danh sách PO cho UI đều đến từ DB local.
-PO đủ 100% thì tự động hoàn tất; có nút **Huỷ PO**; khi phát hiện mã đã từng
-xuất hiện trong lịch sử quét thì **dừng máy**.
+TanTienQR lưu dữ liệu sản xuất theo từng PO trên máy. Mã được nhận diện bằng **toàn bộ `CodeContent`**, so sánh ordinal và phân biệt hoa thường. Hai URL cùng hậu tố, hai mã khác chữ hoa/thường hoặc khác khoảng trắng có ý nghĩa vẫn là các mã riêng. Luồng sản xuất không tách GTIN/serial và không dùng cửa sổ chống trùng theo giây.
 
----
+Hợp đồng dữ liệu nằm ở [contract.md](contract.md); định dạng upload và ví dụ HTTP nằm ở [MES-PO-API.md](MES-PO-API.md). Hướng dẫn bộ đếm, reset PLC và tra cứu nằm ở [application-codecontent.md](application-codecontent.md).
 
-## 1. Tổng quan luồng
+## Nhận PO và tải PO
 
-```
-PoServer (console)                 TanTienQR (SCADA)
-───────────────────                 ─────────────────────────
-POST /api/po       ───────────────▶ ProductionOrderService
-GET  /api/po       ◀─── danh sách PO ──▶ PoClient
-GET  .../codes     ◀─── tập mã PO  ────▶ PoStore (logs/po/{yyyy-MM}/{po}.db)
-POST /api/activate ◀─── mã kích hoạt ─── PoActivationWorker (>2s/lần)
-                                      ▲
-                                      │ đọc (để đối chiếu trùng lịch sử)
-                                      │
-                            logs/scans.db (ScanRecords)
-```
+Có hai đường đưa PO vào cơ sở dữ liệu local:
 
-### Mô hình local-first
+| Đường dữ liệu | Cách dùng |
+|---|---|
+| MES đẩy file vào ứng dụng | Bật `PoServer`; gửi `POST /api/po` tới listener của TanTienQR, mặc định cổng 8085. |
+| Ứng dụng tải từ server PO | Cấu hình `Po:BaseUrl`; bấm **Tải PO từ server** để lấy danh sách và mã qua GET rồi merge vào DB local. |
 
-| Thao tác | Nguồn dữ liệu | Gọi mạng? |
-| -------- | -------------- | --------- |
-| **Tải PO** (nút "Tải PO") | Server → ghi/merge vào DB local | Có |
-| **Xem danh sách PO** | DB local | **Không** |
-| **Bắt đầu / Huỷ / Xem tiến độ** | DB local | **Không** |
-| **Gửi mã kích hoạt** | Server (mã lấy từ DB local) | Có |
+Listener `ClassLibraryMT.PoServer` nhận file và cung cấp health; nó không phục vụ API tải danh sách/mã hay nhận kích hoạt. Server tại `Po:BaseUrl` phải cung cấp các API đó. Công cụ `tools/PoServer` là server thử nghiệm riêng, mặc định cổng 5080. `ClassLibraryMT.MesSimulator` là client gửi file tới listener; xem [MES-SIMULATOR.md](MES-SIMULATOR.md).
 
-Nút **Tải PO** có thể bấm **nhiều lần**: PO mới và mã mới được thêm vào, còn mã
-cũ và lịch sử đã quét được giữ nguyên (`INSERT OR IGNORE`).
+File nhập chỉ có đúng một cột/thuộc tính `CodeContent`: CSV có header, JSON là mảng object, hoặc XLSX một cột văn bản. Metadata `poName`, `orderQty` và mô tả tùy chọn đi riêng qua query hoặc field multipart. `orderQty` bằng số bản ghi của lần upload **trước lọc trùng**. Ví dụ đầy đủ và các trường hợp bị từ chối có trong hướng dẫn API.
 
-### Luồng xử lý mã trong `CameraSignalWorker`
+Nhập lại vào PO chưa bắt đầu chỉ bổ sung mã mới theo nguyên chuỗi; mã và trạng thái đã lưu được giữ nguyên. Cùng CodeContent trong một PO khác vẫn được lưu độc lập. Khi còn PO đang chạy hoặc dở dang, thao tác nhận/tải PO mới bị chặn. PO hoàn tất, hủy hoặc đóng không được mở lại bằng upload.
 
-```
-QR từ camera
-   ├─ NoRead / FAIL            → Fail (D12 = 0)
-   ├─ Sai định dạng             → Fail (D12 = 0)
-   ├─ Máy đã dừng (trùng lịch sử) → Halted (LOẠI MÃ — không ghi PLC)
-   ├─ Chưa bắt đầu sản xuất     → NoProductionOrder  (LOẠI MÃ — không ghi PLC)
-   ├─ Mã ngoài PO đang chạy      → InvalidForOrder     → Fail (D12 = 0)
-   ├─ Mã đã quét trong PO này    → Duplicate           → Fail (D12 = 0)
-   └─ Mã hợp lệ                 → Pass (D12 = 1) + đánh dấu đã quét
-```
+## Bắt đầu và đối chiếu mã
 
-> **Lưu ý:** trước khi có PO đang chạy, **mọi mã đều bị loại bỏ** và không ghi
-> xuống PLC (kể cả mã đúng định dạng).
+Danh sách và tiến độ trên giao diện được đọc từ DB local. Khi bắt đầu, service nạp một `Dictionary<string, state>` cho đúng PO đang chạy; key là CodeContent đầy đủ, value chứa trạng thái đã quét, đã kích hoạt hoặc Pass đang chờ đối soát. Khi PO kết thúc, cache đang chạy được giải phóng.
 
----
+| Trường hợp | Kết quả sản xuất |
+|---|---|
+| Mã thuộc PO, chưa quét và chưa kích hoạt | Thử ghi Pass xuống PLC; chỉ xác nhận Pass sau khi trạng thái PO đã commit. |
+| Mã đã quét **hoặc đã kích hoạt** trong PO | `Duplicate`, gửi Fail. Kể cả mã có `ActivatedUtc` nhưng chưa có `ScannedUtc`. |
+| Mã không thuộc PO đang chạy | `InvalidForOrder`, gửi Fail. |
+| Tín hiệu `NoRead` hoặc `FAIL`, không phân biệt hoa thường | `NoRead`, gửi Fail khi luồng nhận đang hoạt động. |
+| Mã thông thường khi chưa chạy PO | `NoProductionOrder`, không ghi kết quả PLC. |
+| Service đang halt hoặc cổng nhận bị khóa | Không tiếp tục phát Pass; cần xử lý nguyên nhân được ghi trên giao diện/log. |
 
-## 2. Thành phần
+Địa chỉ ghi kết quả lấy từ `Plc:ResultAddress`, mặc định `D12`: Pass là Int16=1, Fail là Int16=0. Những địa chỉ mặc định phải khớp mapping của máy thực tế. CodeContent được lưu vào lịch sử cùng PO của lần xử lý, kể cả khi mã cuối vừa làm PO tự hoàn tất.
 
-### 2.1. `ClassLibraryMT.Po` (thư viện dùng chung)
+## PLC ACK và lưu trạng thái
 
-| File | Vai trò |
-| ---- | ------- |
-| `ProductionOrder.cs` | Model PO: `OrderNo`, `OrderQty`, `CreatedUtc`, `Additional` |
-| `ProductionOrderStatus.cs` | Enum: `Available`, `Downloaded`, `Running`, `Completed`, `Closed`, `Cancelled` |
-| `PoOptions.cs` | Cấu hình section `Po` |
-| `PoContracts.cs` | DTO: `PoCode`, `PoCreateRequest`, `PoActivateRequest`, `PoActivateResult` |
-| `PoJsonContext.cs` | `JsonSerializerContext` source-generated (AOT-safe) |
-| `IPoClient.cs` | Interface gọi API server (cho phép thay bằng bản giả khi test) |
-| `PoClient.cs` | Cài đặt `IPoClient` qua `HttpClient` |
-| `IPoScanHistoryReader.cs` | Interface đọc lịch sử quét (chống trùng lịch sử toàn cục) |
-| `PoStore.cs` | Quản lý file SQLite riêng cho từng PO + `ListLocalOrdersAsync` |
-| `PoHistoryStore.cs` | DB lịch sử chạy PO toàn cục (`logs/po/po-history.db`) |
-| `PoCodeCache.cs` | Cache RAM: 1 `Dictionary` cho PO **đang chạy** (O(1)) |
-| `ProductionOrderService.cs` | Điều phối: sync, bắt đầu/huỷ/hoàn tất, validate mã, gửi kích hoạt |
-| `PoServiceCollectionExtensions.cs` | `AddProductionOrders(configuration)` — đăng ký DI |
+Luồng camera dùng `ProductionOrderService.ProcessCodeAsync` giữ khóa thay đổi PO xuyên suốt đối chiếu → PLC ACK → commit. Trước khi phát Pass, DB lưu `PendingPassUtc` để khởi động lại vẫn nhận biết một thao tác chưa xác định kết quả.
 
-### 2.2. `tools/PoServer` (server giả lập)
+- PLC từ chối chắc chắn hoặc thao tác không được gửi: mã chưa được tiêu thụ, số đã quét PO không tăng; ý định Pass được xóa khi xác nhận được việc xóa.
+- PLC xác nhận thành công: `ScannedUtc` được commit, cờ pending được xóa, rồi cache và số đã quét PO được cập nhật. Quét lại mã đó là Duplicate, kể cả sau khởi động lại.
+- Mất ACK hoặc phản hồi không xác định sau khi có thể đã gửi: giữ pending và halt để tránh phát Pass lại. Không tự gửi lại Pass để thử lấy ACK.
+- PLC đã nhận Pass nhưng commit trạng thái quét lỗi: giữ dấu đối soát, khóa nhận mã và Ready=0. Khởi động lại không tự mở mã đó để chạy tiếp.
 
-Console app chạy độc lập, dùng `HttpListener` + SQLite.
+Nếu **mã cuối đã Pass và commit thành công nhưng bước hoàn tất PO lỗi**, kết quả quét của mã vẫn là Pass. Service ghi halt bền vững, ứng dụng đóng nhận mã và đặt Ready=0 để đối soát lỗi hoàn tất riêng. Không đổi mã đã commit thành Fail hoặc phát lại Pass. Không tự xóa dấu halt/pending bằng cách khởi động lại hay đổi cấu hình; cần đối soát PLC và DB trước khi phục hồi vận hành.
 
-| File | Vai trò |
-| ---- | ------- |
-| `Program.cs` | `HttpListener` + routing + seed dữ liệu mẫu + phục vụ giao diện web |
-| `PoServerStore.cs` | SQLite `Orders` / `Codes` |
-| `PoServerJsonContext.cs` | JSON context (AOT-safe) |
-| `www/index.html` | Giao diện web tạo PO mẫu (HTML/CSS/JS thuần, không cần build) |
+## Hoàn tất, hủy và khôi phục
 
-### 2.3. `tools/PoTests` (kiểm thử tự động)
+Khi số mã đã quét đạt tổng số mã của PO, service tự hoàn tất và giữ thông tin lần chạy cuối cho giao diện. Nếu hủy trước khi đủ, PO được đánh dấu `Cancelled`; các dòng mã và lịch sử đã lưu vẫn được giữ. Hủy một PO khác không xóa cache của PO đang chạy.
 
-Console app kiểm thử 9 nhóm kịch bản của luồng PO (không cần app chạy thật).
+Tiến độ PO tính mỗi mã đã quét hoặc đã kích hoạt một lần, kể cả mã được nhập với trạng thái kích hoạt sẵn; không tự tạo thời điểm quét cho mã chỉ có trạng thái kích hoạt. Nếu toàn bộ mã đã được xử lý khi bắt đầu hoặc khôi phục, PO hoàn tất ngay mà không ghi Pass xuống PLC. Dấu pending/halt vẫn ưu tiên chặn hoàn tất tự động để đối soát.
 
-```powershell
-dotnet run --project tools/PoTests/PoTests.csproj
-```
+Khi khởi động, ứng dụng tìm lần chạy dở dang và nạp lại trạng thái từ DB. PO có pending Pass hoặc dấu halt không được tự tiếp tục sản xuất. Trạng thái đã quét và kích hoạt không phụ thuộc bộ nhớ của phiên ứng dụng trước.
 
-### 2.4. Tích hợp trong `TanTienQR`
+Các số lớn trên màn Thông tin lấy từ PLC. Tổng mã/đã quét/tiến độ của PO lấy từ bản ghi trong DB từng PO; reset bộ đếm PLC không xóa trạng thái mã PO. Xem [hướng dẫn bộ đếm PLC](application-codecontent.md).
 
-| File | Thay đổi |
-| ---- | -------- |
-| `Services/CameraSignalWorker.cs` | Gate PO trước khi check trùng cửa sổ thời gian; ghi `OrderNo` vào log quét |
-| `Models/TanTienEnums.cs` | Thêm `ScanOutcome.NoProductionOrder`, `.InvalidForOrder`, `.Halted` |
-| `Services/PoActivationWorker.cs` | Worker nền gửi mã kích hoạt định kỳ + auto-resume PO khi khởi động |
-| `Services/PoScanHistoryReader.cs` | Cầu nối `ClassLibraryMT.Po` ↔ `ClassLibraryMT.Scans` |
-| `Models/AppSection.cs` | Thêm `AppSection.ProductionOrders = 8` |
-| `ViewModels/ProductionInfoViewModel.cs` | Bảng "Thông tin sản xuất" trong `InfoView` |
-| `ViewModels/ProductionOrdersViewModel.cs` | Tab "Truy xuất Sản xuất (Local)" |
-| `Views/ProductionOrdersView.axaml` | View của tab mới |
-| `Views/InfoView.axaml` | `TabControl` 2 tab: Sự kiện gần đây / Thông tin sản xuất |
-| `Views/MainWindow.axaml` | Nút header + chip sidebar + vùng nội dung tab mới |
+## Kích hoạt sau Pass
 
----
+Worker chỉ gửi các CodeContent có `ScannedUtc` và chưa có `ActivatedUtc`. Trạng thái chờ nằm trong DB, nên worker tiếp tục quét các PO local sau khi khởi động lại, **kể cả PO đã hoàn tất hoặc hủy**. Mã cuối không bị bỏ lại chỉ vì PO tự hoàn tất trước tick gửi tiếp theo.
 
-## 3. Cấu trúc dữ liệu
-
-### 3.1. Server: `logs/po-server.db`
-
-**Bảng `Orders`**
-
-| Cột | Kiểu | Ý nghĩa |
-| --- | ---- | ------- |
-| `OrderNo` | TEXT (PK) | Mã lệnh sản xuất |
-| `OrderQty` | INTEGER | Số lượng mã |
-| `CreatedUtc` | TEXT | Thời điểm tạo (UTC) |
-| `IssuedUtc` | TEXT NULL | Thời điểm SCADA lấy mã |
-| `CompletedUtc` | TEXT NULL | Thời điểm hoàn tất |
-| `Status` | TEXT | `Available` / `Downloaded` / `Completed` / `Closed` |
-
-**Bảng `Codes`**
-
-| Cột | Kiểu | Ý nghĩa |
-| --- | ---- | ------- |
-| `OrderNo` | TEXT | Mã PO (FK → `Orders`) |
-| `Code` | TEXT (PK) | Mã đầy đủ (TXNG Digital Link) |
-| `Gtin` | TEXT | GTIN (mã sản phẩm) |
-| `Serial` | TEXT | Serial của mã |
-| `ActivatedUtc` | TEXT NULL | Thời điểm được kích hoạt |
-
-### 3.2. SCADA: `logs/po/{yyyy-MM}/{OrderNo}.db`
-
-Mỗi PO một file riêng — nhờ vậy kiểm tra trùng chỉ diễn ra trong phạm vi 1 PO.
-Lịch sử quét tổng vẫn nằm ở `logs/scans.db` (không thay đổi).
-
-**Bảng `PoCodes`**
-
-| Cột | Kiểu | Ý nghĩa |
-| --- | ---- | ------- |
-| `Code` | TEXT (PK) | Mã đầy đủ |
-| `Gtin` | TEXT | GTIN |
-| `Serial` | TEXT | Serial |
-| `ScannedUtc` | TEXT NULL | Thời điểm quét (NULL = chưa quét) |
-| `Status` | TEXT | `Pending` / `Scanned` / `Activated` |
-| `ActivatedUtc` | TEXT NULL | Thời điểm đã gửi kích hoạt thành công |
-
-**Bảng `PoMeta`** — các cặp `Key`/`Value`:
-
-| Key | Ý nghĩa |
-| --- | ------- |
-| `orderNo` | Mã PO |
-| `status` | Trạng thái PO (`Downloaded` / `Running` / `Completed` / `Cancelled`) |
-| `createdUtc` | Thời điểm tạo |
-| `startedUtc` | Thời điểm bắt đầu sản xuất |
-| `completedUtc` | Thời điểm hoàn tất |
-| `cancelledUtc` | Thời điểm huỷ |
-| `orderQty` | Tổng số mã của PO |
-
-### 3.3. SCADA: `logs/po/po-history.db`
-
-DB riêng (file, không phải thư mục tháng) lưu lịch sử các lần chạy PO.
-Dùng cho **auto-resume**: nếu còn dòng nào ở trạng thái `Running` thì app khôi
-phục PO đó khi mở máy.
-
-**Bảng `PoRuns`**
-
-| Cột | Kiểu | Ý nghĩa |
-| --- | ---- | ------- |
-| `RunId` | INTEGER (PK) | Khoá tự tăng |
-| `OrderNo` | TEXT | Mã PO |
-| `OrderQty` | INTEGER | Tổng số mã khi bắt đầu |
-| `CreatedUtc` | TEXT | Thời điểm tạo PO |
-| `StartedUtc` | TEXT | Thời điểm bắt đầu sản xuất |
-| `CompletedUtc` | TEXT NULL | Thời điểm hoàn tất (tự động khi đủ 100%) |
-| `CancelledUtc` | TEXT NULL | Thời điểm huỷ |
-| `Status` | TEXT | `Running` / `Completed` / `Cancelled` |
-
-Index: `IX_PoRuns_OrderNo`, `IX_PoRuns_Status`.
-
-### 3.4. SCADA: `logs/scans.db` — log quét toàn hệ thống
-
-Bảng `ScanRecords` (schema v3) — nguồn cho cơ chế chống trùng lịch sử toàn cục:
-
-| Cột | Kiểu | Ý nghĩa |
-| --- | ---- | ------- |
-| `Id` | INTEGER (PK) | Khoá tự tăng |
-| `ReceivedUtc` | TEXT | Thời điểm nhận mã (UTC) |
-| `Code` | TEXT | Mã / serial |
-| `Gtin` | TEXT | GTIN |
-| `Serial` | TEXT | Serial |
-| `Status` | TEXT | `Pass` / `Fail` / `Overload` |
-| `ProcessingTimeMs` | REAL | Thời gian xử lý (ms) |
-| `PlcResult` | TEXT | `Ok` / `Failed` / `Skipped` |
-| `BatchNo` | TEXT | Số batch |
-| `Raw` | TEXT | Nội dung gốc camera |
-| `OrderNo` | TEXT | **Mã PO** mà mã này thuộc về (mới — schema v3) |
-
-Index: `IX_ScanRecords_ReceivedUtc`, `IX_ScanRecords_Status`, `IX_ScanRecords_BatchNo`,
-`IX_ScanRecords_OrderNo`.
-
----
-
-## 4. Định dạng mã
-
-Mã mẫu theo chuẩn **TXNG Digital Link**:
-
-```
-https://digital-link.txng.vn/01/{gtin}/21/{serial}
-```
-
-- GTIN mặc định: `08934567890123`
-- Serial mẫu: `PO{orderNo}{i:D6}` (ví dụ `PO20261108-001000001`)
-
-`QrParser` của SCADA hỗ trợ sẵn pattern Digital Link nên camera đọc được mã thật.
-
----
-
-## 5. Cấu hình
-
-Section `Po` trong `TanTienQR/appsettings.json`:
+Lỗi mạng hoặc server từ chối giữ mã ở trạng thái chờ để thử ở chu kỳ sau. Khi server xác nhận, ACK được ghi vào đúng DB của PO nguồn. Nếu PO đang chạy đã đổi trong lúc chờ mạng, ACK không được áp vào cache PO mới. Kích hoạt của một PO không chặn mã giống nội dung trong PO khác.
 
 ```json
 {
@@ -231,200 +67,25 @@ Section `Po` trong `TanTienQR/appsettings.json`:
     "BaseUrl": "http://127.0.0.1:5080",
     "DbRoot": "logs/po",
     "ActivationIntervalMs": 2500,
-    "AutoActivate": true,
-    "CodeSampleSize": 100
+    "AutoActivate": true
   }
 }
 ```
 
-| Khoá | Mặc định | Ý nghĩa |
-| ---- | -------- | ------- |
-| `BaseUrl` | `http://127.0.0.1:5080` | Địa chỉ server PO |
-| `DbRoot` | `logs/po` | Thư mục gốc lưu file DB theo PO |
-| `ActivationIntervalMs` | `2500` | Chu kỳ gửi mã kích hoạt (bắt buộc > 2000) |
-| `AutoActivate` | `true` | Bật/tắt worker gửi kích hoạt định kỳ |
-| `CodeSampleSize` | `100` | Số mã mẫu sinh cho mỗi PO (seed server) |
+`ActivationIntervalMs` phải lớn hơn 2000. Khi `AutoActivate=false`, worker không gửi định kỳ. Việc bật/tắt listener nhận file `PoServer` không quyết định worker gửi tới server tại `Po:BaseUrl`; các endpoint này có vai trò riêng. Cần cấu hình đúng server và khởi động lại sau thay đổi. `Po:BaseUrl` phải trỏ tới server hỗ trợ tải/kích hoạt, không trỏ vào listener chỉ nhận file ở cổng 8085.
 
-> **Worker tự tạm dừng** khi `AutoActivate = true` nhưng cấu hình chắc chắn
-> thất bại: `PoServer:Enabled = false` **và** `BaseUrl` trỏ về loopback
-> (`localhost`, `127.x.x.x`, `::1`). Khi đó app chỉ ghi **một** dòng cảnh báo
-> lúc khởi động thay vì retry mỗi 2,5 giây. Bật PoServer cùng máy hoặc trỏ
-> `BaseUrl` tới server MES thật để worker chạy lại. Đổi cấu hình cần khởi động
-> lại app (`RequiresRestart`).
+## Dữ liệu và kiểm thử
 
-> `DbRoot` chứa cả thư mục tháng (`{yyyy-MM}/`) và file `po-history.db`.
+`Po:DbRoot` tương đối được tính từ thư mục ứng dụng. Mỗi PO có file `{DbRoot}/{yyyy-MM}/{OrderNo}.db`; lịch sử chạy nằm ở `{DbRoot}/po-history.db`. Bảng `PoCodes` giữ cột vật lý `Code`, `Gtin`, `Serial` để tương thích DB cũ: `Code` lưu nguyên CodeContent; các dòng mới để trống hai cột legacy. `ScannedUtc`, `ActivatedUtc`, `PendingPassUtc` và metadata halt/trạng thái PO phục vụ khôi phục. Lịch sử quét toàn ứng dụng ở DB được cấu hình bởi `Scans:DbPath`.
 
-Biến môi trường có tiền tố `TANTIEN_` cũng áp dụng, ví dụ:
-`TANTIEN_Po__BaseUrl=http://10.0.0.5:5080`.
-
----
-
-## 6. Chạy server giả lập
+Các harness dùng DB tạm và thiết bị giả; chạy tuần tự để tránh ghi đồng thời vào cùng thư mục build:
 
 ```powershell
-dotnet run --project tools/PoServer/PoServer.csproj
-```
-
-Mặc định lắng nghe `http://127.0.0.1:5080/`. Có thể đổi địa chỉ:
-
-```powershell
-dotnet run --project tools/PoServer/PoServer.csproj -- http://0.0.0.0:5080/
-```
-
-Khi khởi động lần đầu, server tự **seed 3 PO × 100 mã** (nếu database còn trống).
-
-### Giao diện web tạo PO mẫu
-
-Mở trình duyệt tại **[http://127.0.0.1:5080/](http://127.0.0.1:5080/)** để dùng công cụ tạo PO:
-
-- **Form "Tạo PO mới"** — nhập *Mã lệnh sản xuất* + *Số lượng mã* → bấm **Tạo PO**
-  - Nút **Gợi ý mã PO** tự điền mã theo ngày, ví dụ `PO20261109-001`
-  - Mỗi mã được sinh theo chuẩn TXNG Digital Link: `/01/{gtin}/21/{serial}`
-- **Bảng "Danh sách PO"** — hiển thị các PO còn hiệu lực (mã PO, số lượng mã, thời điểm tạo)
-  - Nút **Làm mới** để tải lại danh sách
-- Thông báo kết quả hiển thị ngay dưới form (xanh = thành công, đỏ = lỗi, ví dụ mã PO đã tồn tại)
-
-> Trang HTML nằm tại `tools/PoServer/www/index.html` và được copy tự động vào
-> thư mục output khi build (`CopyToOutputDirectory=PreserveNewest`), nên có thể
-> chỉnh sửa giao diện rồi build lại là dùng được ngay.
-
-### API
-
-| Method | Endpoint | Mô tả |
-| ------ | -------- | ---- |
-| `GET` | `/` | Giao diện web tạo PO mẫu (`www/index.html`) |
-| `GET` | `/api/po` | Danh sách PO còn hiệu lực |
-| `GET` | `/api/po?includeCompleted=true` | Danh sách PO **kể cả** đã hoàn tất / đã đóng |
-| `GET` | `/api/po/{orderNo}/codes` | Tải tập mã của PO |
-| `POST` | `/api/po` | Tạo PO mới — body `{ "orderNo": "PO001", "orderQty": 100 }` |
-| `POST` | `/api/activate` | Kích hoạt mã — body `{ "orderNo": "PO001", "serials": ["..."] }` |
-
-> `?includeCompleted=true` là tham số SCADA luôn dùng khi cào — để danh sách
-> PO trên máy SCADA khớp với server (PO đã xong ở server vẫn phải hiện trong
-> bảng quản lý local).
-
-Ví dụ:
-
-```powershell
-curl http://127.0.0.1:5080/api/po
-curl "http://127.0.0.1:5080/api/po?includeCompleted=true"
-curl http://127.0.0.1:5080/api/po/PO20261108-001/codes
-curl -X POST http://127.0.0.1:5080/api/po -H "Content-Type: application/json" -d '{"orderNo":"PO-TEST","orderQty":50}'
-```
-
----
-
-## 7. Quy trình vận hành
-
-1. **Khởi động `PoServer`** (nếu dùng server giả lập).
-   - Mở [http://127.0.0.1:5080/](http://127.0.0.1:5080/) để tạo PO mẫu (không bắt buộc — server cũng tự seed 3 PO × 100 mã).
-2. **Khởi động SCADA TanTienQR**, đăng nhập.
-   - Nếu có PO đang chạy từ lần trước → app **tự khôi phục** (đọc `po-history.db`)
-     và camera ghi kết quả xuống PLC ngay.
-3. Mở tab **Truy xuất Sản xuất (Local)** → bấm **Tải PO** để cào dữ liệu từ server.
-   - Mỗi PO mới tạo 1 file `logs/po/{yyyy-MM}/{OrderNo}.db`.
-   - Bấm lại nhiều lần được: PO/mã mới được thêm, dữ liệu cũ giữ nguyên.
-4. Chọn PO trong dropdown → bấm **Bắt đầu**.
-   - PO bị khóa; tập mã của PO này được nạp vào RAM cache.
-   - Camera bắt đầu ghi kết quả xuống PLC cho các mã thuộc PO này.
-5. **Quét mã**:
-   - Mã thuộc PO & chưa quét → Pass (D12 = 1), đếm tăng.
-   - Quét lại mã đó → Duplicate (Fail).
-   - Mã của PO khác / ngoài PO → InvalidForOrder (Fail).
-6. **PO đủ 100%** → tự động hoàn tất:
-   - PO chuyển `Completed`, dropdown về placeholder, panel hiển thị "Chưa bắt đầu".
-   - RAM cache được giải phóng ngay (`PoCodeCache.Clear()`).
-7. **Chưa đủ 100%** → hiện nút **Huỷ PO**:
-   - PO bị đánh dấu `Cancelled`, không thể chạy lại, biến mất khỏi dropdown
-     (vẫn hiện trong bảng quản lý với badge "Đã huỷ").
-8. **Kích hoạt**: worker nền tự gửi mã chưa kích hoạt mỗi 2500ms; có thể gửi
-   thủ công bằng nút **Gửi kích hoạt** trong tab. Worker không chạy vòng lặp
-   khi `PoServer:Enabled = false` và `BaseUrl` là loopback (xem mục 5).
-9. **Dừng máy khi trùng lịch sử**: trước khi gửi mã lên server, từng mã được
-   đối chiếu với lịch sử quét trong `logs/scans.db`. Nếu mã **đã từng quét**
-   trong hệ thống → hệ thống **dừng máy** (xem mục 8).
-
-### Quyền
-
-| Hành động | Quyền |
-| --------- | ----- |
-| Xem tab Truy xuất Sản xuất | `Permission.ViewProduction` (mọi vai trò) |
-| Bắt đầu / Huỷ / Gửi kích hoạt | `Permission.EditConfig` (Operator trở lên) |
-
-Không thêm quyền mới vào `ClassLibraryMT.Auth` vì ma trận quyền dùng chung cho mọi
-ứng dụng trong repo.
-
----
-
-## 8. Cơ chế dừng máy khi trùng lịch sử toàn cục
-
-Trước khi gửi tập mã lên server (điểm `POST /api/activate`), `ProductionOrderService.ActivatePendingAsync()`
-lấy danh sách serial **đã từng xuất hiện** trong lịch sử quét:
-
-```sql
-SELECT DISTINCT Serial FROM ScanRecords
-WHERE Status = 'Pass' AND Serial <> '' AND (OrderNo <> $orderNo OR OrderNo = '');
-```
-
-(Bản ghi thuộc chính PO đang chạy bị bỏ qua — mã của PO đó hợp lệ.)
-
-Nếu **bất kỳ** mã nào trong batch chờ kích hoạt nằm trong danh sách đó:
-
-| # | Hành động |
-| - | --------- |
-| 1 | Đặt cờ `_halted = true` → `ValidateCode` trả `PoCodeValidation.Halted` → `CameraSignalWorker` **không ghi Pass xuống PLC** (chỉ loại mã) |
-| 2 | `PoActivationWorker` ngừng gửi mã |
-| 3 | **Huỷ PO** hiện tại (`Cancelled` trong `PoMeta` + `PoRuns`) → không chạy lại được |
-| 4 | `LogError` + `ScanEvent` mức `Critical` (vạch đỏ trên UI) |
-| 5 | Thông báo: *"Phát hiện N mã đã từng quét: {serial}. Đã dừng máy — vui lòng kiểm tra và xử lý."* |
-
----
-
-## 9. Kiểm thử
-
-### Tự động
-
-```powershell
-dotnet build VisionF.slnx -c Release
 dotnet run --project tools/PoTests/PoTests.csproj
+dotnet run --project tools/PoFlowTests/PoFlowTests.csproj
+dotnet run --project tools/PoServerTests/PoServerTests.csproj
+dotnet run --project tools/PoServerTests/e2e/PoServerE2E.csproj
+dotnet run --project tools/CameraHotApplyTests/CameraHotApplyTests.csproj
 ```
 
-`PoTests` chạy 61 assertion cho 9 nhóm kịch bản: ghi/đọc PO local, sync nhiều
-lần, cache RAM 1 entry/mã, lịch sử `PoRuns`, migration `OrderNo`, local-first
-(không gọi mạng), auto-complete 100%, huỷ PO, auto-resume, dừng máy khi trùng
-lịch sử.
-
-### Thủ công
-
-| # | Bước | Kết quả mong đợi |
-| - | ---- | ----------------- |
-| 1 | Chạy `PoServer`, seed 3 PO × 100 mã | `GET /api/po` trả về 3 PO |
-| 2 | SCADA → bấm **Tải PO** | Tạo `logs/po/{yyyy-MM}/{orderNo}.db` |
-| 3 | Bấm **Tải PO** lần 2 | PO/mã cũ không mất, PO/mã mới được thêm |
-| 4 | Quét mã **trước khi** bắt đầu sản xuất | Mã bị loại, **không** ghi PLC (`NoProductionOrder`) |
-| 5 | Bắt đầu sản xuất → quét mã hợp lệ | Pass, ghi D12 = 1, số đã quét tăng |
-| 6 | Quét lại cùng mã | `Duplicate` (Fail) |
-| 7 | Quét mã của PO khác | `InvalidForOrder` (Fail) |
-| 8 | Quét đủ mã cuối cùng | PO **tự** hoàn tất, dropdown về placeholder |
-| 9 | Chưa đủ 100% | Nút **Huỷ PO** hiện; bấm → PO biến mất khỏi dropdown, badge "Đã huỷ" trong bảng |
-| 10 | Tắt app giữa chung → mở lại | PO đang chạy được khôi phục, camera ghi PLC tiếp |
-| 11 | Thêm bản ghi `Pass` của PO khác vào `scans.db` → chạy kích hoạt | App báo **"Đã dừng máy"**, PO bị huỷ, PO không gửi mã lên server |
-
----
-
-## 10. Ghi chú kỹ thuật
-
-- **AOT-safe**: mọi tuần tự hoá JSON dùng `JsonSerializerContext` source-generated
-  (`PoJsonContext`, `PoServerJsonContext`); cấu hình được bind thủ công (không dùng
-  `ConfigurationBinder.GetValue<T>`).
-- **RAM cache bounded**: `PoCodeCache` dùng MỘT `Dictionary<string, byte>` cho mã
-  của PO **đang chạy** (mỗi mã 1 entry, cờ trạng thái gộp trong 1 byte) → giảm
-  ~50% RAM so với 2 `HashSet` trước đây. Cache được `Clear()` ngay khi PO hoàn
-  tất / bị huỷ → RAM **không phình theo lịch sử PO**.
-- **Thread-safety**: `ProductionOrderService` dùng lock quanh trạng thái PO đang
-  chạy; `PoCodeCache` dùng lock cho dictionary; cờ `_completing` chống gọi
-  `CompleteProductionAsync` lồng nhau.
-- **`logs/scans.db` vẫn lưu log quét toàn hệ thống** — dùng cho cơ chế chống
-  trùng lịch sử toàn cục (mục 8) và báo cáo tra cứu.
-- **Migration an toàn**: `ScanStore` thêm cột `OrderNo` và tạo index **sau** khi
-  migration xong (tạo index trước sẽ lỗi `no such column` với DB cũ).
+Việc kiểm thử bằng PLC giả xác minh thứ tự lệnh và trạng thái phần mềm. Mapping thanh ghi và hành vi ladder của dây chuyền cần được đối chiếu trên thiết bị thực tế.

@@ -23,6 +23,9 @@ internal static class Program
         {
             await CheckRawClientAsync();
             await CheckWriterAsync();
+            await CheckPassAcknowledgementAsync();
+            await CheckCountersAsync();
+            await CheckResetAuthorizationAsync();
             await CheckHeartbeatAsync();
             Console.WriteLine($"Đã qua {_passed} kiểm tra PLC hot-apply; chỉ dùng UDP localhost.");
             return 0;
@@ -155,13 +158,229 @@ internal static class Program
         Check(await Write(writer, "WriteResultAsync", true) && first.Requests.Last().Address == 12, "Rollback dùng cùng API và phục hồi endpoint/địa chỉ cũ");
     }
 
+    private static async Task CheckPassAcknowledgementAsync()
+    {
+        using var server = new FakePlc();
+        using var host = BuildHost(server.Port, enabled: true, interval: 1000);
+        var writer = GetService(host.Services, "PlcWriter");
+        var plc = host.Services.GetRequiredService<OmronPlc>();
+        var config = Config(server.Port, enabled: true, interval: 1000);
+        config.Retries = 2;
+        await Apply(writer, config);
+
+        Check(await Write(writer, "WriteResultAsync", true), "Pass có ACK hợp lệ trả thành công");
+        foreach (var mode in new[]
+        {
+            WriteResponse.DropAck, WriteResponse.BadHeader, WriteResponse.WrongSid,
+            WriteResponse.WrongCommand, WriteResponse.Truncated,
+        })
+        {
+            var before = server.Requests.Count;
+            server.RespondToNextWrite(mode);
+            var uncertain = false;
+            try { await Write(writer, "WriteResultAsync", true); }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("Không xác định PLC đã nhận Pass"))
+            { uncertain = true; }
+            Check(uncertain, $"Pass gặp {mode} ném lỗi cần đối soát thay vì trả false cho replay");
+            Check(server.Requests.Count == before + 1 && server.Requests.Last() is { Address: 12, Value: 1 },
+                $"Pass gặp {mode} chỉ phát một datagram dù cấu hình Retries=2");
+        }
+
+        var rejectedBefore = server.Requests.Count;
+        server.RespondToNextWrite(WriteResponse.Reject);
+        Check(!await Write(writer, "WriteResultAsync", true), "FINS end code từ chối hợp lệ vẫn trả false, không báo bất định");
+        Check(server.Requests.Count == rejectedBefore + 1, "FINS từ chối không phát lại Pass");
+
+        var noSendBefore = server.Requests.Count;
+        Check(plc.WriteInt16Once("invalid-address", 1).ErrorCode == "ARG", "WriteInt16Once giữ ARG trước khi phát UDP");
+        Check(server.Requests.Count == noSendBefore, "Địa chỉ không hợp lệ không phát Pass");
+
+        var ordinaryBefore = server.Requests.Count;
+        server.RespondToNextWrite(WriteResponse.DropAck);
+        Check((await Task.Run(() => plc.WriteInt16("D80", 7))).IsSuccess
+            && server.Requests.Count == ordinaryBefore + 2,
+            "WriteInt16 thủ công vẫn dùng retry hiện có khi mất ACK");
+        var readyBefore = server.Requests.Count;
+        server.RespondToNextWrite(WriteResponse.DropAck);
+        Check(await Write(writer, "WriteReadyAsync", 1) && server.Requests.Count == readyBefore + 2,
+            "Ready giữ retry hiện có, chỉ Pass dùng single-attempt");
+        var failBefore = server.Requests.Count;
+        server.RespondToNextWrite(WriteResponse.DropAck);
+        Check(await Write(writer, "WriteResultAsync", false) && server.Requests.Count == failBefore + 2,
+            "Fail giữ retry hiện có và bool API tương thích");
+
+        config.Enabled = false;
+        await Apply(writer, config);
+        var disabledBefore = server.Requests.Count;
+        Check(!await Write(writer, "WriteResultAsync", true)
+            && plc.WriteInt16Once("D12", 1).ErrorCode == "DISABLED",
+            "Pass disabled là definite-unsent, vẫn trả false/DISABLED");
+        Check(server.Requests.Count == disabledBefore, "Pass disabled không phát datagram");
+        plc.Dispose();
+        Check(plc.WriteInt16Once("D12", 1).ErrorCode == "DISPOSED", "WriteInt16Once giữ definite-unsent DISPOSED");
+        Check(server.Requests.Count == disabledBefore, "Client disposed không phát datagram");
+    }
+
+    private static async Task CheckCountersAsync()
+    {
+        using var first = new FakePlc();
+        using var second = new FakePlc();
+        using var host = BuildHost(first.Port, enabled: true, interval: 1000);
+        var writer = GetService(host.Services, "PlcWriter");
+        var plc = host.Services.GetRequiredService<OmronPlc>();
+        var expected = new CounterValues(Total: 720_007, ReadFail: 12_003, Pass: 700_004, Timeout: 8_000, Fail: 20_003);
+        await SeedCountersAsync(plc, 100, expected);
+
+        Check(await ReadCountersAsync(writer) == expected,
+            "Số sản xuất đọc Int32 từ D100/D102/D104/D108; NG cộng đọc lỗi và timeout");
+        var beforeMissingReset = first.Requests.Count;
+        Check(!await ResetCountersAsync(writer), "Chưa cấu hình địa chỉ reset thì từ chối xóa bộ đếm");
+        Check(first.Requests.Count == beforeMissingReset, "Thiếu địa chỉ reset không tự đoán hoặc ghi PLC");
+
+        var resetConfig = Config(first.Port, enabled: true, interval: 1000);
+        resetConfig.ResetCounterAddress = "D60";
+        await Apply(writer, resetConfig);
+        Check(await ResetCountersAsync(writer), "Nút xóa ghi reset khi đã cấu hình địa chỉ PLC");
+        Check(first.Requests.Last() is { Command: 2, Address: 60, Value: 1 },
+            "Reset gửi đúng giá trị Int16 1 tới địa chỉ đã cấu hình");
+        Check(await ReadCountersAsync(writer) == expected,
+            "ACK reset không bịa bộ đếm về 0; lần đọc tiếp vẫn lấy giá trị thật từ PLC");
+        Check(LatestCounters(writer) is not null, "Writer giữ snapshot PLC sau lần đọc thành công");
+        first.FailNextRead();
+        Check(await ReadCountersAsync(writer) is null && LatestCounters(writer) is null,
+            "Đọc PLC lỗi xóa LatestCounters thay vì để dashboard dùng số cũ");
+        Check(await ReadCountersAsync(writer) == expected,
+            "Snapshot phục hồi từ PLC thật ở lần đọc thành công sau lỗi");
+        var largeFailures = new CounterValues(int.MaxValue, int.MaxValue, 0, int.MaxValue, 4_294_967_294L);
+        await SeedCountersAsync(plc, 100, largeFailures);
+        Check(await ReadCountersAsync(writer) == largeFailures,
+            "Tổng NG dùng Int64, không overflow khi cộng hai bộ đếm Int32 lớn");
+        await SeedCountersAsync(plc, 100, expected);
+
+        var next = Config(second.Port, enabled: true, interval: 1000);
+        next.CounterAddress = "D200";
+        next.ResetCounterAddress = "D260";
+        using (var preload = new OmronPlc("127.0.0.1", second.Port, 1, 2, 300, 0))
+            await SeedCountersAsync(preload, 200, new CounterValues(91_000, 500, 90_000, 500, 1000));
+        var held = first.HoldNextRead();
+        var reading = ReadCountersAsync(writer);
+        await held.Entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        var applying = Apply(writer, next);
+        var queuedReset = ResetCountersAsync(writer);
+        await Task.Delay(40);
+        Check(!applying.IsCompleted && !queuedReset.IsCompleted,
+            "Hot-apply và reset đợi snapshot bộ đếm đang đọc xong");
+        held.Release.TrySetResult();
+        Check(await reading == expected, "Snapshot đang đọc hoàn tất trên PLC cũ trước khi hot-apply");
+        await applying.WaitAsync(TimeSpan.FromSeconds(3));
+        Check(await queuedReset.WaitAsync(TimeSpan.FromSeconds(3))
+            && second.Requests.Last() is { Command: 2, Address: 260, Value: 1 },
+            "Reset xếp hàng lấy endpoint và địa chỉ mới sau writer gate");
+        Check(await ReadCountersAsync(writer) == new CounterValues(91_000, 500, 90_000, 500, 1000),
+            "Hot-apply đổi cả vùng số sản xuất sang D200/D202/D204/D208 trên PLC mới");
+        Check(!first.Requests.Any(request => request.Address == 260)
+            && !second.Requests.Any(request => request.Address == 60),
+            "Không ghép nhầm địa chỉ reset cũ với PLC mới hoặc ngược lại");
+
+        next.Enabled = false;
+        await Apply(writer, next);
+        var disabledCount = second.Requests.Count;
+        Check(await ReadCountersAsync(writer) is null && !await ResetCountersAsync(writer),
+            "PLC tắt trả snapshot không khả dụng và từ chối reset");
+        await Task.Delay(60);
+        Check(second.Requests.Count == disabledCount, "Đọc và xóa bộ đếm không phát UDP khi PLC tắt");
+    }
+
+    private static async Task SeedCountersAsync(OmronPlc plc, int start, CounterValues values)
+    {
+        foreach (var (offset, value) in new[]
+        {
+            (0, values.Total), (2, values.ReadFail), (4, values.Pass), (6, 310_106), (8, values.Timeout),
+        })
+            Check((await Task.Run(() => plc.WriteInt32($"D{start + offset}", value))).IsSuccess,
+                $"Fake PLC nạp được Int32 tại D{start + offset}");
+    }
+
+    private static async Task<CounterValues?> ReadCountersAsync(object writer)
+    {
+        var task = (Task)writer.GetType().GetMethod("ReadCountersAsync")!
+            .Invoke(writer, [CancellationToken.None])!;
+        await task;
+        var result = task.GetType().GetProperty("Result")!.GetValue(task);
+        if (result is null) return null;
+        int Read(string name) => (int)result.GetType().GetProperty(name)!.GetValue(result)!;
+        var fail = (long)result.GetType().GetProperty("Fail")!.GetValue(result)!;
+        return new CounterValues(Read("Total"), Read("ReadFail"), Read("Pass"), Read("Timeout"), fail);
+    }
+
+    private static Task<bool> ResetCountersAsync(object writer) =>
+        (Task<bool>)writer.GetType().GetMethod("ResetCountersAsync")!
+            .Invoke(writer, [CancellationToken.None])!;
+
+    private static object? LatestCounters(object writer) => writer.GetType().GetProperty("LatestCounters")!.GetValue(writer);
+
+    private sealed record CounterValues(int Total, int ReadFail, int Pass, int Timeout, long Fail);
+
+    private static async Task CheckResetAuthorizationAsync()
+    {
+        using var server = new FakePlc();
+        using var host = BuildHost(server.Port, enabled: true, interval: 1000);
+        var writer = GetService(host.Services, "PlcWriter");
+        var config = Config(server.Port, enabled: true, interval: 1000);
+        config.ResetCounterAddress = "D60";
+        await Apply(writer, config);
+
+        var beforeDenied = server.Requests.Count;
+        Check(!await ResetAuthorizedAsync(writer, () => false),
+            "Reset có kiểm tra quyền từ chối callback false");
+        Check(server.Requests.Count == beforeDenied, "Không có UDP khi không được cấp quyền reset");
+
+        var permission = 1;
+        Func<bool> authorize = () => Volatile.Read(ref permission) == 1;
+        Check(await ResetAuthorizedAsync(writer, authorize)
+            && server.Requests.Last() is { Command: 2, Address: 60, Value: 1 },
+            "Callback quyền hợp lệ cho phép gửi reset đúng địa chỉ");
+
+        var held = server.HoldNextRead();
+        var reading = ReadCountersAsync(writer);
+        await held.Entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        var resetWrites = server.Requests.Count(request => request is { Command: 2, Address: 60 });
+        var queuedReset = ResetAuthorizedAsync(writer, authorize);
+        await Task.Delay(40);
+        Check(!queuedReset.IsCompleted, "Reset đã cấp quyền vẫn đợi lượt đọc PLC đang giữ gate");
+        Volatile.Write(ref permission, 0);
+        held.Release.TrySetResult();
+        await reading.WaitAsync(TimeSpan.FromSeconds(3));
+        Check(!await queuedReset.WaitAsync(TimeSpan.FromSeconds(3)),
+            "Thu hồi quyền khi reset đang chờ gate được kiểm tra lại trước khi ghi");
+        Check(server.Requests.Count(request => request is { Command: 2, Address: 60 }) == resetWrites,
+            "Reset xếp hàng không phát lệnh sau logout hoặc thu hồi quyền");
+
+        var intake = host.Services.GetRequiredService<ScanIntakeGate>();
+        var setSuspended = typeof(ScanIntakeGate).GetMethod("SetSuspended", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        setSuspended.Invoke(intake, [true]);
+        try
+        {
+            var beforeSuspended = server.Requests.Count;
+            Check(!await ResetAuthorizedAsync(writer, () => true) && !await ResetCountersAsync(writer),
+                "Bảo trì tạm dừng intake chặn cả hai đường reset dù user có quyền");
+            Check(server.Requests.Count == beforeSuspended, "Reset không phát UDP trong khi intake bị tạm dừng");
+        }
+        finally { setSuspended.Invoke(intake, [false]); }
+        Check(await ResetAuthorizedAsync(writer, () => true), "Kết thúc bảo trì cho phép reset trở lại");
+    }
+
+    private static Task<bool> ResetAuthorizedAsync(object writer, Func<bool> authorize) =>
+        (Task<bool>)writer.GetType().GetMethod("ResetCountersAuthorizedAsync")!
+            .Invoke(writer, [authorize, CancellationToken.None])!;
+
     private static async Task CheckHeartbeatAsync()
     {
         using var server = new FakePlc();
         using var host = BuildHost(server.Port, enabled: false, interval: 1000);
         var writer = GetService(host.Services, "PlcWriter");
         var type = AppAssembly.GetType("TanTienQR.Services.PlcHeartbeatService")!;
-        var constructor = type.GetConstructors().Single();
+        var constructor = type.GetConstructors().OrderByDescending(candidate => candidate.GetParameters().Length).First();
         using var heartbeat = (BackgroundService)constructor.Invoke(constructor.GetParameters()
             .Select(parameter => host.Services.GetRequiredService(parameter.ParameterType)).ToArray());
         await heartbeat.StartAsync(CancellationToken.None);
@@ -236,6 +455,8 @@ internal static class Program
 
 internal sealed record FinsRequest(byte Command, byte RemoteNode, byte LocalNode, int Address, ushort Value);
 
+internal enum WriteResponse { Normal, DropAck, BadHeader, WrongSid, WrongCommand, Truncated, Reject }
+
 internal sealed class HeldRead
 {
     public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -249,10 +470,14 @@ internal sealed class FakePlc : IDisposable
     private readonly Task _worker;
     private readonly Dictionary<int, ushort> _words = new();
     private HeldRead? _held;
+    private int _failNextRead;
+    private int _nextWriteResponse;
     public ConcurrentQueue<FinsRequest> Requests { get; } = new();
     public int Port => ((IPEndPoint)_socket.Client.LocalEndPoint!).Port;
     public FakePlc() => _worker = Task.Run(RunAsync);
     public HeldRead HoldNextRead() => _held = new HeldRead();
+    public void FailNextRead() => Interlocked.Exchange(ref _failNextRead, 1);
+    public void RespondToNextWrite(WriteResponse response) => Interlocked.Exchange(ref _nextWriteResponse, (int)response);
 
     public async Task WaitForCountAsync(int count, int timeoutMs = 3000)
     {
@@ -283,6 +508,17 @@ internal sealed class FakePlc : IDisposable
                 var response = new byte[14 + (command == 1 ? count * 2 : 0)];
                 Array.Copy(data, response, 12);
                 response[0] = 0xC0;
+                var writeResponse = command == 2
+                    ? (WriteResponse)Interlocked.Exchange(ref _nextWriteResponse, 0) : WriteResponse.Normal;
+                if (writeResponse == WriteResponse.Reject
+                    || command == 1 && Interlocked.Exchange(ref _failNextRead, 0) != 0)
+                {
+                    // FINS 0x1101: vùng nhớ không hợp lệ. Phản hồi ngay, không đợi timeout.
+                    response[12] = 0x11;
+                    response[13] = 0x01;
+                    await _socket.SendAsync(response, packet.RemoteEndPoint, _stop.Token);
+                    continue;
+                }
                 for (var index = 0; index < count; index++)
                 {
                     if (command == 2 && data.Length >= 20 + index * 2)
@@ -290,6 +526,13 @@ internal sealed class FakePlc : IDisposable
                     else if (command == 1)
                         BinaryPrimitives.WriteUInt16BigEndian(response.AsSpan(14 + index * 2, 2), _words.GetValueOrDefault(address + index));
                 }
+                // Apply the physical write before losing/corrupting its acknowledgement.
+                // A second datagram would receive a normal ACK, exposing accidental retries.
+                if (writeResponse == WriteResponse.DropAck) continue;
+                if (writeResponse == WriteResponse.BadHeader) response[0] = 0x80;
+                if (writeResponse == WriteResponse.WrongSid) response[9]++;
+                if (writeResponse == WriteResponse.WrongCommand) response[11] = 0x01;
+                if (writeResponse == WriteResponse.Truncated) Array.Resize(ref response, 10);
                 await _socket.SendAsync(response, packet.RemoteEndPoint, _stop.Token);
             }
         }

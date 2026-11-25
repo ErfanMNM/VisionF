@@ -15,8 +15,8 @@ namespace TanTienQR.ViewModels;
 /// <para>
 /// Nguồn dữ liệu là bảng <c>ScanRecords</c> (SQLite <c>logs/scans.db</c>) —
 /// mọi mã đã quét qua camera đều được ghi vào đó. Truy vấn bằng
-/// <see cref="IScanRecordQuery"/> với bộ lọc <c>CodeContains</c> (khớp theo
-/// <c>Code</c>, <c>Serial</c> hoặc <c>Raw</c>).
+/// <see cref="IScanRecordQuery"/> với bộ lọc <c>CodeContains</c> trên toàn bộ
+/// <c>CodeContent</c> hoặc nội dung camera gốc.
 /// </para>
 ///
 /// <para>
@@ -128,18 +128,18 @@ internal sealed partial class CodeLookupViewModel : ViewModelBase, IDisposable
     public partial long TotalCount { get; set; }
 
     /// <summary>
-    /// True khi mã đã được kích hoạt (đã gửi lên server).
+    /// True khi lần quét hiện tại ghi nhận Pass trong PO.
     ///
     /// <para>
     /// Xác định theo PO: mã đã quét với kết quả Pass và thuộc PO nào đó
-    /// thì coi như đã kích hoạt — tương đương logic
+    /// Đây là kết quả quét local, không suy diễn ACK kích hoạt server; tham khảo
     /// <c>GetActiveByQRContent</c> trong FScan.cs của dự án tham khảo.
     /// </para>
     /// </summary>
     public bool IsActivated => Latest is not null && Latest.IsPass && Latest.HasOrder;
 
     /// <summary>
-    /// True khi mã quét được nhưng chưa kích hoạt (Pass nhưng không thuộc
+    /// True khi lần quét Pass nhưng chưa gắn PO (Pass nhưng không thuộc
     /// PO nào, hoặc quét nhưng không đạt).
     /// </summary>
     public bool IsPendingActivation =>
@@ -149,9 +149,9 @@ internal sealed partial class CodeLookupViewModel : ViewModelBase, IDisposable
     public string ActivationStatusText => Latest switch
     {
         null => string.Empty,
-        _ when IsActivated => "Mã đã kích hoạt",
-        _ when IsPendingActivation => "Mã chưa kích hoạt (Pass)",
-        _ => $"Mã có status: {Latest.StatusText}",
+        _ when IsActivated => "Đã ghi nhận Pass trong PO",
+        _ when IsPendingActivation => "Pass chưa gắn PO",
+        _ => $"Kết quả quét: {Latest.StatusText}",
     };
 
     /// <summary>Class style cho banner trạng thái kích hoạt.</summary>
@@ -174,7 +174,7 @@ internal sealed partial class CodeLookupViewModel : ViewModelBase, IDisposable
     public string FilterSummary =>
         string.IsNullOrWhiteSpace(CodeInput)
             ? "Chưa nhập mã"
-            : $"Mã: {CodeInput.Trim()}";
+            : $"Mã: {CodeInput}";
 
     // ---------- Trạng thái gửi Checkee ----------
 
@@ -216,9 +216,9 @@ internal sealed partial class CodeLookupViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     public async Task LookupAsync()
     {
-        var code = CodeInput?.Trim() ?? string.Empty;
+        var code = CodeInput ?? string.Empty;
 
-        if (code.Length == 0)
+        if (string.IsNullOrWhiteSpace(code))
         {
             StatusMessage = "Hãy nhập hoặc quét mã cần tra cứu.";
             Rows = [];
@@ -237,7 +237,7 @@ internal sealed partial class CodeLookupViewModel : ViewModelBase, IDisposable
 
             var result = await _query
                 .GetAsync(
-                    new ScanRecordFilter { CodeContains = code },
+                    new ScanRecordFilter { CodeContentEquals = code },
                     page: 1,
                     pageSize: MaxRows)
                 .ConfigureAwait(true);
@@ -487,11 +487,8 @@ public sealed class CodeLookupRowViewModel
         TimestampUtc = entity.ReceivedUtc;
         TimeText = entity.ReceivedUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm:ss", ViCulture);
 
-        CodeText = string.IsNullOrWhiteSpace(entity.Serial)
-            ? (string.IsNullOrWhiteSpace(entity.Code) ? entity.Raw : entity.Code)
-            : entity.Serial;
+        CodeText = entity.CodeContent;
 
-        GtinText = string.IsNullOrWhiteSpace(entity.Gtin) ? "—" : entity.Gtin;
         RawText = string.IsNullOrWhiteSpace(entity.Raw) ? "—" : entity.Raw;
 
         OrderNoText = string.IsNullOrWhiteSpace(entity.OrderNo) ? "—" : entity.OrderNo;
@@ -505,6 +502,9 @@ public sealed class CodeLookupRowViewModel
         StatusText = entity.Status switch
         {
             ScanStatuses.Pass => "Pass",
+            ScanStatuses.Duplicate => "Trùng",
+            ScanStatuses.InvalidForOrder => "Không tồn tại",
+            ScanStatuses.NoRead => "NoRead",
             ScanStatuses.Overload => "Quá tải",
             _ => "Fail",
         };
@@ -540,11 +540,8 @@ public sealed class CodeLookupRowViewModel
     /// <summary>Thời điểm nhận mã (giờ địa phương).</summary>
     public string TimeText { get; }
 
-    /// <summary>Mã / serial.</summary>
+    /// <summary>Toàn bộ CodeContent, giữ nguyên nội dung mã.</summary>
     public string CodeText { get; }
-
-    /// <summary>GTIN nếu có.</summary>
-    public string GtinText { get; }
 
     /// <summary>Nội dung gốc camera gửi lên.</summary>
     public string RawText { get; }
@@ -558,7 +555,7 @@ public sealed class CodeLookupRowViewModel
     /// <summary>Số batch sản xuất ("—" nếu mặc định / không có).</summary>
     public string BatchNoText { get; }
 
-    /// <summary>Trạng thái (Pass / Fail / Quá tải).</summary>
+    /// <summary>Kết quả đối chiếu mã hoặc trạng thái xử lý.</summary>
     public string StatusText { get; }
 
     /// <summary>Trạng thái ghi xuống PLC.</summary>
@@ -574,7 +571,7 @@ public sealed class CodeLookupRowViewModel
     public bool IsOverload => StatusText == "Quá tải";
 
     /// <summary>True khi kết quả là Fail (badge đỏ).</summary>
-    public bool IsFail => StatusText == "Fail";
+    public bool IsFail => !IsPass && !IsOverload;
 
     /// <summary>Class style cho badge kết quả.</summary>
     public string StatusBadgeClass => StatusText switch
@@ -692,10 +689,7 @@ public sealed class CodeSendErrorRowViewModel
     public CodeSendErrorRowViewModel(ScanRecordEntity entity)
     {
         RecordId = entity.Id;
-        CodeText = string.IsNullOrWhiteSpace(entity.Serial)
-            ? (string.IsNullOrWhiteSpace(entity.Code) ? entity.Raw : entity.Code)
-            : entity.Serial;
-        GtinText = string.IsNullOrWhiteSpace(entity.Gtin) ? "—" : entity.Gtin;
+        CodeText = entity.CodeContent;
         BatchText = string.IsNullOrWhiteSpace(entity.BatchNo)
             || string.Equals(entity.BatchNo, ScanBatchDefaults.NoBatch, StringComparison.Ordinal)
                 ? "—"
@@ -716,11 +710,8 @@ public sealed class CodeSendErrorRowViewModel
     /// <summary>Khoá bản ghi (dùng khi đặt lại trạng thái để gửi lại).</summary>
     public long RecordId { get; }
 
-    /// <summary>Mã / serial bị lỗi.</summary>
+    /// <summary>Toàn bộ CodeContent bị gửi lỗi.</summary>
     public string CodeText { get; }
-
-    /// <summary>GTIN ("—" nếu không có).</summary>
-    public string GtinText { get; }
 
     /// <summary>Mã lô ("—" nếu không có).</summary>
     public string BatchText { get; }

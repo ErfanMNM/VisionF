@@ -117,18 +117,13 @@ public sealed class PoHttpServer : IDisposable
     /// <summary>Số ký tự tối đa cho mã PO (chống mã quá dài / rác).</summary>
     private const int MaxPoNameLength = 200;
 
-    /// <summary>
-    /// Số mã trùng tối đa liệt kê trong thông báo lỗi (ví dụ cho người dùng).
-    /// </summary>
-    private const int MaxDuplicateSamples = 5;
-
     private readonly PoServerOptions _opt;
     private readonly PoStore _store;
     private readonly ILogger<PoHttpServer> _logger;
     private readonly PoHistoryStore _history;
     private readonly PoServerState _state = new();
 
-    /// <summary>Handler đọc nội dung request (JSON thuần / upload file).</summary>
+    /// <summary>Handler đọc file CodeContent và metadata riêng.</summary>
     private readonly PoUploadHandler _uploadHandler;
 
     private readonly CancellationTokenSource _cts = new();
@@ -520,7 +515,7 @@ public sealed class PoHttpServer : IDisposable
     /// Xử lý body của <c>POST /api/po</c>: đọc, kiểm tra và lưu PO.
     ///
     /// <para>
-    /// Việc đọc nội dung (JSON thuần / upload file CSV-JSON-Excel) do
+    /// Việc đọc nội dung (upload file CodeContent CSV/JSON/XLSX) do
     /// <see cref="PoUploadHandler"/> đảm nhiệm — file được stream xuống đĩa
     /// tạm, không nạp trọn vào RAM.
     /// </para>
@@ -558,9 +553,8 @@ public sealed class PoHttpServer : IDisposable
         }
 
         var payload = content.Content.Metadata;
-        payload.Codes = content.Content.RawCodes;
 
-        return await SavePoAsync(payload, ct).ConfigureAwait(false);
+        return await SavePoAsync(payload, content.Content.RawCodes, ct).ConfigureAwait(false);
     }
 
     private async Task<string?> GetRunningOrderNoAsync(CancellationToken ct)
@@ -574,6 +568,7 @@ public sealed class PoHttpServer : IDisposable
     /// </summary>
     private async Task<PoPushOutcome> SavePoAsync(
         PoPushRequest payload,
+        IReadOnlyList<string> rawCodes,
         CancellationToken ct)
     {
         var poName = (payload.PoName ?? string.Empty).Trim();
@@ -612,21 +607,18 @@ public sealed class PoHttpServer : IDisposable
                 });
         }
 
-        // ---- Tập mã: ưu tiên codes, sau đó tới csv ----
-        var rawCodes = CollectRawCodes(payload);
-        if (rawCodes.Count == 0)
-        {
-            return new PoPushOutcome(
-                400,
-                new PoPushResponse
-                {
-                    Success = false,
-                    Message = "Thiếu tập mã: cần gửi \"codes\" (mảng JSON), \"csv\" "
-                        + "(nội dung CSV), hoặc tải file .csv/.json/.xlsx/.xls lên.",
-                    PoName = poName,
-                });
-        }
-
+        // Parser validates every file row before any database mutation.
+        if (rawCodes.Count == 0 || rawCodes.Any(string.IsNullOrWhiteSpace))
+            return new PoPushOutcome(400, new PoPushResponse
+            {
+                Message = "File phải chứa các giá trị CodeContent không rỗng.", PoName = poName,
+            });
+        if (rawCodes.Count != payload.OrderQty)
+            return new PoPushOutcome(400, new PoPushResponse
+            {
+                Message = $"Số dòng CodeContent ({rawCodes.Count}) phải bằng orderQty ({payload.OrderQty}) trước lọc trùng.",
+                PoName = poName,
+            });
         var localOrders = await _store.ListLocalOrdersAsync(ct, strict: true).ConfigureAwait(false);
         var existingOrder = localOrders.FirstOrDefault(order =>
             string.Equals(order.OrderNo, poName, StringComparison.OrdinalIgnoreCase));
@@ -653,111 +645,25 @@ public sealed class PoHttpServer : IDisposable
             });
         }
 
-        var fallbackGtin = (payload.Gtin ?? string.Empty).Trim();
-        if (fallbackGtin.Length == 0 && existingOrder is not null
-            && existingOrder.Additional.TryGetValue("gtin", out var existingGtin))
-            fallbackGtin = existingGtin;
-
-        // Chuẩn hoá mã và loại trùng ngay trong request.
+        // PO databases own their code sets independently. Only repeated rows and
+        // codes already present in this PO are ignored, using exact full content.
+        var existingCodes = existingOrder is null
+            ? new HashSet<string>(StringComparer.Ordinal)
+            : (await _store.GetCodesAsync(existingOrder.OrderNo, existingOrder.CreatedUtc, ct).ConfigureAwait(false))
+                .Select(code => code.CodeContent).ToHashSet(StringComparer.Ordinal);
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var codes = new List<PoCode>(rawCodes.Count);
         var duplicateCount = 0;
-        var parsedCodeCount = 0;
-
         foreach (var raw in rawCodes)
         {
-            if (!PoCodeParser.TryParse(raw, fallbackGtin, out var gtin, out var serial))
-            {
-                continue;
-            }
-
-            parsedCodeCount++;
-            var codeKey = PoStore.BuildCodeKey(gtin, serial);
-            if (!seen.Add(codeKey))
+            ct.ThrowIfCancellationRequested();
+            if (!seen.Add(raw) || existingCodes.Contains(raw))
             {
                 duplicateCount++;
                 continue;
             }
-
-            codes.Add(new PoCode
-            {
-                Code = BuildCode(gtin, serial),
-                Gtin = gtin,
-                Serial = serial,
-            });
+            codes.Add(new PoCode { CodeContent = raw });
         }
-
-        if (codes.Count == 0)
-        {
-            return new PoPushOutcome(
-                400,
-                new PoPushResponse
-                {
-                    Success = false,
-                    Message = "Không tìm được mã nào hợp lệ trong tập mã gửi lên.",
-                    PoName = poName,
-                });
-        }
-
-        // ---- Kiểm tra số lượng ----
-        // Kiểm tra số dòng hợp lệ trước lọc trùng; tổng lưu là số mã mới thực nhận.
-        // Thiếu -> 400 để MES biết phải gửi đủ.
-        if (parsedCodeCount < payload.OrderQty)
-        {
-            return new PoPushOutcome(
-                400,
-                new PoPushResponse
-                {
-                    Success = false,
-                    Message = $"Số mã hợp lệ gửi lên ({parsedCodeCount}) ít hơn orderQty ({payload.OrderQty}).",
-                    PoName = poName,
-                });
-        }
-
-        // ---- Lọc mã đã có trên máy theo khóa chuẩn GTIN|Serial ----
-        try
-        {
-            var keys = new List<string>(codes.Count);
-            foreach (var code in codes)
-            {
-                keys.Add(PoStore.BuildCodeKey(code.Gtin, code.Serial));
-            }
-
-            var duplicates = await _store
-                .FindDuplicateCodesAsync(keys, null, MaxDuplicateSamples, ct)
-                .ConfigureAwait(false);
-
-            if (duplicates.HasDuplicates)
-            {
-                duplicateCount += duplicates.TotalDuplicates;
-                codes.RemoveAll(code => duplicates.DuplicateKeys.Contains(
-                    PoStore.BuildCodeKey(code.Gtin, code.Serial)));
-            }
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            return new PoPushOutcome(
-                408,
-                new PoPushResponse
-                {
-                    Success = false,
-                    Message = "Yêu cầu bị hủy khi kiểm tra mã trùng.",
-                    PoName = poName,
-                });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Lỗi khi kiểm tra mã trùng cho PO {PoName}.", poName);
-            return new PoPushOutcome(
-                500,
-                new PoPushResponse
-                {
-                    Success = false,
-                    Message = "Không thể xác minh mã trùng trên máy; PO chưa được nhận. " + ex.Message,
-                    PoName = poName,
-                });
-        }
-
         if (codes.Count == 0)
         {
             var duplicateMessage = duplicateCount > 0
@@ -777,20 +683,8 @@ public sealed class PoHttpServer : IDisposable
         var additional = existingOrder is null
             ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             : new Dictionary<string, string>(existingOrder.Additional, StringComparer.OrdinalIgnoreCase);
-        if (payload.Additional is not null)
-        {
-            foreach (var (key, value) in payload.Additional)
-            {
-                if (string.IsNullOrWhiteSpace(key))
-                {
-                    continue;
-                }
-
-                additional[key.Trim()] = value ?? string.Empty;
-            }
-        }
-
-        AddIfNotEmpty(additional, "gtin", payload.Gtin);
+        additional.Remove("gtin");
+        additional.Remove("serial");
         AddIfNotEmpty(additional, "batchCode", payload.BatchCode);
         AddIfNotEmpty(additional, "productName", payload.ProductName);
         AddIfNotEmpty(additional, "customer", payload.Customer);
@@ -862,149 +756,6 @@ public sealed class PoHttpServer : IDisposable
             });
     }
 
-    /// <summary>
-    /// Gom tập mã thô từ <c>codes</c> (ưu tiên) hoặc <c>csv</c>.
-    /// </summary>
-    private static List<string> CollectRawCodes(PoPushRequest payload)
-    {
-        var result = new List<string>();
-
-        if (payload.Codes is { Count: > 0 })
-        {
-            foreach (var code in payload.Codes)
-            {
-                if (!string.IsNullOrWhiteSpace(code))
-                {
-                    result.Add(code.Trim());
-                }
-            }
-
-            if (result.Count > 0)
-            {
-                return result;
-            }
-        }
-
-        if (!string.IsNullOrWhiteSpace(payload.Csv))
-        {
-            foreach (var line in ParseCsv(payload.Csv))
-            {
-                result.Add(line);
-            }
-        }
-
-        return result;
-    }
-
-    /// <summary>
-    /// Tách nội dung CSV thành danh sách mã (mỗi dòng một mã).
-    ///
-    /// <para>
-    /// Dòng tiêu đề (VD "serial", "code", "ma") ở đầu file được bỏ qua.
-    /// Dòng tiêu đề được nhận diện bằng cách: là dòng đầu tiên có nội dung,
-    /// <b>không chứa chữ số</b> và khớp một trong các tên cột thường gặp
-    /// (serial / code / ma / gtin / product / barcode...).
-    /// </para>
-    /// </summary>
-    internal static IReadOnlyList<string> ParseCsv(string csv)
-    {
-        var result = new List<string>();
-        var lines = csv.Split('\n');
-        var headerChecked = false;
-
-        for (var i = 0; i < lines.Length; i++)
-        {
-            var line = lines[i].Trim('\r', ' ', '\t');
-
-            // Bỏ BOM ở đầu file.
-            if (i == 0)
-            {
-                line = line.TrimStart('\uFEFF');
-            }
-
-            if (line.Length == 0)
-            {
-                continue;
-            }
-
-            // Chỉ dòng ĐẦU TIÊN có nội dung mới được coi là tiêu đề.
-            if (!headerChecked)
-            {
-                headerChecked = true;
-
-                if (IsHeaderLine(line))
-                {
-                    continue;
-                }
-            }
-
-            result.Add(line);
-        }
-
-        return result;
-    }
-
-    /// <summary>
-    /// Các tên cột thường dùng trong file CSV mã (không phân biệt hoa thường).
-    /// </summary>
-    private static readonly string[] HeaderNames =
-    [
-        "serial",
-        "serials",
-        "serialnumber",
-        "serialno",
-        "code",
-        "codes",
-        "ma",
-        "mas",
-        "barcode",
-        "gtin",
-        "product",
-        "productname",
-        "customer",
-        "batch",
-        "batchcode",
-        "lot",
-    ];
-
-    /// <summary>
-    /// Đoán xem một dòng có phải dòng tiêu đề của file CSV mã hay không.
-    ///
-    /// <para>
-    /// Điều kiện: KHÔNG chứa chữ số (mã luôn có số hoặc ký tự đặc biệt)
-    /// và khớp một tên cột thường gặp.
-    /// </para>
-    /// </summary>
-    private static bool IsHeaderLine(string line)
-    {
-        foreach (var c in line)
-        {
-            if (char.IsDigit(c))
-            {
-                // Có chữ số -> gần như chắc chắn là mã, không phải tiêu đề.
-                return false;
-            }
-        }
-
-        // Bỏ ký tự phân tách / khoảng trắng để so sánh.
-        var normalized = line
-            .Replace(" ", string.Empty)
-            .Replace("_", string.Empty)
-            .Replace("-", string.Empty)
-            .Trim()
-            .ToLowerInvariant();
-
-        foreach (var name in HeaderNames)
-        {
-            if (normalized == name)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     /// <summary>Thêm trường mở rộng nếu có giá trị.</summary>
     private static void AddIfNotEmpty(
         Dictionary<string, string> target,
@@ -1015,19 +766,6 @@ public sealed class PoHttpServer : IDisposable
         {
             target[key] = value.Trim();
         }
-    }
-
-    /// <summary>
-    /// Dựng mã đầy đủ để so sánh (giống cách PoServer giả lập sinh mã).
-    /// </summary>
-    private static string BuildCode(string gtin, string serial)
-    {
-        if (string.IsNullOrEmpty(gtin))
-        {
-            return serial;
-        }
-
-        return $"https://digital-link.txng.vn/01/{gtin}/21/{serial}";
     }
 
     /// <summary>

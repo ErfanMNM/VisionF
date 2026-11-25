@@ -3,19 +3,8 @@ namespace ClassLibraryMT.Po;
 /// <summary>
 /// Quyết định <c>PoActivationWorker</c> có nên chạy vòng lặp gửi kích hoạt hay không.
 ///
-/// <para>
-/// Vòng lặp chỉ vô nghĩa khi mọi request chắc chắn thất bại: HTTP server nhận PO
-/// trên <b>cùng máy</b> đang tắt (<c>PoServer:Enabled = false</c>) mà
-/// <see cref="PoOptions.BaseUrl"/> lại trỏ về loopback (127.0.0.1 / localhost / ::1).
-/// Khi đó retry mỗi 2,5 giây chỉ tạo log rác, không chờ được server "sống lại".
-/// </para>
-///
-/// <para>
-/// Lớp này thuần logic (không phụ thuộc DI / UI) để test được từ
-/// <c>tools/PoTests</c>. Việc bật/tắt theo <c>PoServer:Enabled</c> do nơi gọi
-/// truyền vào — <c>ClassLibraryMT.Po</c> không tham chiếu
-/// <c>ClassLibraryMT.PoServer</c>.
-/// </para>
+/// <para>This policy is independent of the in-app PO ingestion listener. Activation
+/// can target a separate MES endpoint on loopback or a remote host.</para>
 /// </summary>
 public static class PoActivationPolicy
 {
@@ -43,25 +32,16 @@ public static class PoActivationPolicy
     }
 
     /// <summary>
-    /// True nếu worker nên chạy vòng lặp gửi kích hoạt.
-    ///
-    /// <para>
-    /// False khi <see cref="PoOptions.AutoActivate"/> = false, hoặc khi PoServer
-    /// cùng máy đang tắt và <see cref="PoOptions.BaseUrl"/> là loopback.
-    /// </para>
+    /// True when activation is enabled. Server liveness is verified by each request.
     /// </summary>
     /// <param name="options">Cấu hình section <c>Po</c>.</param>
-    /// <param name="poServerEnabled">Giá trị <c>PoServer:Enabled</c>.</param>
     /// <returns>True nếu nên chạy worker.</returns>
-    public static bool ShouldRun(PoOptions options, bool poServerEnabled)
+    public static bool ShouldRun(PoOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-
-        if (!options.AutoActivate)
-            return false;
-
-        // Có server cùng máy đang bật → chạy bình thường (kể cả BaseUrl loopback).
-        // Server tắt nhưng BaseUrl trỏ máy khác (MES thật) → vẫn chạy.
-        return poServerEnabled || !IsLoopbackBaseUrl(options.BaseUrl);
+        return options.AutoActivate;
     }
+
+    /// <summary>Compatibility overload; ingestion listener state does not control activation.</summary>
+    public static bool ShouldRun(PoOptions options, bool poServerEnabled) => ShouldRun(options);
 }

@@ -23,7 +23,7 @@ namespace ClassLibraryMT.Po;
 public sealed class PoStore
 {
     /// <summary>Phiên bản schema hiện tại của file PO.</summary>
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
 
     /// <summary>Key lưu mã lệnh sản xuất trong bảng meta.</summary>
     public const string MetaOrderNo = "orderNo";
@@ -48,6 +48,9 @@ public sealed class PoStore
 
     /// <summary>Key lưu các trường mở rộng của PO dưới dạng JSON.</summary>
     public const string MetaAdditional = "additional";
+
+    /// <summary>Key marking an unresolved PLC Pass safety halt for this PO.</summary>
+    public const string MetaHalted = "halted";
 
     private readonly string _dbRoot;
     private readonly SemaphoreSlim _mutationGate = new(1, 1);
@@ -131,26 +134,24 @@ public sealed class PoStore
     /// Tìm mã đã tồn tại trong mọi PO trên máy, trừ PO được chỉ định loại trừ.
     ///
     /// <para>
-    /// So khớp theo <b>khoá chuẩn</b> <c>"{Gtin}|{Serial}"</c> — đúng cách
-    /// dùng khi quét mã (<see cref="BuildCodeKey"/>) — nên một mã gửi bằng
-    /// Digital Link hay bằng mã trần vẫn được coi là trùng nếu cùng
-    /// GTIN/serial.
+    /// Chẩn đoán tương thích cũ: so khớp toàn bộ CodeContent, phân biệt hoa thường.
+    /// Luồng sản xuất không dùng kết quả này để lọc mã giữa các PO.
     /// </para>
     ///
     /// <para>
     /// <b>Hiệu năng:</b> không nạp toàn bộ mã vào RAM. Mỗi file DB PO được
     /// <c>ATTACH</c> vào một connection và so khớp theo từng lô khoá (mặc định
-    /// 400 khoá/lô) qua index <c>IX_PoCodes_Serial</c> + biểu thức
-    /// <c>Gtin || '|' || Serial</c>. Chỉ giữ các khóa trùng thuộc request và vài ví dụ.
+    /// 400 khoá/lô) qua khóa <c>PoCodes.Code</c>.
     /// </para>
     /// </summary>
     /// <param name="codeKeys">
-    /// Danh sách khoá chuẩn <c>"{Gtin}|{Serial}"</c> của PO mới cần kiểm tra.
+    /// Danh sách CodeContent đầy đủ cần tra cứu chẩn đoán.
     /// </param>
     /// <param name="excludeOrderNo">Tên PO cần loại trừ (PO đang kiểm tra).</param>
     /// <param name="maxSamples">Số mã ví dụ tối đa trả về.</param>
     /// <param name="ct">Token hủy.</param>
     /// <returns>Kết quả trùng mã.</returns>
+    [Obsolete("Cross-PO diagnostic only. Production matching is isolated per PO using CodeContent.")]
     public async Task<DuplicateCodeResult> FindDuplicateCodesAsync(
         IReadOnlyList<string> codeKeys,
         string? excludeOrderNo = null,
@@ -287,10 +288,10 @@ public sealed class PoStore
                 await using (var query = connection.CreateCommand())
                 {
                     query.CommandText = $"""
-                        SELECT DISTINCT c.Gtin || '|' || c.Serial, c.Serial
+                        SELECT DISTINCT c.Code
                         FROM {alias}.PoCodes AS c
                         INNER JOIN ProbeKeys AS p
-                            ON p.Key = c.Gtin || '|' || c.Serial;
+                            ON p.Key = c.Code COLLATE BINARY;
                         """;
                     await using var reader = await query.ExecuteReaderAsync(ct).ConfigureAwait(false);
                     while (await reader.ReadAsync(ct).ConfigureAwait(false))
@@ -450,11 +451,11 @@ public sealed class PoStore
         //
         // Ghi theo LÔ (multi-row VALUES) thay vì từng dòng một: với PO vài
         // chục nghìn mã, cách ghi từng dòng sẽ tốn hàng trăm nghìn vòng
-        // round-trip xuống SQLite. Chia lô 300 mã / lệnh để không vượt quá
-        // giới hạn số biến của SQLite (mặc định 999 — 3 biến cho mỗi mã).
+        // round-trip xuống SQLite. Chia lô 180 mã / lệnh để không vượt quá
+        // giới hạn số biến của SQLite (mặc định 999 — 5 biến cho mỗi mã).
         if (codes.Count > 0)
         {
-            const int batchSize = 300;
+            const int batchSize = 180;
 
             for (var offset = 0; offset < codes.Count; offset += batchSize)
             {
@@ -479,12 +480,20 @@ public sealed class PoStore
                     var pCode = insert.Parameters.Add("$c" + n, SqliteType.Text);
                     var pGtin = insert.Parameters.Add("$g" + n, SqliteType.Text);
                     var pSerial = insert.Parameters.Add("$s" + n, SqliteType.Text);
+                    var pScanned = insert.Parameters.Add("$seen" + n, SqliteType.Text);
+                    var pActivated = insert.Parameters.Add("$activated" + n, SqliteType.Text);
 
                     var code = codes[n];
 
-                    pCode.Value = code.Code;
-                    pGtin.Value = code.Gtin;
-                    pSerial.Value = code.Serial;
+                    pCode.Value = code.CodeContent;
+                    pGtin.Value = string.Empty;
+                    pSerial.Value = string.Empty;
+                    pScanned.Value = code.ScannedUtc?.ToString("O") is { } scanned
+                        ? scanned
+                        : DBNull.Value;
+                    pActivated.Value = code.ActivatedUtc?.ToString("O") is { } activated
+                        ? activated
+                        : DBNull.Value;
 
                     if (i > 0)
                     {
@@ -494,7 +503,10 @@ public sealed class PoStore
                     sql.Append("($c").Append(n)
                        .Append(", $g").Append(n)
                        .Append(", $s").Append(n)
-                       .Append(", NULL, 'Pending', NULL)");
+                       .Append(", $seen").Append(n)
+                       .Append(", CASE WHEN $activated").Append(n).Append(" IS NOT NULL THEN 'Activated' WHEN $seen")
+                       .Append(n).Append(" IS NOT NULL THEN 'Scanned' ELSE 'Pending' END, $activated")
+                       .Append(n).Append(')');
                 }
 
                 insert.CommandText = sql.ToString();
@@ -585,7 +597,7 @@ public sealed class PoStore
                 await using (var count = connection.CreateCommand())
                 {
                     count.CommandText = """
-                        SELECT COUNT(*), SUM(CASE WHEN ScannedUtc IS NOT NULL THEN 1 ELSE 0 END)
+                        SELECT COUNT(*), SUM(CASE WHEN ScannedUtc IS NOT NULL OR ActivatedUtc IS NOT NULL THEN 1 ELSE 0 END)
                         FROM PoCodes;
                         """;
                     await using var reader = await count.ExecuteReaderAsync(ct).ConfigureAwait(false);
@@ -672,9 +684,7 @@ public sealed class PoStore
 
         await using var connection = await OpenAsync(path, ct).ConfigureAwait(false);
         await using var cmd = connection.CreateCommand();
-        cmd.CommandText = """
-            SELECT Gtin, Serial, ScannedUtc, ActivatedUtc FROM PoCodes;
-            """;
+        cmd.CommandText = "SELECT Code, ScannedUtc, ActivatedUtc, PendingPassUtc FROM PoCodes;";
 
         var list = new List<KeyValuePair<string, PoCodeCache.Flags>>();
         await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
@@ -682,18 +692,23 @@ public sealed class PoStore
         {
             var flags = PoCodeCache.Flags.None;
 
-            if (!reader.IsDBNull(2))
+            if (!reader.IsDBNull(1) || !reader.IsDBNull(2))
             {
                 flags |= PoCodeCache.Flags.Scanned;
             }
 
-            if (!reader.IsDBNull(3))
+            if (!reader.IsDBNull(2))
             {
                 flags |= PoCodeCache.Flags.Activated;
             }
 
+            if (!reader.IsDBNull(3))
+            {
+                flags |= PoCodeCache.Flags.PendingPass;
+            }
+
             list.Add(new KeyValuePair<string, PoCodeCache.Flags>(
-                BuildCodeKey(reader.GetString(0), reader.GetString(1)),
+                reader.GetString(0),
                 flags));
         }
 
@@ -755,9 +770,9 @@ public sealed class PoStore
         await using var connection = await OpenAsync(path, ct).ConfigureAwait(false);
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-            SELECT Code, Gtin, Serial, ScannedUtc, Status, ActivatedUtc
+            SELECT Code, ScannedUtc, ActivatedUtc
             FROM PoCodes
-            ORDER BY Serial;
+            ORDER BY Code;
             """;
 
         var list = new List<PoCode>();
@@ -766,12 +781,13 @@ public sealed class PoStore
         {
             list.Add(new PoCode
             {
-                Code = reader.GetString(0),
-                Gtin = reader.GetString(1),
-                Serial = reader.GetString(2),
-                ActivatedUtc = reader.IsDBNull(5)
+                CodeContent = reader.GetString(0),
+                ScannedUtc = reader.IsDBNull(1)
                     ? null
-                    : DateTime.Parse(reader.GetString(5), null, System.Globalization.DateTimeStyles.RoundtripKind),
+                    : DateTime.Parse(reader.GetString(1), null, System.Globalization.DateTimeStyles.RoundtripKind),
+                ActivatedUtc = reader.IsDBNull(2)
+                    ? null
+                    : DateTime.Parse(reader.GetString(2), null, System.Globalization.DateTimeStyles.RoundtripKind),
             });
         }
 
@@ -793,7 +809,8 @@ public sealed class PoStore
         await using var connection = await OpenAsync(path, ct).ConfigureAwait(false);
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-            SELECT Code, Gtin, Serial FROM PoCodes WHERE ScannedUtc IS NOT NULL;
+            SELECT Code, ScannedUtc, ActivatedUtc FROM PoCodes
+            WHERE ScannedUtc IS NOT NULL OR ActivatedUtc IS NOT NULL;
             """;
 
         var list = new List<PoCode>();
@@ -802,9 +819,13 @@ public sealed class PoStore
         {
             list.Add(new PoCode
             {
-                Code = reader.GetString(0),
-                Gtin = reader.GetString(1),
-                Serial = reader.GetString(2),
+                CodeContent = reader.GetString(0),
+                ScannedUtc = reader.IsDBNull(1)
+                    ? null
+                    : DateTime.Parse(reader.GetString(1), null, System.Globalization.DateTimeStyles.RoundtripKind),
+                ActivatedUtc = reader.IsDBNull(2)
+                    ? null
+                    : DateTime.Parse(reader.GetString(2), null, System.Globalization.DateTimeStyles.RoundtripKind),
             });
         }
 
@@ -825,9 +846,26 @@ public sealed class PoStore
 
         await using var connection = await OpenAsync(path, ct).ConfigureAwait(false);
         await using var cmd = connection.CreateCommand();
-        cmd.CommandText = "SELECT COUNT(*) FROM PoCodes WHERE ScannedUtc IS NOT NULL;";
+        cmd.CommandText = "SELECT COUNT(*) FROM PoCodes WHERE ScannedUtc IS NOT NULL OR ActivatedUtc IS NOT NULL;";
         var result = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
         return result is long l ? (int)l : 0;
+    }
+
+    /// <summary>Counts the committed code rows in one PO database.</summary>
+    public async Task<int> CountCodesAsync(
+        string orderNo,
+        DateTime createdUtc,
+        CancellationToken ct = default)
+    {
+        var path = ResolvePath(orderNo, createdUtc);
+        if (path is null)
+            return 0;
+
+        await using var connection = await OpenAsync(path, ct).ConfigureAwait(false);
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM PoCodes;";
+        var result = await cmd.ExecuteScalarAsync(ct).ConfigureAwait(false);
+        return result is long count ? (int)count : 0;
     }
 
     /// <summary>
@@ -835,28 +873,125 @@ public sealed class PoStore
     /// </summary>
     /// <param name="orderNo">Mã PO.</param>
     /// <param name="createdUtc">Thời điểm tạo PO (xác định file DB).</param>
-    /// <param name="code">Khóa mã (định dạng <c>gtin|serial</c>).</param>
+    /// <param name="codeContent">Complete code content.</param>
     /// <param name="ct">Token hủy.</param>
-    public async Task MarkScannedAsync(
+    public async Task<bool> MarkScannedAsync(
         string orderNo,
         DateTime createdUtc,
-        string code,
+        string codeContent,
         CancellationToken ct = default)
     {
         var path = ResolvePath(orderNo, createdUtc);
         if (path is null)
-            return;
+            return false;
+
+        await using var connection = await OpenAsync(path, ct).ConfigureAwait(false);
+        await using var tx = await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
+        await using var cmd = connection.CreateCommand();
+        cmd.Transaction = (SqliteTransaction)tx;
+        cmd.CommandText = """
+            UPDATE PoCodes
+            SET ScannedUtc = $scannedUtc, Status = 'Scanned'
+            WHERE Code = $code AND ScannedUtc IS NULL;
+            """;
+        cmd.Parameters.AddWithValue("$scannedUtc", DateTime.UtcNow.ToString("O"));
+        cmd.Parameters.AddWithValue("$code", codeContent);
+        var changed = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false) > 0;
+        ct.ThrowIfCancellationRequested();
+        await tx.CommitAsync(CancellationToken.None).ConfigureAwait(false);
+        return changed;
+    }
+
+    /// <summary>Atomically mark a PO complete in its local database.</summary>
+    public async Task MarkCompletedAsync(
+        string orderNo,
+        DateTime createdUtc,
+        CancellationToken ct = default)
+    {
+        var path = ResolvePath(orderNo, createdUtc)
+            ?? throw new InvalidOperationException($"PO database for '{orderNo}' was not found.");
+
+        await using var connection = await OpenAsync(path, ct).ConfigureAwait(false);
+        await using var tx = await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
+        await SetMetaAsync(connection, MetaStatus, ProductionOrderStatus.Completed.ToString(), ct,
+            (SqliteTransaction)tx).ConfigureAwait(false);
+        await SetMetaAsync(connection, MetaCompletedUtc, DateTime.UtcNow.ToString("O"), ct,
+            (SqliteTransaction)tx).ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
+        await tx.CommitAsync(CancellationToken.None).ConfigureAwait(false);
+    }
+
+    /// <summary>Persist an unresolved Pass intent before writing Pass to the PLC.</summary>
+    public async Task<bool> BeginPendingPassAsync(
+        string orderNo,
+        DateTime createdUtc,
+        string codeContent,
+        CancellationToken ct = default)
+    {
+        var path = ResolvePath(orderNo, createdUtc);
+        if (path is null)
+            return false;
 
         await using var connection = await OpenAsync(path, ct).ConfigureAwait(false);
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
             UPDATE PoCodes
-            SET ScannedUtc = $scannedUtc, Status = 'Scanned'
-            WHERE Gtin || '|' || Serial = $code OR Code = $code OR Serial = $code;
+            SET PendingPassUtc = $pendingUtc
+            WHERE Code = $code AND ScannedUtc IS NULL
+              AND ActivatedUtc IS NULL AND PendingPassUtc IS NULL;
+            """;
+        cmd.Parameters.AddWithValue("$pendingUtc", DateTime.UtcNow.ToString("O"));
+        cmd.Parameters.AddWithValue("$code", codeContent);
+        return await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false) > 0;
+    }
+
+    /// <summary>Clear a known failed PLC Pass intent so the code remains available.</summary>
+    public async Task<bool> ClearPendingPassAsync(
+        string orderNo,
+        DateTime createdUtc,
+        string codeContent,
+        CancellationToken ct = default)
+    {
+        var path = ResolvePath(orderNo, createdUtc);
+        if (path is null)
+            return false;
+
+        await using var connection = await OpenAsync(path, ct).ConfigureAwait(false);
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            UPDATE PoCodes SET PendingPassUtc = NULL
+            WHERE Code = $code AND PendingPassUtc IS NOT NULL AND ScannedUtc IS NULL;
+            """;
+        cmd.Parameters.AddWithValue("$code", codeContent);
+        return await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false) > 0;
+    }
+
+    /// <summary>Atomically convert a pending Pass intent into committed scanned state.</summary>
+    public async Task<bool> CommitPendingPassAsync(
+        string orderNo,
+        DateTime createdUtc,
+        string codeContent,
+        CancellationToken ct = default)
+    {
+        var path = ResolvePath(orderNo, createdUtc);
+        if (path is null)
+            return false;
+
+        await using var connection = await OpenAsync(path, ct).ConfigureAwait(false);
+        await using var tx = await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
+        await using var cmd = connection.CreateCommand();
+        cmd.Transaction = (SqliteTransaction)tx;
+        cmd.CommandText = """
+            UPDATE PoCodes
+            SET PendingPassUtc = NULL, ScannedUtc = $scannedUtc, Status = 'Scanned'
+            WHERE Code = $code AND PendingPassUtc IS NOT NULL AND ScannedUtc IS NULL;
             """;
         cmd.Parameters.AddWithValue("$scannedUtc", DateTime.UtcNow.ToString("O"));
-        cmd.Parameters.AddWithValue("$code", code);
-        await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        cmd.Parameters.AddWithValue("$code", codeContent);
+        var changed = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false) > 0;
+        ct.ThrowIfCancellationRequested();
+        await tx.CommitAsync(CancellationToken.None).ConfigureAwait(false);
+        return changed;
     }
 
     /// <summary>
@@ -882,7 +1017,7 @@ public sealed class PoStore
         cmd.CommandText = """
             UPDATE PoCodes
             SET ActivatedUtc = $activatedUtc, Status = CASE WHEN ScannedUtc IS NULL THEN Status ELSE 'Activated' END
-            WHERE Code = $code OR Serial = $code;
+            WHERE Code = $code AND ScannedUtc IS NOT NULL;
             """;
 
         var pActivated = cmd.Parameters.Add("$activatedUtc", SqliteType.Text);
@@ -913,9 +1048,9 @@ public sealed class PoStore
         await using var connection = await OpenAsync(path, ct).ConfigureAwait(false);
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-            SELECT Serial FROM PoCodes
-            WHERE ActivatedUtc IS NULL AND Serial <> ''
-            ORDER BY Serial;
+            SELECT Code FROM PoCodes
+            WHERE ScannedUtc IS NOT NULL AND ActivatedUtc IS NULL
+            ORDER BY Code;
             """;
 
         var list = new List<string>();
@@ -1043,7 +1178,8 @@ public sealed class PoStore
                         Serial      TEXT NOT NULL DEFAULT '',
                         ScannedUtc  TEXT NULL,
                         Status      TEXT NOT NULL DEFAULT 'Pending',
-                        ActivatedUtc TEXT NULL
+                        ActivatedUtc TEXT NULL,
+                        PendingPassUtc TEXT NULL
                     );
 
                     CREATE TABLE IF NOT EXISTS PoMeta (
@@ -1055,6 +1191,28 @@ public sealed class PoStore
                     CREATE INDEX IF NOT EXISTS IX_PoCodes_Scanned ON PoCodes (ScannedUtc);
                     """;
                 await schema.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+            }
+
+            var hasPendingPassColumn = false;
+            await using (var columns = connection.CreateCommand())
+            {
+                columns.CommandText = "PRAGMA table_info(PoCodes);";
+                await using var reader = await columns.ExecuteReaderAsync(ct).ConfigureAwait(false);
+                while (await reader.ReadAsync(ct).ConfigureAwait(false))
+                {
+                    if (string.Equals(reader.GetString(1), "PendingPassUtc", StringComparison.OrdinalIgnoreCase))
+                    {
+                        hasPendingPassColumn = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!hasPendingPassColumn)
+            {
+                await using var migration = connection.CreateCommand();
+                migration.CommandText = "ALTER TABLE PoCodes ADD COLUMN PendingPassUtc TEXT NULL;";
+                await migration.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
             }
 
             return connection;
@@ -1078,8 +1236,7 @@ public sealed class PoStore
     }
 
     /// <summary>
-    /// Tạo khóa mã chuẩn (GTIN + serial) để so sánh — dùng chung với
-    /// <see cref="ProductionOrderService"/>.
+    /// Legacy compatibility key for callers predating full CodeContent identity.
     /// </summary>
     public static string BuildCodeKey(string gtin, string serial) => $"{gtin}|{serial}";
 

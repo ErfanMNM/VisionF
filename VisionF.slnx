@@ -12,6 +12,8 @@
   <Project Path="ClassLibraryMT/ClassLibraryMT.csproj" />
   <Project Path="TanTienQR/TanTienQR.csproj" />
   <Project Path="tools/AccountsIconTests/AccountsIconTests.csproj" />
+  <Project Path="tools/ApplicationUiTests/ApplicationUiTests.csproj" />
+  <Project Path="tools/CheckeeSendTests/CheckeeSendTests.csproj" />
   <Project Path="tools/ConfigTests/ConfigTests.csproj" />
   <Project Path="tools/CameraHotApplyTests/CameraHotApplyTests.csproj" />
   <Project Path="tools/DeviceConfigurationTests/DeviceConfigurationTests.csproj" />
@@ -23,14 +25,17 @@
   <Project Path="tools/LicenseTool/LicenseTool.csproj" />
   <Project Path="tools/MultiConnectGateway/MultiConnectGateway.csproj" />
   <Project Path="tools/MultiConnectTests/MultiConnectTests.csproj" />
+  <Project Path="tools/MesSimulatorTests/MesSimulatorTests.csproj" />
   <Project Path="tools/PoFlowTests/PoFlowTests.csproj" />
   <Project Path="tools/PoServer/PoServer.csproj" />
+  <Project Path="tools/PoServer/Tests/PoConsoleTests.csproj" />
   <Project Path="tools/PoServerTests/e2e/PoServerE2E.csproj" />
   <Project Path="tools/PoServerTests/PoServerTests.csproj" />
   <Project Path="tools/PoTests/PoTests.csproj" />
   <Project Path="tools/PlcHotApplyTests/PlcHotApplyTests.csproj" />
   <Project Path="tools/PrinterRemoteHost/PrinterRemoteHost.csproj" />
   <Project Path="tools/PrintTests/PrintTests.csproj" />
+  <Project Path="tools/ScanTests/ScanTests.csproj" />
   <Project Path="tools/TanTienLauncher/TanTienLauncher.csproj" />
   <Project Path="tools/UpdateSafetyTests/UpdateSafetyTests.csproj" />
   <Project Path="tools/UpdateSendTests/UpdateSendTests.csproj" />

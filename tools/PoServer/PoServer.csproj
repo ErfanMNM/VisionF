@@ -16,6 +16,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\ClassLibraryMT.Po\ClassLibraryMT.Po.csproj" />
+    <ProjectReference Include="..\..\ClassLibraryMT.PoServer\ClassLibraryMT.PoServer.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="Tests/**/*.cs" />
   </ItemGroup>
 
   <!-- Copy giao diện web tạo PO mẫu vào output -->

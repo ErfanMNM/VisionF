@@ -53,6 +53,9 @@ public sealed class ScanSendFilter
     /// </summary>
     public string? CodeContains { get; set; }
 
+    /// <summary>Đối chiếu nguyên CodeContent chính xác, phân biệt hoa thường; null = không lọc.</summary>
+    public string? CodeContentEquals { get; set; }
+
     /// <summary>
     /// Chỉ lấy bản ghi có kết quả quét <c>Pass</c> hay không.
     /// </summary>

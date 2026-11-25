@@ -16,19 +16,20 @@ public sealed class ScanRowViewModel
     public ScanRowViewModel(ScanRecord record)
     {
         TimeText = record.TimestampUtc.ToLocalTime().ToString("HH:mm:ss.fff", ViCulture);
-        // Hiển thị nguyên nội dung camera gửi lên (full QR), không tách GTIN / serial.
-        CodeText = string.IsNullOrWhiteSpace(record.Raw)
-            ? record.Serial ?? record.Gtin ?? "—"
-            : record.Raw;
+        CodeText = record.CodeContent;
         OutcomeText = record.Outcome switch
         {
             ScanOutcome.Pass => "Pass",
             ScanOutcome.NoRead => "NoRead",
-            ScanOutcome.Duplicate => "Trùng mã",
+            ScanOutcome.Duplicate => "Trùng",
+            ScanOutcome.InvalidForOrder => "Không tồn tại",
+            ScanOutcome.NoProductionOrder => "Chưa chạy PO",
+            ScanOutcome.Halted => "Đã dừng",
+            ScanOutcome.PlcError => "Lỗi PLC",
             ScanOutcome.Overload => "Quá tải",
-            _ => "Sai định dạng",
+            _ => "Lỗi",
         };
-        PlcText = record.Outcome == ScanOutcome.Overload
+        PlcText = record.Outcome is ScanOutcome.Overload or ScanOutcome.NoProductionOrder or ScanOutcome.Halted
             ? "Bỏ qua"
             : record.PlcWritten ? "Đã ghi" : "Lỗi";
         ProcessingTimeText = $"{record.ProcessingTimeMs:F3} ms";
@@ -77,7 +78,7 @@ public sealed class ScanRowViewModel
     public bool IsOverload => OutcomeText == "Quá tải";
 
     /// <summary>true khi mã sai định dạng (badge đỏ).</summary>
-    public bool IsInvalid => OutcomeText == "Sai định dạng";
+    public bool IsInvalid => !IsPass && !IsWarningOutcome;
 
     /// <summary>Class style cho trạng thái ghi PLC.</summary>
     public string PlcBadgeClass => PlcText switch

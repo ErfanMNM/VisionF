@@ -19,11 +19,13 @@ namespace TanTienQR.Services;
 /// <para>
 /// Quy tắc xử lý kết quả:
 /// <list type="bullet">
-/// <item>HTTP 200 -> đánh dấu <c>Sent</c> (kèm thời điểm gửi).</item>
-/// <item>HTTP != 200 -> đánh dấu <c>Failed</c> kèm mã HTTP + thông điệp,
+/// <item>HTTP thành công và Checkee chấp nhận -> đánh dấu <c>Sent</c> (kèm thời điểm gửi).</item>
+/// <item>HTTP lỗi hoặc Checkee từ chối nghiệp vụ -> đánh dấu <c>Failed</c> kèm mã HTTP + thông điệp,
 /// KHÔNG tự thử lại. Người dùng xem trong bảng "Mã gửi lỗi" và bấm "Gửi lại".</item>
 /// <item>Không có phản hồi (timeout / lỗi mạng) -> giữ mã ở trạng thái
 /// <c>Pending</c> để thử lại ở chu kỳ sau (KHÔNG bỏ mã).</item>
+/// <item>Thiếu metadata GTIN sản phẩm / mã lô -> giữ <c>Pending</c>,
+/// giải thích thông tin cần bổ sung; không thay đổi kết quả quét Pass.</item>
 /// </list>
 /// </para>
 ///
@@ -37,6 +39,7 @@ internal sealed class CheckeeSendWorker : BackgroundService
     private readonly IScanSendStatusStore _sendStore;
     private readonly IScanRecordWriter _scanWriter;
     private readonly CheckeeOptions _opt;
+    private readonly CheckeeOutboundOptions _outbound;
     private readonly ILogger<CheckeeSendWorker> _logger;
     private readonly ScanIntakeGate _intake;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
@@ -50,6 +53,7 @@ internal sealed class CheckeeSendWorker : BackgroundService
         IScanSendStatusStore sendStore,
         IScanRecordWriter scanWriter,
         IOptions<CheckeeOptions> options,
+        IOptions<CheckeeOutboundOptions> outbound,
         ScanIntakeGate intake,
         ILogger<CheckeeSendWorker> logger)
     {
@@ -57,6 +61,7 @@ internal sealed class CheckeeSendWorker : BackgroundService
         _sendStore = sendStore;
         _scanWriter = scanWriter;
         _opt = options.Value;
+        _outbound = outbound.Value;
         _intake = intake;
         _logger = logger;
     }
@@ -197,6 +202,10 @@ internal sealed class CheckeeSendWorker : BackgroundService
         {
             await _scanWriter.FlushAsync(ct).ConfigureAwait(false);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Không đồng bộ được bản ghi quét mã trước khi gửi Checkee.");
@@ -216,71 +225,66 @@ internal sealed class CheckeeSendWorker : BackgroundService
             $"Đang gửi {pending.Count} mã lên Checkee...",
             isError: false);
 
-        // Gom theo (GTIN, batchCode) vì API Checkee nhận một GTIN + batchCode
-        // cho mỗi request, kèm danh sách serialNumbers.
+        // GTIN chỉ là metadata bắt buộc của giao thức Checkee. Định danh mã
+        // gửi trong serialNumbers luôn là CodeContent đầy đủ, không parse QR.
         var groups = pending
-            .GroupBy(r => (Gtin: NormalizeGtin(r.Gtin), Batch: NormalizeBatch(r)))
+            .GroupBy(r => (Gtin: ResolveProductGtin(r), Batch: NormalizeBatch(r)))
             .ToList();
 
         var sentCount = 0;
         var failedCount = 0;
+        var blockedCount = 0;
+        var transientCount = 0;
+        var blockedReasons = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var group in groups)
         {
             var gtin = group.Key.Gtin;
             var batchCode = group.Key.Batch;
 
-            // Mã không có GTIN hoặc batch code -> không gửi được (API bắt buộc).
-            // Đánh dấu lỗi để người dùng thấy và xử lý.
+            // Thiếu metadata cấu hình không phải server từ chối mã. Giữ Pending
+            // để gửi lại sau khi bổ sung mà không mất bản ghi Pass.
             if (string.IsNullOrWhiteSpace(gtin)
                 || string.IsNullOrWhiteSpace(batchCode))
             {
+                var missing = new List<string>();
+                if (string.IsNullOrWhiteSpace(gtin)) missing.Add("Checkee:ProductGtin (GTIN sản phẩm)");
+                if (string.IsNullOrWhiteSpace(batchCode)) missing.Add("mã lô Checkee:BatchCode hoặc mã PO");
+                var message = "Đang chờ bổ sung " + string.Join(" và ", missing) + ". Mã quét vẫn được giữ lại.";
+                blockedReasons.Add(message);
                 foreach (var record in group)
                 {
-                    var missing = string.IsNullOrWhiteSpace(gtin)
-                        ? "thiếu GTIN"
-                        : "thiếu mã lô (batch code)";
-
-                    await _sendStore.MarkFailedAsync(
-                        record.Id,
-                        0,
-                        $"Không gửi được: mã {missing}. Hãy cấu hình GTIN khi quét và mã lô trong tab Cấu hình.",
-                        ct).ConfigureAwait(false);
-
-                    failedCount++;
+                    await _sendStore.MarkPendingAsync(record.Id, message, ct).ConfigureAwait(false);
+                    blockedCount++;
                 }
 
                 continue;
             }
 
-            var serials = group
-                .Select(r => string.IsNullOrWhiteSpace(r.Serial) ? r.Code : r.Serial)
-                .Where(s => !string.IsNullOrWhiteSpace(s))
-                .Distinct(StringComparer.Ordinal)
-                .ToList();
-
-            if (serials.Count == 0)
+            // Không được đánh dấu Sent cho bản ghi không có nội dung chỉ vì
+            // cùng nhóm metadata với một bản ghi gửi được.
+            var recordsToSend = new List<ScanRecordEntity>();
+            foreach (var record in group)
             {
-                // Không có serial nào để gửi -> đánh dấu lỗi cho rõ ràng.
-                foreach (var record in group)
+                if (string.IsNullOrWhiteSpace(record.CodeContent))
                 {
-                    await _sendStore.MarkFailedAsync(
-                        record.Id,
-                        0,
-                        "Không gửi được: bản ghi không có mã serial.",
-                        ct).ConfigureAwait(false);
-
-                    failedCount++;
+                    const string message = "Đang chờ đối soát: bản ghi không có CodeContent. Mã quét vẫn được giữ lại.";
+                    await _sendStore.MarkPendingAsync(record.Id, message, ct).ConfigureAwait(false);
+                    blockedReasons.Add(message);
+                    blockedCount++;
                 }
-
-                continue;
+                else recordsToSend.Add(record);
             }
+            if (recordsToSend.Count == 0) continue;
+
+            var codeContents = recordsToSend.Select(record => record.CodeContent)
+                .Distinct(StringComparer.Ordinal).ToList();
 
             CheckeeSendResult result;
             try
             {
                 result = await _client
-                    .ActivateAsync(gtin, batchCode, _opt.SerialType, serials, ct)
+                    .ActivateAsync(gtin, batchCode, _opt.SerialType, codeContents, ct)
                     .ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -291,13 +295,14 @@ internal sealed class CheckeeSendWorker : BackgroundService
             {
                 // Lỗi không lường trước -> coi như lỗi tạm thời, giữ mã chờ gửi.
                 _logger.LogError(ex, "Lỗi khi gọi API kích hoạt mã trên Checkee.");
-                await MarkTransientAsync(group.ToList(), ex.Message, ct).ConfigureAwait(false);
+                await MarkTransientAsync(recordsToSend, ex.Message, ct).ConfigureAwait(false);
+                transientCount += recordsToSend.Count;
                 continue;
             }
 
             if (result.Ok)
             {
-                foreach (var record in group)
+                foreach (var record in recordsToSend)
                 {
                     await _sendStore.MarkSentAsync(record.Id, result.Message, ct)
                         .ConfigureAwait(false);
@@ -307,25 +312,26 @@ internal sealed class CheckeeSendWorker : BackgroundService
 
                 _logger.LogInformation(
                     "Đã gửi {Count} mã (GTIN {Gtin}, lô {Batch}) lên Checkee.",
-                    group.Count(),
+                    recordsToSend.Count,
                     gtin,
                     batchCode);
             }
             else if (result.IsTransient)
             {
                 // Server không phản hồi -> giữ mã ở trạng thái chờ gửi.
-                await MarkTransientAsync(group.ToList(), result.Message, ct)
+                await MarkTransientAsync(recordsToSend, result.Message, ct)
                     .ConfigureAwait(false);
+                transientCount += recordsToSend.Count;
 
                 _logger.LogWarning(
                     "Checkee không phản hồi, giữ {Count} mã để thử lại ở chu kỳ sau: {Message}",
-                    group.Count(),
+                    recordsToSend.Count,
                     result.Message);
             }
             else
             {
                 // Server đã trả lỗi -> đánh dấu Failed, KHÔNG tự thử lại.
-                foreach (var record in group)
+                foreach (var record in recordsToSend)
                 {
                     await _sendStore.MarkFailedAsync(
                         record.Id,
@@ -338,15 +344,16 @@ internal sealed class CheckeeSendWorker : BackgroundService
 
                 _logger.LogWarning(
                     "Checkee từ chối {Count} mã (HTTP {Code}): {Message}",
-                    group.Count(),
+                    recordsToSend.Count,
                     result.StatusCode,
                     result.Message);
             }
         }
 
-        _state.SetStatus(
-            $"Đã gửi {sentCount} mã thành công, {failedCount} mã lỗi.",
-            isError: failedCount > 0);
+        var status = $"Đã gửi {sentCount} mã thành công, {failedCount} mã lỗi.";
+        if (transientCount > 0) status += $" {transientCount} mã chờ thử lại khi Checkee phản hồi.";
+        if (blockedCount > 0) status += $" {blockedCount} mã đang chờ xử lý. " + string.Join(" ", blockedReasons);
+        _state.SetStatus(status, isError: failedCount > 0 || blockedCount > 0 || transientCount > 0);
 
         _state.SetLastRunUtc(DateTime.UtcNow);
 
@@ -369,9 +376,13 @@ internal sealed class CheckeeSendWorker : BackgroundService
     }
 
     /// <summary>
-    /// GTIN chuẩn hoá (bỏ khoảng trắng). Rỗng nghĩa là bản ghi không có GTIN.
+    /// Metadata GTIN của request: ưu tiên cấu hình sản phẩm, chỉ fallback
+    /// metadata đã lưu trong bản ghi cũ. Tuyệt đối không phân tích CodeContent.
     /// </summary>
-    private static string NormalizeGtin(string? gtin) => gtin?.Trim() ?? string.Empty;
+    private string ResolveProductGtin(ScanRecordEntity record) =>
+        !string.IsNullOrWhiteSpace(_outbound.ProductGtin)
+            ? _outbound.ProductGtin.Trim()
+            : record.Gtin?.Trim() ?? string.Empty;
 
     /// <summary>
     /// Mã lô dùng cho request: ưu tiên mã lô của bản ghi, sau đó tới mã lô

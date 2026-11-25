@@ -129,30 +129,23 @@ try
         BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null,
         new object?[] { workerReader, null, null, null, wrapped, null, null, intake, logger }, null)!;
     var apply = workerType.GetMethod("ApplyConfigurationAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
-    var duplicate = workerType.GetMethod("IsDuplicate", BindingFlags.Instance | BindingFlags.NonPublic)!;
     Task Apply(CameraConfig target, CancellationToken token = default) => (Task)apply.Invoke(worker, new object[] { target, token })!;
     var unsafeRejected = false;
     try { await Apply(new CameraConfig { Ip = "127.0.0.1", Port = portB }); }
     catch (InvalidOperationException) { unsafeRejected = true; }
     Check(unsafeRejected, "Worker từ chối đổi camera nếu chưa chặn nhận mã");
     suspendedMethod.Invoke(intake, new object[] { true });
-    Check(!(bool)duplicate.Invoke(worker, new object[] { "GTIN|SERIAL" })!, "Cache chống trùng nhận mã đầu");
-    await Apply(new CameraConfig { Ip = "127.0.0.1", Port = portB, DuplicateWindowSeconds = 60 });
-    Check(workerReader.Port == portB && (int)optionsType.GetProperty("Port")!.GetValue(options)! == portB
-        && (int)optionsType.GetProperty("DuplicateWindowSeconds")!.GetValue(options)! == 60,
+    await Apply(new CameraConfig { Ip = "127.0.0.1", Port = portB });
+    Check(workerReader.Port == portB && (int)optionsType.GetProperty("Port")!.GetValue(options)! == portB,
         "Apply worker cập nhật Reader và options dùng chung không restart");
-    Check((bool)duplicate.Invoke(worker, new object[] { "GTIN|SERIAL" })!, "Đổi cấu hình vẫn giữ cache chống trùng đã có");
-    var recent = (Dictionary<string, DateTime>)workerType.GetField("_recent", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(worker)!;
-    recent["GTIN|EXPIRED"] = DateTime.UtcNow - TimeSpan.FromSeconds(10);
-    await Apply(new CameraConfig { Ip = "127.0.0.1", Port = portB, DuplicateWindowSeconds = 5 });
-    Check(!(bool)duplicate.Invoke(worker, new object[] { "GTIN|EXPIRED" })!, "Cửa sổ chống trùng mới có hiệu lực ngay");
-    var duplicateValidationRejected = false;
-    try { await Apply(new CameraConfig { Ip = "127.0.0.1", Port = portA, DuplicateWindowSeconds = 0 }); }
-    catch (ArgumentOutOfRangeException) { duplicateValidationRejected = true; }
-    Check(duplicateValidationRejected && workerReader.Port == portB
-        && (int)optionsType.GetProperty("DuplicateWindowSeconds")!.GetValue(options)! == 5,
-        "Cửa sổ không hợp lệ không áp dụng một phần endpoint/options");
+    var endpointValidationRejected = false;
+    try { await Apply(new CameraConfig { Ip = "127.0.0.1", Port = 0 }); }
+    catch (ArgumentOutOfRangeException) { endpointValidationRejected = true; }
+    Check(endpointValidationRejected && workerReader.Port == portB
+        && (int)optionsType.GetProperty("Port")!.GetValue(options)! == portB,
+        "Endpoint không hợp lệ không áp dụng một phần Reader/options");
     ((IDisposable)worker).Dispose();
+    passed += await CameraCodeContentChecks.RunAsync();
     Console.WriteLine($"Đã qua {passed} kiểm tra hot-apply Camera. Chỉ dùng TCP loopback, không gọi PLC thật.");
     return 0;
 }

@@ -87,3 +87,7 @@ dotnet build TanTienQR/TanTienQR.csproj -c Debug
 ```
 
 `tools/PrintTests` kiểm tra claim đúng số lượng, ghi `Sent` trước khi truyền, xác nhận `Printed`, đối soát `NoResponse` và không lấy lại mã đã kết thúc. Cần thử thêm với máy G10 thật để xác nhận IP, port và định dạng phản hồi của firmware.
+
+### Nội dung mã trong hàng đợi
+
+Mỗi phần tử hàng đợi dùng nguyên `CodeContent` của PO. Máy in gửi chính nội dung này; trạng thái in và kích hoạt đối chiếu theo toàn bộ chuỗi, phân biệt hoa thường, không tách GTIN/serial. Các cột `Code` trong DB PO/hàng đợi in được giữ để tương thích DB cũ và lưu toàn bộ CodeContent.

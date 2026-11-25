@@ -374,7 +374,7 @@ internal sealed class ScanStore
         foreach (var r in records)
         {
             pReceived.Value = FormatUtc(r.ReceivedUtc);
-            pCode.Value = r.Code;
+            pCode.Value = r.CodeContent;
             pGtin.Value = r.Gtin;
             pSerial.Value = r.Serial;
             pStatus.Value = r.Status;
@@ -445,13 +445,32 @@ internal sealed class ScanStore
 
             if (filter.Status.HasValue)
             {
-                where += " AND Status = $status";
-                parameters.Add(("$status", ScanStatuses.ToStorage(filter.Status.Value)));
+                if (filter.Status.Value == ScanStatus.Fail)
+                {
+                    // Fail remains the aggregate rejection filter for legacy UI/report consumers.
+                    where += " AND Status IN ($status, $duplicate, $invalidForOrder, $noRead)";
+                    parameters.Add(("$status", ScanStatuses.Fail));
+                    parameters.Add(("$duplicate", ScanStatuses.Duplicate));
+                    parameters.Add(("$invalidForOrder", ScanStatuses.InvalidForOrder));
+                    parameters.Add(("$noRead", ScanStatuses.NoRead));
+                }
+                else
+                {
+                    where += " AND Status = $status";
+                    parameters.Add(("$status", ScanStatuses.ToStorage(filter.Status.Value)));
+                }
+            }
+
+            if (filter.CodeContentEquals is not null)
+            {
+                // Raw contains the full content for historical rows whose Code held only Serial.
+                where += " AND (CASE WHEN Raw <> '' THEN Raw ELSE Code END) = $codeContent COLLATE BINARY";
+                parameters.Add(("$codeContent", filter.CodeContentEquals));
             }
 
             if (!string.IsNullOrWhiteSpace(filter.CodeContains))
             {
-                where += " AND (Code LIKE $code OR Serial LIKE $code OR Raw LIKE $code)";
+                where += " AND (Code LIKE $code OR Raw LIKE $code)";
                 parameters.Add(("$code", $"%{filter.CodeContains}%"));
             }
 
@@ -533,7 +552,7 @@ internal sealed class ScanStore
     }
 
     /// <summary>
-    /// Lấy tập serial đã từng xuất hiện trong lịch sử quét với kết quả Pass.
+    /// Lấy tập nội dung mã đầy đủ đã xuất hiện trong lịch sử với kết quả Pass.
     ///
     /// <para>
     /// Dùng cho cơ chế chống trùng lịch sử toàn cục: trước khi gửi mã lên
@@ -544,8 +563,8 @@ internal sealed class ScanStore
     /// </summary>
     /// <param name="orderNo">Mã PO hiện tại (bỏ qua bản ghi của PO này).</param>
     /// <param name="ct">Token hủy.</param>
-    /// <returns>Danh sách serial đã từng quét (không trùng lặp).</returns>
-    public async Task<IReadOnlyList<string>> GetSeenSerialsAsync(
+    /// <returns>Danh sách mã nguyên văn; không cắt, trim hay so sánh không phân biệt hoa thường.</returns>
+    public async Task<IReadOnlyList<string>> GetSeenCodeContentsAsync(
         string orderNo,
         CancellationToken ct = default)
     {
@@ -553,9 +572,10 @@ internal sealed class ScanStore
 
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-            SELECT DISTINCT Serial FROM ScanRecords
+            SELECT DISTINCT CASE WHEN Raw <> '' THEN Raw ELSE Code END AS CodeContent
+            FROM ScanRecords
             WHERE Status = $pass
-              AND Serial <> ''
+              AND (Raw <> '' OR Code <> '')
               AND (OrderNo <> $orderNo OR OrderNo = '');
             """;
         cmd.Parameters.AddWithValue("$pass", ScanStatuses.Pass);
@@ -571,6 +591,13 @@ internal sealed class ScanStore
         return list;
     }
 
+    /// <summary>Tương thích tên cũ; không còn trả serial đã tách.</summary>
+    [Obsolete("Use GetSeenCodeContentsAsync; production identity is the complete code.")]
+    public Task<IReadOnlyList<string>> GetSeenSerialsAsync(
+        string orderNo,
+        CancellationToken ct = default) =>
+        GetSeenCodeContentsAsync(orderNo, ct);
+
     /// <summary>
     /// Chuyển dòng dữ liệu thành <see cref="ScanRecordEntity"/>.
     /// </summary>
@@ -578,7 +605,8 @@ internal sealed class ScanStore
     {
         Id = record.GetInt64(0),
         ReceivedUtc = ParseUtc(record.GetString(1)),
-        Code = record.GetString(2),
+        // Older versions stored only Serial in Code, while Raw retained the full camera payload.
+        CodeContent = record.GetString(9) is { Length: > 0 } raw ? raw : record.GetString(2),
         Gtin = record.GetString(3),
         Serial = record.GetString(4),
         Status = record.GetString(5),

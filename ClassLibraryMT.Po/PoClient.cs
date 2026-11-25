@@ -137,7 +137,7 @@ public sealed class PoClient : IPoClient, IDisposable
         var request = new PoActivateRequest
         {
             OrderNo = orderNo,
-            Serials = [.. serials],
+            CodeContents = [.. serials],
         };
 
         using var content = JsonContent.Create(
