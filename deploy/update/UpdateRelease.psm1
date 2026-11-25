@@ -76,11 +76,16 @@ function New-ReleasePackage {
     $isLinuxPackage = $Rid -eq 'linux-x64'
     $main = if ($isLinuxPackage) { 'TanTienQR' } else { 'TanTienQR.exe' }
     $launcher = if ($isLinuxPackage) { 'TanTienLauncher' } else { 'TanTienLauncher.exe' }
+    $printerRemote = 'TanTien.PrinterRemoteHost.exe'
     $libraryPattern = if ($isLinuxPackage) { '\.so(\.[0-9]+)*\z' } else { '\.dll\z' }
     $sources = [ordered]@{}
     $files = @(
         Get-ChildItem -LiteralPath $AppDirectory -File -Force | Sort-Object -Property Name | ForEach-Object {
-            if ($_.Name -ceq $main -or $_.Name -match $libraryPattern) {
+            $isPrinterRemote = -not $isLinuxPackage -and $_.Name -ceq $printerRemote
+            if ($_.Extension -ieq '.exe' -and $_.Name -cne $main -and -not $isPrinterRemote) {
+                throw "Không cho phép chương trình '$($_.Name)' trong gói $Rid."
+            }
+            if ($_.Name -ceq $main -or $isPrinterRemote -or $_.Name -match $libraryPattern) {
                 if ($_.Name -notmatch '^[a-zA-Z0-9][a-zA-Z0-9._-]*\z' -or
                     ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $_.Length -lt 1) {
                     throw "Không thể đóng gói tệp '$($_.Name)'."

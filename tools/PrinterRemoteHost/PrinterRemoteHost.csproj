@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AssemblyName>TanTien.PrinterRemoteHost</AssemblyName>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PublishAot>false</PublishAot>
+    <PublishTrimmed>false</PublishTrimmed>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../TanTienQR/Services/PrinterRemote/PrinterRemoteProtocol.cs" Link="PrinterRemoteProtocol.cs" />
+    <Compile Include="../../TanTienQR/Services/PrinterRemote/PrinterRemoteModels.cs" Link="PrinterRemoteModels.cs" />
+    <Compile Include="../../TanTienQR/Services/PrinterRemote/WindowsPrinterCredentialStore.cs" Link="WindowsPrinterCredentialStore.cs" />
+  </ItemGroup>
+</Project>

@@ -209,6 +209,38 @@ public sealed class PrintConfig
 
     [ConfigField("Chu kỳ đối soát (ms)", Order = 10, Min = 1000, Max = 60000, RequiresRestart = true)]
     [JsonPropertyName("ReconcileIntervalMs")] public int ReconcileIntervalMs { get; set; } = 2500;
+
+    [JsonPropertyName("Remote")] public PrinterRemoteConfig Remote { get; set; } = new();
+}
+
+/// <summary>Cấu hình màn hình máy in; mật khẩu được lưu riêng trong kho Windows.</summary>
+[ConfigSection(Key = "PrinterRemote", Title = "MÁY IN · ĐIỀU KHIỂN TỪ XA", Order = 49, Icon = "Printer",
+    Description = "Nhúng màn hình RDP trong tab Máy in trên Windows. Lưu thay đổi rồi khởi động lại ứng dụng.")]
+public sealed class PrinterRemoteConfig
+{
+    [ConfigField("Bật màn hình máy in", Order = 1, RequiresRestart = true)]
+    [JsonPropertyName("Enabled")] public bool Enabled { get; set; }
+
+    [ConfigField("Host RDP", Order = 2, Required = false, Validation = "IpOrHost", RequiresRestart = true,
+        SkipWhenDisabledBy = "Print:Remote:Enabled", Placeholder = "Để trống để dùng IP máy in đang chọn")]
+    [JsonPropertyName("Host")] public string Host { get; set; } = "";
+
+    [ConfigField("Cổng RDP", Order = 3, Min = 1, Max = 65535, RequiresRestart = true, SkipWhenDisabledBy = "Print:Remote:Enabled")]
+    [JsonPropertyName("Port")] public int Port { get; set; } = 3389;
+
+    [ConfigField("Tài khoản máy in", Order = 4, Required = true, RequiresRestart = true, SkipWhenDisabledBy = "Print:Remote:Enabled",
+        HelpText = "Tài khoản RDP của máy in. Nhập và lưu mật khẩu tại tab Máy in.")]
+    [JsonPropertyName("Username")] public string Username { get; set; } = "";
+
+    [ConfigField("Tên lưu thông tin đăng nhập", Order = 5, Required = false, RequiresRestart = true,
+        SkipWhenDisabledBy = "Print:Remote:Enabled", HelpText = "Để trống để dùng tên theo mã máy in. Không nhập mật khẩu vào đây.")]
+    [JsonPropertyName("CredentialTarget")] public string CredentialTarget { get; set; } = "";
+
+    [ConfigField("Tự kết nối khi mở tab", Order = 6, RequiresRestart = true)]
+    [JsonPropertyName("AutoConnect")] public bool AutoConnect { get; set; } = true;
+
+    [ConfigField("Timeout kết nối (giây)", Order = 7, Min = 3, Max = 120, RequiresRestart = true, SkipWhenDisabledBy = "Print:Remote:Enabled")]
+    [JsonPropertyName("ConnectTimeoutSeconds")] public int ConnectTimeoutSeconds { get; set; } = 15;
 }
 
 /// <summary>
@@ -533,6 +565,7 @@ public sealed class AppConfigSnapshot
 [JsonSerializable(typeof(MultiConnectConfig))]
 [JsonSerializable(typeof(PoConfig))]
 [JsonSerializable(typeof(PrintConfig))]
+[JsonSerializable(typeof(PrinterRemoteConfig))]
 [JsonSerializable(typeof(PoServerConfig))]
 [JsonSerializable(typeof(MesSimulatorConfig))]
 [JsonSerializable(typeof(CheckeeConfig))]

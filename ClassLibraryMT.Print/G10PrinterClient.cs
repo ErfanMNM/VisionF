@@ -8,9 +8,11 @@ namespace ClassLibraryMT.Print;
 
 public sealed class G10PrinterClient : IPrinterClient
 {
+    private const int FilePollIntervalMs = 15_000;
     private readonly PrinterOptions _options;
     private readonly int _timeoutMs;
     private readonly ILogger<G10PrinterClient>? _logger;
+    private readonly object _disposeGate = new();
     private readonly SemaphoreSlim _io = new(1, 1);
     private TcpClient? _tcp;
     private NetworkStream? _stream;
@@ -18,6 +20,9 @@ public sealed class G10PrinterClient : IPrinterClient
     private Task? _readerTask;
     private Channel<string> _responses = NewResponseChannel();
     private PrinterStatusSnapshot _status;
+    private PrinterFilesSnapshot _files = new("", []);
+    private long _nextFilePollTick;
+    private Task? _disposeTask;
 
     public G10PrinterClient(PrinterOptions options, int timeoutMs = 1500, ILogger<G10PrinterClient>? logger = null)
     {
@@ -27,22 +32,40 @@ public sealed class G10PrinterClient : IPrinterClient
 
     public string PrinterId => _options.Id;
     public PrinterStatusSnapshot Status => _status;
+    public PrinterFilesSnapshot Files => _files;
     public event Func<string, Task>? PrintConfirmed;
     public event Action<PrinterCommandLog>? CommandObserved;
 
     public async Task ConnectAsync(CancellationToken ct = default)
     {
-        if (_tcp?.Connected == true) return;
+        await _io.WaitAsync(ct).ConfigureAwait(false);
+        try { await EnsureConnectedCoreAsync(ct).ConfigureAwait(false); }
+        finally { _io.Release(); }
+    }
+
+    private async Task EnsureConnectedCoreAsync(CancellationToken ct)
+    {
+        if (_status.Connection == PrinterConnectionState.Connected && _tcp?.Connected == true && _stream is not null)
+            return;
+
         _status = _status with { Connection = PrinterConnectionState.Connecting, Message = "Đang kết nối…", ObservedUtc = DateTime.UtcNow };
-        await DisconnectAsync(ct).ConfigureAwait(false);
+        await DisconnectCoreAsync(ct).ConfigureAwait(false);
+        _status = _status with { Connection = PrinterConnectionState.Connecting, Message = "Đang kết nối…", ObservedUtc = DateTime.UtcNow };
         var tcp = new TcpClient();
         try
         {
-            await tcp.ConnectAsync(_options.Ip, _options.Port, ct).ConfigureAwait(false);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(_timeoutMs);
+            try { await tcp.ConnectAsync(_options.Ip, _options.Port, timeout.Token).ConfigureAwait(false); }
+            catch (OperationCanceledException ex) when (!ct.IsCancellationRequested)
+            {
+                throw new TimeoutException($"Hết thời gian kết nối máy in {_options.Ip}:{_options.Port} sau {_timeoutMs} ms.", ex);
+            }
             _tcp = tcp; _stream = tcp.GetStream();
             _readerCts = new CancellationTokenSource();
             _responses = NewResponseChannel();
             _readerTask = Task.Run(() => ReadLoopAsync(_stream, _readerCts.Token));
+            _nextFilePollTick = 0;
             _status = _status with { Connection = PrinterConnectionState.Connected, Message = "Đã kết nối", ObservedUtc = DateTime.UtcNow };
         }
         catch
@@ -54,6 +77,13 @@ public sealed class G10PrinterClient : IPrinterClient
     }
 
     public async Task DisconnectAsync(CancellationToken ct = default)
+    {
+        await _io.WaitAsync(ct).ConfigureAwait(false);
+        try { await DisconnectCoreAsync(ct).ConfigureAwait(false); }
+        finally { _io.Release(); }
+    }
+
+    private async Task DisconnectCoreAsync(CancellationToken ct)
     {
         _readerCts?.Cancel();
         _stream?.Dispose(); _tcp?.Dispose(); _stream = null; _tcp = null;
@@ -71,13 +101,26 @@ public sealed class G10PrinterClient : IPrinterClient
         await _io.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            await ConnectAsync(ct).ConfigureAwait(false);
+            await EnsureConnectedCoreAsync(ct).ConfigureAwait(false);
             var status = await SendCommandAsync("STATUS", "STATUS", ct).ConfigureAwait(false);
             var ink = await SendCommandAsync("INKV", "INKV", ct).ConfigureAwait(false);
             var buffer = await SendCommandAsync("MFDLEN", "MFDLEN", ct).ConfigureAwait(false);
             var (ink1, ink2) = ParseInk(ink);
             _status = _status with { Connection = PrinterConnectionState.Connected, IsPrinting = ParseInt(status) == 1,
                 Ink1Percent = ink1, Ink2Percent = ink2, BufferLength = ParseInt(buffer), Message = "Đã cập nhật trạng thái", ObservedUtc = DateTime.UtcNow };
+
+            // Bản tin có thể đổi trực tiếp trên HMI. Đọc chậm hơn các trạng thái nhanh,
+            // cùng khóa I/O để phản hồi GFILE không tranh luồng gửi mã PO.
+            if (Environment.TickCount64 >= _nextFilePollTick)
+            {
+                _nextFilePollTick = Environment.TickCount64 + FilePollIntervalMs;
+                try { await SendCommandAsync("GFILE", "GFILE", ct).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                catch (OperationCanceledException ex)
+                {
+                    _logger?.LogDebug(ex, "Chưa đọc được bản tin máy in {PrinterId}; giữ trạng thái nhanh vừa nhận.", PrinterId);
+                }
+            }
             return _status;
         }
         catch (Exception ex)
@@ -95,7 +138,7 @@ public sealed class G10PrinterClient : IPrinterClient
         await _io.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            await ConnectAsync(ct).ConfigureAwait(false);
+            await EnsureConnectedCoreAsync(ct).ConfigureAwait(false);
             // MFD|MFD_NAME:data — ':' ',' '|' là ký tự điều khiển của frame, phải escape.
             var frame = $"MFD|{_options.MfdName}:{EscapeMfdData(code)}";
             var response = await SendCommandAsync(frame, "MFD", ct).ConfigureAwait(false);
@@ -117,7 +160,7 @@ public sealed class G10PrinterClient : IPrinterClient
         await _io.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            await ConnectAsync(ct).ConfigureAwait(false);
+            await EnsureConnectedCoreAsync(ct).ConfigureAwait(false);
             return await SendCommandAsync(command, expectedPrefix, ct, timeoutMs).ConfigureAwait(false);
         }
         finally { _io.Release(); }
@@ -138,10 +181,16 @@ public sealed class G10PrinterClient : IPrinterClient
         while (true)
         {
             var line = await _responses.Reader.ReadAsync(timeout.Token).ConfigureAwait(false);
-            if (!line.StartsWith(expectedPrefix, StringComparison.OrdinalIgnoreCase)) continue;
+            if (!line.StartsWith(expectedPrefix + "|", StringComparison.OrdinalIgnoreCase)) continue;
 
-            var accepted = line.StartsWith(expectedPrefix + "|OK", StringComparison.OrdinalIgnoreCase)
-                           || line.StartsWith("OK", StringComparison.OrdinalIgnoreCase);
+            var accepted = IsAcceptedResponse(command, expectedPrefix, line);
+            if (command.Equals("GFILE", StringComparison.OrdinalIgnoreCase)
+                && TryParseFilesResponse(line, out var files))
+            {
+                _files = files;
+                _status = _status with { Job = files.CurrentJob, ObservedUtc = DateTime.UtcNow };
+                _nextFilePollTick = Environment.TickCount64 + FilePollIntervalMs;
+            }
             var observers = CommandObserved;
             if (observers is not null)
             {
@@ -201,6 +250,65 @@ public sealed class G10PrinterClient : IPrinterClient
 
     private static Channel<string> NewResponseChannel() => Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
 
+    private static bool IsAcceptedResponse(string command, string prefix, string response)
+    {
+        // Truy vấn trả dữ liệu, không trả ACK "|OK" như các lệnh điều khiển.
+        if (command.Equals("GFILE", StringComparison.OrdinalIgnoreCase))
+            return TryParseFilesResponse(response, out _);
+        if (command.Equals("STATUS", StringComparison.OrdinalIgnoreCase))
+            return ParseInt(response) is 0 or 1;
+        if (command.Equals("MFDLEN", StringComparison.OrdinalIgnoreCase))
+            return ParseInt(response) is >= 0;
+        if (command.Equals("INKV", StringComparison.OrdinalIgnoreCase))
+        {
+            var values = response[(response.IndexOf('|') + 1)..].Split(',', StringSplitOptions.TrimEntries);
+            return values.Length is 1 or 2 && values.All(value =>
+                double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var percent)
+                && percent is >= 0 and <= 100);
+        }
+        return response.StartsWith(prefix + "|OK", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Đọc GFILE|CU:id,id:tên,...; tên bản tin có thể chứa dấu ':'. Phản hồi lỗi,
+    /// mục thiếu tên/Id hoặc Id trùng không được ghi đè danh sách tốt gần nhất.
+    /// </summary>
+    public static bool TryParseFilesResponse(string response, out PrinterFilesSnapshot files)
+    {
+        files = new("", []);
+        if (string.IsNullOrWhiteSpace(response)) return false;
+        response = response.Trim();
+        if (response.EndsWith("\\r\\n", StringComparison.Ordinal)) response = response[..^4].TrimEnd();
+        const string prefix = "GFILE|";
+        if (!response.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) return false;
+
+        string? currentId = null;
+        var parsed = new List<PrinterFileSnapshot>();
+        var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var part in response[prefix.Length..].Split(',', StringSplitOptions.TrimEntries))
+        {
+            // Một số firmware thêm dấu phẩy cuối danh sách.
+            if (part.Length == 0) continue;
+            var separator = part.IndexOf(':');
+            if (separator <= 0) return false;
+            var id = part[..separator].Trim();
+            var name = part[(separator + 1)..].Trim();
+            if (id.Equals("CU", StringComparison.OrdinalIgnoreCase))
+            {
+                if (currentId is not null) return false;
+                currentId = name;
+            }
+            else
+            {
+                if (id.Length == 0 || name.Length == 0 || !ids.Add(id)) return false;
+                parsed.Add(new PrinterFileSnapshot(id, name));
+            }
+        }
+        if (currentId is null) return false;
+        files = new(currentId, parsed.AsReadOnly());
+        return true;
+    }
+
     /// <summary>
     /// Escape dữ liệu theo tài liệu Network port communication protocol.
     /// PDF in dạng \\\\ do bị escape thêm khi dịch; trên dây máy nhận 2 dấu '\'
@@ -229,5 +337,15 @@ public sealed class G10PrinterClient : IPrinterClient
         return (parts.Length > 0 ? Parse(parts[0]) : null, parts.Length > 1 ? Parse(parts[1]) : null);
     }
 
-    public async ValueTask DisposeAsync() { await DisconnectAsync().ConfigureAwait(false); _io.Dispose(); }
+    public ValueTask DisposeAsync()
+    {
+        lock (_disposeGate)
+            return new(_disposeTask ??= DisposeCoreAsync());
+    }
+
+    private async Task DisposeCoreAsync()
+    {
+        await DisconnectAsync().ConfigureAwait(false);
+        _io.Dispose();
+    }
 }

@@ -58,6 +58,7 @@ public static class TanTienAppServices
         // ProductionOrderService để gate mã quét theo PO đang chạy.
         services.AddProductionOrders(configuration);
         services.AddPrinting(configuration);
+        services.AddPrinterRemote(configuration);
         services.AddSingleton<IPrintLicenseGate, PrinterLicenseGate>();
         services.AddSingleton<PrinterMonitorService>();
         services.AddHostedService(sp => sp.GetRequiredService<PrinterMonitorService>());

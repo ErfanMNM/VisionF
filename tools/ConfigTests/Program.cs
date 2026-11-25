@@ -1,5 +1,10 @@
 using System.Text.Json;
+using ClassLibraryMT.Print;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using TanTienQR.Services;
+using TanTienQR.ViewModels;
 
 // ===================================================================
 // Test harness cho logic Cấu hình (validation + phát hiện thay đổi
@@ -418,6 +423,63 @@ var savedText = await File.ReadAllTextAsync(testConfig);
 var savedDoc = JsonDocument.Parse(savedText).RootElement;
 Check("File mau co section Auth", savedDoc.TryGetProperty("Auth", out _));
 Check("File mau co section Logging", savedDoc.TryGetProperty("Logging", out _));
+
+// Remote bổ sung phải tương thích cấu hình cũ và dùng cùng cơ chế restart.
+Console.WriteLine("\n[8] Màn hình máy in: cấu hình cũ, validation và lưu JSON");
+var legacyPrint = JsonSerializer.Deserialize("""{"Print":{"Enabled":true,"Ip":"192.168.10.2"}}""",
+    AppConfigJsonContext.Default.AppConfigSnapshot)!;
+Check("Cấu hình cũ mặc định tắt remote", !legacyPrint.Print.Remote.Enabled && legacyPrint.Print.Remote.Port == 3389);
+var remoteSnapshot = NewSnapshot();
+remoteSnapshot.Print.Remote.Enabled = true;
+Check("Bật remote thiếu tài khoản bị từ chối", !ConfigValidation.Validate(remoteSnapshot, out _));
+remoteSnapshot.Print.Remote.Username = "operator";
+Check("Host trống hợp lệ để dùng IP máy in", ConfigValidation.Validate(remoteSnapshot, out var remoteError), remoteError ?? "");
+remoteSnapshot.Print.Remote.Port = 0;
+Check("Cổng remote ngoài giới hạn bị từ chối", !ConfigValidation.Validate(remoteSnapshot, out _));
+remoteSnapshot.Print.Remote.Port = 3389;
+remoteSnapshot.Print.Remote.Host = "bad host!";
+Check("Host remote sai bị từ chối", !ConfigValidation.Validate(remoteSnapshot, out _));
+remoteSnapshot.Print.Remote.Host = "printer.local";
+Check("Thay đổi remote yêu cầu restart", ConfigDiff.DescribeCriticalChanges(NewSnapshot(), remoteSnapshot).Contains("Bật màn hình máy in"));
+var remoteJson = JsonSerializer.Serialize(remoteSnapshot, AppConfigJsonContext.Default.AppConfigSnapshot);
+var remoteRestored = JsonSerializer.Deserialize(remoteJson, AppConfigJsonContext.Default.AppConfigSnapshot)!;
+Check("Remote round-trip JSON có đủ thông số", remoteRestored.Print.Remote.Enabled
+    && remoteRestored.Print.Remote.Username == "operator" && remoteRestored.Print.Remote.Host == "printer.local");
+Check("Cấu hình remote không có trường mật khẩu", !remoteJson.Contains("\"Password\"", StringComparison.Ordinal));
+
+// Gọi ConfigStore nội bộ bằng reflection chỉ trong harness JIT.
+var remoteConfigDirectory = Path.Combine(Path.GetTempPath(), "tantien-remote-config-" + Guid.NewGuid().ToString("N"));
+Directory.CreateDirectory(remoteConfigDirectory);
+try
+{
+    var configPath = Path.Combine(remoteConfigDirectory, "appsettings.json");
+    File.WriteAllText(configPath, """{"Print":{"Remote":null,"FutureKey":"keep"},"FutureSection":{"value":7}}""");
+    var storeType = typeof(AppConfigSnapshot).Assembly.GetType("TanTienQR.Services.ConfigStore")!;
+    var loggerType = typeof(Microsoft.Extensions.Logging.Abstractions.NullLogger<>).MakeGenericType(storeType);
+    var configStore = Activator.CreateInstance(storeType, Activator.CreateInstance(loggerType), remoteConfigDirectory)!;
+    var loaded = (AppConfigSnapshot)storeType.GetMethod("Load")!.Invoke(configStore, null)!;
+    Check("ConfigStore chuẩn hóa Remote null", loaded.Print.Remote is not null && !loaded.Print.Remote.Enabled);
+    storeType.GetMethod("SaveMerged")!.Invoke(configStore, [remoteSnapshot]);
+    using var remoteSaved = JsonDocument.Parse(File.ReadAllText(configPath));
+    Check("Lưu remote giữ khóa lạ", remoteSaved.RootElement.GetProperty("Print").GetProperty("FutureKey").GetString() == "keep"
+        && remoteSaved.RootElement.GetProperty("FutureSection").GetProperty("value").GetInt32() == 7);
+}
+finally { Directory.Delete(remoteConfigDirectory, recursive: true); }
+
+// Không Start host nên không mở kết nối/worker; xác minh disposal cả TCP và remote đã resolve.
+var disposalBuilder = Host.CreateApplicationBuilder();
+disposalBuilder.Configuration.Sources.Clear();
+disposalBuilder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+{
+    ["Print:Enabled"] = "false",
+    ["Print:Remote:CredentialTarget"] = "TanTien/Test/" + Guid.NewGuid().ToString("N"),
+});
+disposalBuilder.Services.AddTanTienServices(disposalBuilder.Configuration);
+var disposalHost = disposalBuilder.Build();
+_ = disposalHost.Services.GetRequiredService<IPrinterClient>();
+await disposalHost.Services.GetRequiredService<PrinterRemoteViewModel>().ShutdownAsync();
+await ((IAsyncDisposable)disposalHost).DisposeAsync();
+Check("Host dọn được TCP và remote bất đồng bộ", true);
 
 // ---------------------------------------------------------------
 Console.WriteLine("\n========================================");

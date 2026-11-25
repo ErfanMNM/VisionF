@@ -23,12 +23,14 @@ internal sealed partial class PrintViewModel : ViewModelBase, IDisposable
         PrintService print,
         IPrintLicenseGate license,
         PrintOptions options,
-        PrinterMonitorService monitor)
+        PrinterMonitorService monitor,
+        PrinterRemoteViewModel remote)
     {
         _print = print;
         _license = license;
         _options = options;
         _monitor = monitor;
+        Remote = remote;
         Quantity = 100;
 
         CommandHistory.CollectionChanged += OnHistoryChanged;
@@ -41,6 +43,8 @@ internal sealed partial class PrintViewModel : ViewModelBase, IDisposable
     }
 
     public bool CanUse => _license.CanUse;
+    public PrinterRemoteViewModel Remote { get; }
+    public string JobText => string.IsNullOrWhiteSpace(_print.Printer.Status.Job) ? "Chưa xác định bản tin" : _print.Printer.Status.Job;
     public bool CanConnect => CanUse && _options.Enabled;
     public string LicenseMessage => _license.Message;
     public string ModuleMessage => CanUse
@@ -108,6 +112,7 @@ internal sealed partial class PrintViewModel : ViewModelBase, IDisposable
         QueueText = snapshot.QueueText;
         OnPropertyChanged(nameof(PrinterEndpoint));
         OnPropertyChanged(nameof(IsPrinting));
+        OnPropertyChanged(nameof(JobText));
 
         if (_monitor.CommandVersion == _lastCommandVersion) return;
         _lastCommandVersion = _monitor.CommandVersion;
@@ -132,9 +137,8 @@ internal sealed partial class PrintViewModel : ViewModelBase, IDisposable
         IsBusy = true;
         try
         {
-            await _print.ConnectAsync(_cts.Token).ConfigureAwait(true);
-            await RefreshAsync().ConfigureAwait(true);
-            StatusText = "Đã kết nối máy in.";
+            if (await RefreshStatusCoreAsync().ConfigureAwait(true))
+                StatusText = "Đã kết nối và đọc được trạng thái máy in.";
         }
         catch (Exception ex) { StatusText = ex.Message; }
         finally { IsBusy = false; }
@@ -149,14 +153,16 @@ internal sealed partial class PrintViewModel : ViewModelBase, IDisposable
     }
 
     [RelayCommand]
-    private async Task RefreshAsync()
+    private async Task RefreshAsync() => await RefreshStatusCoreAsync().ConfigureAwait(true);
+
+    private async Task<bool> RefreshStatusCoreAsync()
     {
         RefreshLicense();
-        if (!CanUse) return;
+        if (!CanUse) return false;
         if (!CanConnect)
         {
             StatusText = ModuleMessage;
-            return;
+            return false;
         }
         try
         {
@@ -170,10 +176,10 @@ internal sealed partial class PrintViewModel : ViewModelBase, IDisposable
             InkText = $"Mực: {(status.Ink1Percent?.ToString("F1") ?? "—")}% / {(status.Ink2Percent?.ToString("F1") ?? "—")}%";
             var summary = await _print.GetSummaryAsync(_cts.Token).ConfigureAwait(true);
             QueueText = $"Chờ {summary.Pending:N0} · Đã gửi {summary.Sent:N0} · Đã in {summary.Printed:N0} · Không phản hồi {summary.NoResponse:N0}";
+            OnPropertyChanged(nameof(IsPrinting));
+            return status.Connection == PrinterConnectionState.Connected;
         }
-        catch (Exception ex) { StatusText = ex.Message; }
-
-        OnPropertyChanged(nameof(IsPrinting));
+        catch (Exception ex) { StatusText = ex.Message; return false; }
     }
 
     [RelayCommand]
@@ -256,6 +262,7 @@ internal sealed partial class PrintViewModel : ViewModelBase, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        Remote.Dispose();
         _timer.Stop();
         _timer.Tick -= OnMonitorTick;
         _cts.Cancel();

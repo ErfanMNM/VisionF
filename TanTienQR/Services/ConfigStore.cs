@@ -387,6 +387,8 @@ internal sealed class ConfigStore
         snapshot.Web ??= new WebConfig();
         snapshot.Scanner ??= new ScannerConfig();
         snapshot.Po ??= new PoConfig();
+        snapshot.Print ??= new PrintConfig();
+        snapshot.Print.Remote ??= new PrinterRemoteConfig();
         snapshot.PoServer ??= new PoServerConfig();
         snapshot.Checkee ??= new CheckeeConfig();
         snapshot.Logging ??= new LoggingConfig();

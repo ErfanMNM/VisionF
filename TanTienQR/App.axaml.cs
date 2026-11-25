@@ -279,11 +279,13 @@ public partial class App : Application
             await host.Services.GetRequiredService<CheckeeSendWorker>().DrainAsync(timeout.Token);
             await host.Services.GetRequiredService<IScanRecordWriter>().VerifyHealthyAsync(timeout.Token);
             await host.Services.GetRequiredService<SqliteLogWriter>().VerifyHealthyAsync(timeout.Token);
+            // Helper phải nhả EXE trước khi launcher thay bộ chương trình.
+            await host.Services.GetRequiredService<PrinterRemoteViewModel>().ShutdownAsync().WaitAsync(timeout.Token);
             stopping = true;
             await host.StopAsync(timeout.Token);
             await host.Services.GetRequiredService<IScanRecordWriter>().VerifyHealthyAsync(timeout.Token);
             await host.Services.GetRequiredService<SqliteLogWriter>().VerifyHealthyAsync(timeout.Token);
-            host.Dispose();
+            await DisposeHostAsync(host);
             _host = null;
             UpdateProtocol.RequestInstall(version);
             desktop.Shutdown();
@@ -341,6 +343,8 @@ public partial class App : Application
         // Tắt worker/heartbeat trước khi đóng cửa sổ.
         try
         {
+            _host?.Services.GetRequiredService<PrinterRemoteViewModel>().ShutdownAsync()
+                .WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
             _host?.StopAsync(TimeSpan.FromSeconds(3)).GetAwaiter().GetResult();
         }
         catch
@@ -348,7 +352,17 @@ public partial class App : Application
             // Bỏ qua lỗi khi shutdown.
         }
 
-        _host?.Dispose();
+        if (_host is { } host)
+            DisposeHostAsync(host).GetAwaiter().GetResult();
         _host = null;
+    }
+
+    private static async Task DisposeHostAsync(IHost host)
+    {
+        // Container có client TCP/remote chỉ triển khai IAsyncDisposable.
+        if (host is IAsyncDisposable asynchronous)
+            await asynchronous.DisposeAsync().ConfigureAwait(false);
+        else
+            host.Dispose();
     }
 }

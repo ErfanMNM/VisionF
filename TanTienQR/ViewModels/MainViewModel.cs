@@ -410,6 +410,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
 
         // Cập nhật luôn cờ hiển thị tab theo quyền mới.
         RefreshPermissionFlags();
+        RefreshPrinterRemotePresentation();
     }
 
     /// <summary>
@@ -693,6 +694,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         {
             UpdateClock();
             RefreshAppState();
+            RefreshPrinterRemotePresentation();
         };
         _pollTimer.Start();
 
@@ -772,6 +774,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     {
         var check = _license.Current;
         Print.RefreshLicense();
+        RefreshPrinterRemotePresentation();
 
         HwidText = _license.Hwid;
 
@@ -821,6 +824,8 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
             return;
 
         _disposed = true;
+        RefreshPrinterRemotePresentation();
+        Print.Dispose();
 
         // Ngừng theo dõi phiên đăng nhập (tránh giữ tham chiếu tới VM).
         _session.Changed -= OnSessionChanged;

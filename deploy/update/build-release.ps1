@@ -50,12 +50,20 @@ try {
     $build = Join-Path $temp 'build'
     $winApp = Join-Path $build 'win-x64/app'
     $winLauncher = Join-Path $build 'win-x64/launcher'
+    $winHelper = Join-Path $build 'win-x64/printer-remote'
     $linux = Join-Path $build 'linux-x64'
     Push-Location $source
     try {
-        $common = @('-c', 'Release', '-r', 'win-x64', "-p:Version=$Version", "-p:UpdatePublicKey=$publicKey")
+        $common = @('-c', 'Release', '-r', 'win-x64', "-p:Version=$Version", "-p:UpdatePublicKey=$publicKey", '-p:SkipPrinterRemoteHelper=true')
         Invoke-ReleaseCommand -Command 'dotnet' -Arguments (@('publish', 'TanTienQR/TanTienQR.csproj') + $common + @('-o', $winApp))
         Invoke-ReleaseCommand -Command 'dotnet' -Arguments (@('publish', 'tools/TanTienLauncher/TanTienLauncher.csproj') + $common + @('-o', $winLauncher))
+        # Helper COM/WinForms chạy riêng ngoài app AOT. Đóng toàn bộ runtime vào
+        # một EXE để máy khách không cần cài .NET và manifest vẫn dùng tệp gốc.
+        Invoke-ReleaseCommand -Command 'dotnet' -Arguments (@('publish', 'tools/PrinterRemoteHost/PrinterRemoteHost.csproj') + $common + @(
+            '--self-contained', 'true', '-p:PublishAot=false', '-p:PublishTrimmed=false',
+            '-p:PublishSingleFile=true', '-p:IncludeNativeLibrariesForSelfExtract=true',
+            '-p:EnableCompressionInSingleFile=true', '-p:DebugType=None', '-o', $winHelper))
+        Copy-Item -LiteralPath (Join-Path $winHelper 'TanTien.PrinterRemoteHost.exe') -Destination $winApp
         Invoke-ReleaseCommand -Command 'docker' -Arguments @('build', '-f', 'deploy/update/Dockerfile',
             '--target', 'export', '--build-arg', "RELEASE_VERSION=$Version", '--build-arg', "UPDATE_PUBLIC_KEY=$publicKey",
             '--output', "type=local,dest=$linux", '.')

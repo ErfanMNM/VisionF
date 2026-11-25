@@ -9,9 +9,10 @@ internal sealed class PrinterLicenseGate : IPrintLicenseGate
 
     public PrinterLicenseGate(LicenseManager license) => _license = license;
 
-    public bool CanUse => LicenseEntitlements.HasFeature(_license.Current, LicenseFeatures.Printer);
+    public bool CanUse => LicenseEntitlements.HasFeature(_license.Current, LicenseFeatures.Printer)
+        && _license.Current.Payload!.ExpiresUtc > DateTime.UtcNow;
 
     public string Message => CanUse
         ? "OK"
-        : "License hiện tại chưa mở quyền Máy in + gói bán kèm. Hãy nhập license có entitlement printer.";
+        : "License chưa mở quyền Máy in + gói bán kèm hoặc đã hết hạn. Hãy nhập license hợp lệ có entitlement printer.";
 }

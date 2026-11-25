@@ -35,6 +35,10 @@ try {
         $nativeName = if ($rid -eq 'win-x64') { 'e_sqlite3.dll' } else { 'libe_sqlite3.so.1' }
         [IO.File]::WriteAllText((Join-Path $app $mainName), 'runtime-v1.2.3')
         [IO.File]::WriteAllText((Join-Path $app $nativeName), 'native-runtime')
+        $helperName = 'TanTien.PrinterRemoteHost.exe'
+        if ($rid -eq 'win-x64') {
+            [IO.File]::WriteAllText((Join-Path $app $helperName), 'printer-remote-runtime')
+        }
         [IO.File]::WriteAllText((Join-Path $app 'appsettings.json'), '{"private":"config"}')
         [IO.File]::WriteAllText((Join-Path $app 'license.lic'), 'private-license')
         [IO.File]::WriteAllText((Join-Path $app 'debug.pdb'), 'private-symbols')
@@ -45,7 +49,9 @@ try {
         Assert-That $true "Chữ ký và SHA-256 gói $rid hợp lệ"
         $archive = [IO.Compression.ZipFile]::OpenRead((Join-Path $output 'package.zip'))
         try {
-            Assert-That ($archive.Entries.Count -eq 2) "Gói $rid chỉ có runtime, không chứa cấu hình, license, symbols hoặc launcher"
+            $expectedCount = if ($rid -eq 'win-x64') { 3 } else { 2 }
+            Assert-That ($archive.Entries.Count -eq $expectedCount) "Gói $rid chỉ có runtime, không chứa cấu hình, license, symbols hoặc launcher"
+            Assert-That (($null -ne $archive.GetEntry($helperName)) -eq ($rid -eq 'win-x64')) "Helper remote chỉ nằm trong gói Windows"
             if ($rid -eq 'linux-x64') {
                 $entry = $archive.GetEntry($mainName)
                 Assert-That ((($entry.ExternalAttributes -shr 16) -band 0x1FF) -eq 0x1ED) 'Giữ quyền thực thi 0755 trong ZIP Linux'
@@ -53,8 +59,34 @@ try {
         }
         finally { $archive.Dispose() }
         $archive = [IO.Compression.ZipFile]::OpenRead((Join-Path $output 'bootstrap.zip'))
-        try { Assert-That ($null -ne $archive.GetEntry($launcherName)) "Bootstrap $rid có trình khởi chạy" }
+        try {
+            Assert-That ($null -ne $archive.GetEntry($launcherName)) "Bootstrap $rid có trình khởi chạy"
+            Assert-That (($null -ne $archive.GetEntry($helperName)) -eq ($rid -eq 'win-x64')) "Bootstrap $rid mang đúng bộ helper"
+        }
         finally { $archive.Dispose() }
+
+        if ($rid -eq 'win-x64') {
+            $envelope = Get-Content -LiteralPath (Join-Path $output 'manifest.json') -Raw | ConvertFrom-Json -AsHashtable
+            $manifest = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($envelope.data)) | ConvertFrom-Json -AsHashtable
+            $helper = @($manifest.files | Where-Object { $_.path -ceq $helperName })
+            Assert-That ($helper.Count -eq 1 -and $helper[0].sha256 -ceq (Get-ReleaseHash (Join-Path $app $helperName))) 'Helper Windows có SHA-256 trong manifest đã ký'
+        }
+        $unexpected = Join-Path $app 'UnknownTool.exe'
+        [IO.File]::WriteAllText($unexpected, 'không thuộc bộ runtime')
+        Assert-Rejected {
+            New-ReleasePackage -Version '1.2.3' -Rid $rid -AppDirectory $app -LauncherDirectory $launcher `
+                -OutputDirectory (Join-Path $temp "rejected-exe-$rid") -Notes '' -SigningKey $key
+        } "Từ chối EXE lạ trong publish $rid"
+        Remove-Item -LiteralPath $unexpected
+        if ($rid -eq 'linux-x64') {
+            $unexpectedHelper = Join-Path $app $helperName
+            [IO.File]::WriteAllText($unexpectedHelper, 'helper Windows lẫn nền tảng')
+            Assert-Rejected {
+                New-ReleasePackage -Version '1.2.3' -Rid $rid -AppDirectory $app -LauncherDirectory $launcher `
+                    -OutputDirectory (Join-Path $temp 'rejected-linux-helper') -Notes '' -SigningKey $key
+            } 'Từ chối helper Windows lọt vào publish Linux'
+            Remove-Item -LiteralPath $unexpectedHelper
+        }
     }
     Assert-Rejected { Assert-ReleaseVersion '1.2.3/../4' } 'Từ chối phiên bản chèn đường dẫn'
     Assert-Rejected { Assert-ReleaseVersion '01.2.3' } 'Từ chối phiên bản có số 0 thừa'

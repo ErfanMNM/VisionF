@@ -1,487 +1,202 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:TanTienQR.ViewModels"
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             mc:Ignorable="d" d:DesignWidth="1040" d:DesignHeight="700"
-             x:Class="TanTienQR.Views.PrintView"
-             x:DataType="vm:MainViewModel">
-
+             xmlns:controls="using:TanTienQR.Controls"
+             xmlns:print="using:ClassLibraryMT.Print"
+             x:Class="TanTienQR.Views.PrintView" x:DataType="vm:MainViewModel">
     <UserControl.Styles>
-        <!-- Gia tri trong cac o thong tin: cung co chu voi cac tab khac. -->
-        <Style Selector="TextBlock.infoValue">
+        <Style Selector="TextBlock.printValue">
             <Setter Property="FontSize" Value="13" />
             <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
             <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
-        <Style Selector="TextBlock.infoValue.strong">
-            <Setter Property="FontWeight" Value="SemiBold" />
-        </Style>
-        <Style Selector="Border.divider">
-            <Setter Property="Height" Value="1" />
-            <Setter Property="Background" Value="{StaticResource LineColor}" />
-        </Style>
-        <!-- O thong tin nho (PO / trang thai / muc / hang doi) -->
-        <Style Selector="Border.stat">
+        <Style Selector="Border.printStat">
             <Setter Property="Background" Value="{StaticResource BgRaised}" />
-            <Setter Property="BorderBrush" Value="{StaticResource LineColor}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="12" />
-            <Setter Property="Padding" Value="14,12" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="12,10" />
         </Style>
-        <!-- So thu tu trong phan huong dan -->
-        <Style Selector="Border.stepNo">
-            <Setter Property="Width" Value="22" />
-            <Setter Property="Height" Value="22" />
-            <Setter Property="CornerRadius" Value="11" />
-            <Setter Property="Background" Value="{StaticResource AccentSoft}" />
-            <Setter Property="BorderBrush" Value="{StaticResource LineAccent}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="VerticalAlignment" Value="Top" />
+        <Style Selector="Button.remoteTool">
+            <Setter Property="MinHeight" Value="36" />
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
-        <Style Selector="Border.stepNo TextBlock">
-            <Setter Property="FontSize" Value="11" />
-            <Setter Property="FontWeight" Value="Bold" />
-            <Setter Property="Foreground" Value="{StaticResource Accent}" />
-            <Setter Property="HorizontalAlignment" Value="Center" />
-            <Setter Property="VerticalAlignment" Value="Center" />
-        </Style>
-        <Style Selector="TextBlock.stepText">
-            <Setter Property="FontSize" Value="12" />
-            <Setter Property="Foreground" Value="{StaticResource TextSecondary}" />
-            <Setter Property="TextWrapping" Value="Wrap" />
+        <Style Selector="Button.printAction">
+            <Setter Property="MinHeight" Value="40" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
         </Style>
     </UserControl.Styles>
-
-    <!-- Tab May in: thong tin may in + PO + muc/hang doi o tren, form gui
-         lenh va huong dan o duoi. Hai cot duoi cung chieu cao (Grid *),
-         khong con mang trang trong o card nhu ban cu. -->
-    <Grid Margin="18,6,18,18" RowDefinitions="Auto,Auto,Auto,*" RowSpacing="14">
-
-        <!-- Tieu de -->
+    <Grid Margin="18,6,18,18" RowDefinitions="Auto,*" RowSpacing="14">
         <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-            <Border Grid.Column="0"
-                    Width="42" Height="42"
-                    CornerRadius="14"
-                    Background="{StaticResource AccentSoft}"
-                    BorderBrush="{StaticResource LineAccent}"
-                    BorderThickness="1"
-                    VerticalAlignment="Center">
-                <Path Width="20" Height="20"
-                      HorizontalAlignment="Center"
-                      VerticalAlignment="Center"
-                      Stretch="Uniform"
-                      Stroke="{StaticResource Accent}"
-                      StrokeThickness="1.9"
-                      StrokeLineCap="Round"
-                      StrokeJoin="Round"
+            <Border Width="42" Height="42" CornerRadius="14" Background="{StaticResource AccentSoft}"
+                    BorderBrush="{StaticResource LineAccent}" BorderThickness="1" VerticalAlignment="Center">
+                <Path Width="20" Height="20" Stretch="Uniform" Stroke="{StaticResource Accent}" StrokeThickness="1.9"
+                      StrokeLineCap="Round" StrokeJoin="Round" HorizontalAlignment="Center" VerticalAlignment="Center"
                       Data="{StaticResource Icon.Print}" />
             </Border>
-
-            <StackPanel Grid.Column="1" Spacing="4">
+            <StackPanel Grid.Column="1" Spacing="3" VerticalAlignment="Center">
                 <TextBlock Classes="pageTitle" Text="Máy in" />
-                <TextBlock Classes="label"
-                           Text="Gửi mã từ PO đang chạy theo số lượng, theo dõi xác nhận và mức mực." />
+                <TextBlock Classes="label" Text="{Binding Print.PrinterName}" TextTrimming="CharacterEllipsis" />
             </StackPanel>
-
-            <!-- Trạng thái máy in: LED + viền giống camera/PLC ở sidebar. -->
-            <Border Grid.Column="2" Classes="deviceCard {Binding Print.PrinterCardClass}"
-                    Padding="12,10" MinWidth="300" VerticalAlignment="Center"
-                    IsVisible="{Binding Print.CanUse}">
+            <Border Grid.Column="2" Classes="deviceCard {Binding Print.PrinterCardClass}" Padding="12,8"
+                    VerticalAlignment="Center" IsVisible="{Binding Print.CanUse}">
                 <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
                     <Grid Width="10" Height="10" VerticalAlignment="Center">
-                        <Ellipse Classes="ledHalo"
-                                 Classes.warn="{Binding !Print.IsPrinterConnected}"
-                                 Classes.blink="{Binding Print.IsPrinterBlinking}" />
-                        <Ellipse Classes="led"
-                                 Classes.on="{Binding Print.IsPrinterConnected}"
-                                 Classes.warn="{Binding !Print.IsPrinterConnected}"
-                                 Classes.blink="{Binding Print.IsPrinterBlinking}" />
+                        <Ellipse Classes="ledHalo" Classes.warn="{Binding !Print.IsPrinterConnected}" Classes.blink="{Binding Print.IsPrinterBlinking}" />
+                        <Ellipse Classes="led" Classes.on="{Binding Print.IsPrinterConnected}" Classes.warn="{Binding !Print.IsPrinterConnected}" Classes.blink="{Binding Print.IsPrinterBlinking}" />
                     </Grid>
-                    <StackPanel Grid.Column="1" Spacing="2">
-                        <TextBlock Classes="deviceTitle" Text="Máy in G10" />
-                        <TextBlock Classes="deviceStatus" Text="{Binding Print.ConnectionText}" />
+                    <StackPanel Grid.Column="1" Spacing="2" MaxWidth="220">
+                        <TextBlock Classes="deviceTitle" Text="KẾT NỐI DỮ LIỆU" />
+                        <TextBlock Classes="deviceStatus" Text="{Binding Print.ConnectionText}" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
                 </Grid>
             </Border>
         </Grid>
-
-        <!-- May in dang dung -->
-        <Border Grid.Row="1" Classes="panel" Padding="18" IsVisible="{Binding Print.CanUse}">
-            <StackPanel Spacing="14">
-
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                    <StackPanel Spacing="3">
-                        <TextBlock Classes="overline" Text="MÁY IN ĐANG DÙNG" />
-                        <TextBlock Classes="sectionTitle" Text="{Binding Print.PrinterName}" />
-                        <TextBlock Classes="mono"
-                                   FontSize="11"
-                                   Foreground="{StaticResource TextMuted}"
-                                   Text="{Binding Print.PrinterEndpoint}" />
-                    </StackPanel>
-
-                    <StackPanel Grid.Column="1"
-                                Orientation="Horizontal"
-                                Spacing="8"
-                                VerticalAlignment="Center">
-                        <Button Classes="soft"
-                                HorizontalContentAlignment="Center"
-                                VerticalContentAlignment="Center"
-                                IsEnabled="{Binding Print.CanConnect}"
-                                Command="{Binding Print.ConnectCommand}">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Path Width="15" Height="15"
-                                      Stretch="Uniform"
-                                      Stroke="{StaticResource TextPrimary}"
-                                      StrokeThickness="1.9"
-                                      StrokeLineCap="Round"
-                                      StrokeJoin="Round"
-                                      Data="{StaticResource Icon.Link}" />
-                                <TextBlock Text="Kết nối lại" />
-                            </StackPanel>
-                        </Button>
-                        <Button Classes="chip"
-                                HorizontalContentAlignment="Center"
-                                VerticalContentAlignment="Center"
-                                IsEnabled="{Binding Print.CanConnect}"
-                                Command="{Binding Print.RefreshCommand}">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Path Width="15" Height="15"
-                                      Stretch="Uniform"
-                                      Stroke="{StaticResource TextPrimary}"
-                                      StrokeThickness="1.9"
-                                      StrokeLineCap="Round"
-                                      StrokeJoin="Round"
-                                      Data="{StaticResource Icon.Refresh}" />
-                                <TextBlock Text="Làm mới" />
-                            </StackPanel>
-                        </Button>
-                    </StackPanel>
-                </Grid>
-
-                <Border Classes="divider" />
-
-                <!-- 4 o thong tin cung nhip: nhan nho tren, gia tri duoi. -->
-                <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="12">
-                    <Border Grid.Column="0" Classes="stat">
-                        <StackPanel Spacing="4">
-                            <TextBlock Classes="fieldLabel" Text="PO ĐANG CHẠY" />
-                            <TextBlock Classes="infoValue strong" Text="{Binding Print.OrderText}" />
+        <!-- Chỉ vùng thao tác cuộn. Surface native luôn nhận kích thước hữu hạn. -->
+        <Grid x:Name="WorkArea" Grid.Row="1" ColumnDefinitions="*,316" ColumnSpacing="14" IsVisible="{Binding Print.CanUse}">
+            <Border x:Name="RemoteCard" Grid.Column="0" Classes="panel" Padding="12">
+                <Grid RowDefinitions="Auto,*,Auto" RowSpacing="10">
+                    <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                        <StackPanel Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="overline" Text="MÀN HÌNH MÁY IN" />
+                            <TextBlock Classes="label" Text="{Binding Print.Remote.EndpointText}" TextTrimming="CharacterEllipsis" />
                         </StackPanel>
-                    </Border>
-                    <Border Grid.Column="1" Classes="stat">
-                        <StackPanel Spacing="4">
-                            <TextBlock Classes="fieldLabel" Text="TRẠNG THÁI MÁY IN" />
-                            <TextBlock Classes="infoValue" Text="{Binding Print.PrinterStatusText}" />
-                        </StackPanel>
-                    </Border>
-                    <Border Grid.Column="2" Classes="stat">
-                        <StackPanel Spacing="4">
-                            <TextBlock Classes="fieldLabel" Text="MỰC" />
-                            <TextBlock Classes="mono infoValue strong" Text="{Binding Print.InkText}" />
-                        </StackPanel>
-                    </Border>
-                    <Border Grid.Column="3" Classes="stat">
-                        <StackPanel Spacing="4">
-                            <TextBlock Classes="fieldLabel" Text="HÀNG ĐỢI IN" />
-                            <TextBlock Classes="infoValue" Text="{Binding Print.QueueText}" />
-                        </StackPanel>
-                    </Border>
-                </Grid>
-
-                <!-- Canh bao khi module may in bi tat trong Cau hinh -->
-                <Border Padding="12,10"
-                        CornerRadius="10"
-                        Background="{StaticResource WarnSoft}"
-                        BorderBrush="{StaticResource LineWarn}"
-                        BorderThickness="1"
-                        IsVisible="{Binding !Print.CanConnect}">
-                    <StackPanel Orientation="Horizontal" Spacing="10">
-                        <Path Width="15" Height="15"
-                              Stretch="Uniform"
-                              Stroke="{StaticResource Warn}"
-                              StrokeThickness="1.9"
-                              StrokeLineCap="Round"
-                              StrokeJoin="Round"
-                              VerticalAlignment="Center"
-                              Data="{StaticResource Icon.Alert}" />
-                        <TextBlock Text="{Binding Print.ModuleMessage}"
-                                   FontSize="12"
-                                   Foreground="{StaticResource Warn}"
-                                   TextWrapping="Wrap"
-                                   VerticalAlignment="Center" />
-                    </StackPanel>
-                </Border>
-            </StackPanel>
-        </Border>
-
-        <!-- Điều khiển máy in -->
-        <Border Grid.Row="2" Classes="panel" Padding="18" IsVisible="{Binding Print.CanUse}">
-            <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="12">
-
-                <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                    <StackPanel Spacing="3">
-                        <TextBlock Classes="overline" Text="ĐIỀU KHIỂN MÁY IN" />
-                        <TextBlock Classes="label" FontSize="11"
-                                   Text="Bật/tay in hoặc chạy các lệnh bảo trì. Lệnh chỉ gửi được khi module máy in đang bật và đã kết nối." />
-                    </StackPanel>
-                    <Border Grid.Column="1" Classes="badge"
-                            Classes.running="{Binding Print.IsPrinting}"
-                            VerticalAlignment="Center">
-                        <Panel>
-                            <TextBlock Text="ĐANG IN" IsVisible="{Binding Print.IsPrinting}" />
-                            <TextBlock Text="ĐÃ DỪNG" IsVisible="{Binding !Print.IsPrinting}" />
-                        </Panel>
-                    </Border>
-                </Grid>
-
-                <!-- Nút Bật in / Tạm dừng đổi theo trạng thái máy in. -->
-                <WrapPanel Grid.Row="1" Orientation="Horizontal" ItemSpacing="8" LineSpacing="8">
-                    <Button Classes="primary"
-                            IsVisible="{Binding !Print.IsPrinting}"
-                            IsEnabled="{Binding Print.CanConnect}"
-                            HorizontalContentAlignment="Center"
-                            VerticalContentAlignment="Center"
-                            Command="{Binding Print.TogglePrintingCommand}">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Path Width="15" Height="15"
-                                  Stretch="Uniform"
-                                  Stroke="White"
-                                  StrokeThickness="1.9"
-                                  StrokeLineCap="Round"
-                                  StrokeJoin="Round"
-                                  Data="{StaticResource Icon.Play}" />
-                            <TextBlock Text="Bật in" />
-                        </StackPanel>
-                    </Button>
-                    <Button Classes="whitebtn"
-                            IsVisible="{Binding Print.IsPrinting}"
-                            IsEnabled="{Binding Print.CanConnect}"
-                            HorizontalContentAlignment="Center"
-                            VerticalContentAlignment="Center"
-                            Command="{Binding Print.TogglePrintingCommand}">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Path Width="15" Height="15"
-                                  Stretch="Uniform"
-                                  Stroke="{StaticResource Danger}"
-                                  StrokeThickness="2"
-                                  StrokeLineCap="Round"
-                                  StrokeJoin="Round"
-                                  Data="{StaticResource Icon.Pause}" />
-                            <TextBlock Text="Tạm dừng in" />
-                        </StackPanel>
-                    </Button>
-
-                    <Button Classes="chip" IsEnabled="{Binding Print.CanConnect}"
-                            HorizontalContentAlignment="Center"
-                            Command="{Binding Print.ClearDataCommand}">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Path Width="15" Height="15" Stretch="Uniform"
-                                  Stroke="{StaticResource TextPrimary}" StrokeThickness="1.9"
-                                  StrokeLineCap="Round" StrokeJoin="Round"
-                                  Data="{StaticResource Icon.Trash}" />
-                            <TextBlock Text="Xóa buffer" />
-                        </StackPanel>
-                    </Button>
-                    <Button Classes="chip" IsEnabled="{Binding Print.CanConnect}"
-                            HorizontalContentAlignment="Center"
-                            Command="{Binding Print.ResetCounterCommand}">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Path Width="15" Height="15" Stretch="Uniform"
-                                  Stroke="{StaticResource TextPrimary}" StrokeThickness="1.9"
-                                  StrokeLineCap="Round" StrokeJoin="Round"
-                                  Data="{StaticResource Icon.Refresh}" />
-                            <TextBlock Text="Reset số đếm" />
-                        </StackPanel>
-                    </Button>
-                    <Button Classes="chip" IsEnabled="{Binding Print.CanConnect}"
-                            HorizontalContentAlignment="Center"
-                            Command="{Binding Print.CleanNozzleCommand}">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Path Width="15" Height="15" Stretch="Uniform"
-                                  Stroke="{StaticResource TextPrimary}" StrokeThickness="1.9"
-                                  StrokeLineCap="Round" StrokeJoin="Round"
-                                  Data="{StaticResource Icon.Settings}" />
-                            <TextBlock Text="Vệ sinh đầu in" />
-                        </StackPanel>
-                    </Button>
-                    <Button Classes="chip" IsEnabled="{Binding Print.CanConnect}"
-                            HorizontalContentAlignment="Center"
-                            Command="{Binding Print.TriggerJetCommand}">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Path Width="15" Height="15" Stretch="Uniform"
-                                  Stroke="{StaticResource TextPrimary}" StrokeThickness="1.9"
-                                  StrokeLineCap="Round" StrokeJoin="Round"
-                                  Data="{StaticResource Icon.Scan}" />
-                            <TextBlock Text="Test phun JET" />
-                        </StackPanel>
-                    </Button>
-                    <Button Classes="chip" IsEnabled="{Binding Print.CanConnect}"
-                            HorizontalContentAlignment="Center"
-                            Command="{Binding Print.RefreshFilesCommand}">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Path Width="15" Height="15" Stretch="Uniform"
-                                  Stroke="{StaticResource TextPrimary}" StrokeThickness="1.9"
-                                  StrokeLineCap="Round" StrokeJoin="Round"
-                                  Data="{StaticResource Icon.List}" />
-                            <TextBlock Text="Danh sách bản tin" />
-                        </StackPanel>
-                    </Button>
-                </WrapPanel>
-
-                <TextBlock Grid.Row="2" Classes="label" FontSize="12" TextWrapping="Wrap"
-                           IsVisible="{Binding Print.HasControlMessage}"
-                           Text="{Binding Print.ControlMessage}" />
-            </Grid>
-        </Border>
-
-        <!-- Gui du lieu in (trai) + huong dan (phai) -->
-        <Grid Grid.Row="3"
-              ColumnDefinitions="1.35*,0.65*"
-              ColumnSpacing="14"
-              IsVisible="{Binding Print.CanUse}">
-
-            <!-- Form gui -->
-            <Border Grid.Column="0" Classes="panel" Padding="18">
-                <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="14">
-
-                    <StackPanel Grid.Row="0" Spacing="3">
-                        <TextBlock Classes="overline" Text="GỬI DỮ LIỆU IN" />
-                        <TextBlock Classes="label" FontSize="12" TextWrapping="Wrap"
-                                   Text="Chọn số lượng mã cần đẩy sang máy in, sau đó theo dõi phản hồi ở ô trạng thái bên dưới." />
-                    </StackPanel>
-
-                    <StackPanel Grid.Row="1" Spacing="6">
-                        <TextBlock Classes="fieldLabel" Text="SỐ LƯỢNG MÃ" />
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <NumericUpDown Width="150"
-                                           MinHeight="40"
-                                           Minimum="1"
-                                           Maximum="1000"
-                                           Increment="1"
-                                           FormatString="0"
-                                           Value="{Binding Print.Quantity, Mode=TwoWay}" />
-                            <Button Classes="primary"
-                                    HorizontalContentAlignment="Center"
-                                    VerticalContentAlignment="Center"
-                                    IsEnabled="{Binding !Print.IsBusy}"
-                                    Command="{Binding Print.SendCommand}">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <Path Width="15" Height="15"
-                                          Stretch="Uniform"
-                                          Stroke="White"
-                                          StrokeThickness="1.9"
-                                          StrokeLineCap="Round"
-                                          StrokeJoin="Round"
-                                          Data="{StaticResource Icon.Upload}" />
-                                    <TextBlock Text="Gửi mã vào máy in" />
-                                </StackPanel>
+                        <WrapPanel Grid.Column="1" Orientation="Horizontal" ItemSpacing="6" LineSpacing="6" VerticalAlignment="Center" HorizontalAlignment="Right">
+                            <Button Classes="chip remoteTool" Content="Mật khẩu" Click="OnOpenCredentials"
+                                    ToolTip.Tip="Nhập hoặc đổi mật khẩu máy in trên máy tính này" />
+                            <Button Classes="soft remoteTool" Content="Kết nối" IsEnabled="{Binding Print.Remote.CanConnect}" Command="{Binding Print.Remote.ConnectCommand}" />
+                            <Button Classes="chip remoteTool" Content="Ngắt" IsEnabled="{Binding Print.Remote.CanDisconnect}" Command="{Binding Print.Remote.DisconnectCommand}" />
+                            <Button Classes="chip remoteTool" Command="{Binding Print.Remote.ToggleExpandedCommand}">
+                                <Panel>
+                                    <TextBlock Text="Phóng to" IsVisible="{Binding !Print.Remote.IsExpanded}" />
+                                    <TextBlock Text="Thu gọn" IsVisible="{Binding Print.Remote.IsExpanded}" />
+                                </Panel>
                             </Button>
-                            <ProgressBar Width="90"
-                                         IsIndeterminate="True"
-                                         VerticalAlignment="Center"
-                                         IsVisible="{Binding Print.IsBusy}" />
-                        </StackPanel>
-                    </StackPanel>
-
-                    <!-- Giu cho de o trang thai luon nam sat day card. -->
-                    <Panel Grid.Row="2" />
-
-                    <Border Grid.Row="3" Classes="stat" Padding="14,12">
-                        <StackPanel Spacing="5">
-                            <TextBlock Classes="fieldLabel" Text="TRẠNG THÁI" />
-                            <TextBlock Classes="infoValue" Text="{Binding Print.StatusText}" />
+                        </WrapPanel>
+                    </Grid>
+                    <!-- Bố trí bằng bounds thật; không scale HWND bằng Viewbox. -->
+                    <controls:AspectRatioPanel x:Name="RemoteAspectPanel" Grid.Row="1">
+                        <Border x:Name="RemoteScreen" Background="#0B1623" ClipToBounds="True">
+                            <Grid>
+                                <controls:PrinterRemoteHost x:Name="PrinterScreen" Remote="{Binding Print.Remote}" />
+                                <Grid x:Name="PlaceholderArea" IsVisible="{Binding !Print.Remote.IsSurfaceVisible}" Margin="20">
+                                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12" MaxWidth="400">
+                                        <Path x:Name="PlaceholderIcon" Width="34" Height="34" Stretch="Uniform" Stroke="#B7CBDF" StrokeThickness="1.5"
+                                              StrokeLineCap="Round" StrokeJoin="Round" HorizontalAlignment="Center" Data="{StaticResource Icon.Print}" />
+                                        <TextBlock x:Name="PlaceholderTitle" Text="Giao diện máy in" Foreground="#E8F1F8" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                        <TextBlock x:Name="PlaceholderStatus" Text="{Binding Print.Remote.StatusText}" Foreground="#B7CBDF" FontSize="12" TextAlignment="Center" TextWrapping="Wrap" />
+                                        <ProgressBar Width="140" IsIndeterminate="True" IsVisible="{Binding Print.Remote.IsConnecting}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Grid>
+                        </Border>
+                    </controls:AspectRatioPanel>
+                    <Grid Grid.Row="2" ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                        <Ellipse Width="7" Height="7" Fill="{StaticResource Idle}" VerticalAlignment="Center" IsVisible="{Binding !Print.Remote.IsConnected}" />
+                        <Ellipse Width="7" Height="7" Fill="{StaticResource Ok}" VerticalAlignment="Center" IsVisible="{Binding Print.Remote.IsConnected}" />
+                        <TextBlock Grid.Column="1" Classes="label" Text="{Binding Print.Remote.StatusText}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Print.Remote.StatusText}" />
+                    </Grid>
+                </Grid>
+            </Border>
+            <Grid x:Name="OperationPanel" Grid.Column="1" RowDefinitions="Auto,*" RowSpacing="10">
+                <!-- Bật/tạm dừng luôn nằm ngoài vùng cuộn để người vận hành truy cập ngay. -->
+                <StackPanel IsEnabled="{Binding Print.IsPrinterConnected}">
+                    <Button Classes="primary printAction" Content="Bật in" IsVisible="{Binding !Print.IsPrinting}" IsEnabled="{Binding !Print.IsControlBusy}" Command="{Binding Print.TogglePrintingCommand}" />
+                    <Button Classes="whitebtn printAction" Content="Tạm dừng in" IsVisible="{Binding Print.IsPrinting}" IsEnabled="{Binding !Print.IsControlBusy}" Command="{Binding Print.TogglePrintingCommand}" />
+                </StackPanel>
+            <ScrollViewer x:Name="OperationScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Spacing="12">
+                    <Border Classes="panel" Padding="16">
+                        <StackPanel Spacing="12">
+                            <StackPanel Spacing="4">
+                                <TextBlock Classes="overline" Text="PO ĐANG CHẠY" />
+                                <TextBlock Classes="printValue" FontWeight="SemiBold" Text="{Binding Print.OrderText}" />
+                            </StackPanel>
+                            <StackPanel Spacing="6" IsEnabled="{Binding Print.CanConnect}">
+                                <TextBlock Classes="fieldLabel" Text="SỐ LƯỢNG MÃ" />
+                                <NumericUpDown Minimum="1" Maximum="1000" Increment="1" FormatString="0" MinHeight="40" HorizontalAlignment="Stretch" Value="{Binding Print.Quantity, Mode=TwoWay}" />
+                                <Button Classes="primary printAction" Content="Gửi mã vào máy in" Command="{Binding Print.SendCommand}" IsEnabled="{Binding !Print.IsBusy}" />
+                                <ProgressBar IsIndeterminate="True" IsVisible="{Binding Print.IsBusy}" />
+                            </StackPanel>
+                            <Border Classes="printStat"><TextBlock Classes="printValue" Text="{Binding Print.StatusText}" /></Border>
+                            <Border Background="{StaticResource WarnSoft}" Padding="10" CornerRadius="10" IsVisible="{Binding !Print.CanConnect}">
+                                <TextBlock Text="{Binding Print.ModuleMessage}" Foreground="{StaticResource Warn}" FontSize="12" TextWrapping="Wrap" />
+                            </Border>
                         </StackPanel>
                     </Border>
-                </Grid>
-            </Border>
-
-            <!-- Lịch sử lệnh G10: hiển thị bên phải, cập nhật tự động từ worker. -->
-            <Border Grid.Column="1" Classes="panel" Padding="18">
-                <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="10">
-
-                    <StackPanel Grid.Row="0" Spacing="3">
-                        <TextBlock Classes="overline" Text="LỊCH SỬ LỆNH" />
-                        <TextBlock Classes="label" FontSize="12" TextWrapping="Wrap"
-                                   Text="Lệnh gửi máy in và phản hồi gần nhất (tối đa 50 dòng)." />
-                    </StackPanel>
-
-                    <Button Grid.Row="1" Classes="chip" HorizontalAlignment="Left"
-                            IsEnabled="{Binding Print.HasCommandHistory}"
-                            Command="{Binding Print.ClearHistoryCommand}">
-                        <TextBlock Text="Xóa lịch sử" />
-                    </Button>
-
-                    <ListBox Grid.Row="2"
-                             ItemsSource="{Binding Print.CommandHistory}"
-                             Background="Transparent"
-                             BorderThickness="0"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <StackPanel Spacing="2" Margin="0,0,0,8">
-                                    <TextBlock Classes="mono" FontSize="12"
-                                               Text="{Binding Command}" />
-                                    <TextBlock FontSize="11" TextWrapping="Wrap"
-                                               Foreground="{StaticResource TextPrimary}"
-                                               Text="{Binding Response}" />
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <TextBlock Classes="mono" FontSize="10"
-                                                   Foreground="{StaticResource TextMuted}"
-                                                   Text="{Binding At, StringFormat='HH:mm:ss'}" />
-                                        <TextBlock Classes="mono" FontSize="10"
-                                                   Foreground="{StaticResource TextMuted}"
-                                                   Text="{Binding Accepted, StringFormat='OK={0}'}" />
-                                    </StackPanel>
+                    <Border Classes="panel" Padding="16">
+                        <StackPanel Spacing="12">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                <TextBlock Classes="overline" Text="TRẠNG THÁI MÁY IN" VerticalAlignment="Center" />
+                                <Button Grid.Column="1" Classes="chip" Content="Làm mới" Command="{Binding Print.RefreshCommand}" IsEnabled="{Binding Print.CanConnect}" />
+                            </Grid>
+                            <TextBlock Classes="printValue" Text="{Binding Print.PrinterStatusText}" />
+                            <StackPanel Spacing="5">
+                                <TextBlock Classes="fieldLabel" Text="BẢN TIN HIỆN TẠI" />
+                                <TextBlock Classes="printValue" FontWeight="SemiBold" Text="{Binding Print.JobText}" />
+                            </StackPanel>
+                            <Border Classes="printStat">
+                                <StackPanel Spacing="6">
+                                    <TextBlock Classes="printValue mono" Text="{Binding Print.InkText}" />
+                                    <TextBlock Classes="printValue" Text="{Binding Print.QueueText}" />
                                 </StackPanel>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-
-                    <TextBlock Grid.Row="2" Classes="label" FontSize="12"
-                               HorizontalAlignment="Center" VerticalAlignment="Center"
-                               IsVisible="{Binding !Print.HasCommandHistory}"
-                               Text="Chưa có lệnh nào. Worker sẽ ghi lệnh khi tự kết nối máy in." />
-                </Grid>
-            </Border>
+                            </Border>
+                            <TextBlock Classes="label mono" FontSize="11" Text="{Binding Print.PrinterEndpoint}" TextWrapping="Wrap" />
+                            <Button Classes="chip printAction" Content="Kết nối lại dữ liệu" Command="{Binding Print.ConnectCommand}" IsEnabled="{Binding Print.CanConnect}" />
+                            <TextBlock Classes="printValue" Text="{Binding Print.ControlMessage}" IsVisible="{Binding Print.HasControlMessage}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Classes="panel" Padding="16">
+                        <Expander x:Name="CredentialExpander" Header="Đăng nhập máy in" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                            <StackPanel Spacing="10" Margin="0,10,0,0">
+                                <TextBlock Classes="label" TextWrapping="Wrap" Text="Đặt địa chỉ và tài khoản trong Cấu hình → Máy in. Lưu mật khẩu để kết nối trên máy tính này." />
+                                <TextBox x:Name="PasswordInput" PasswordChar="●" PlaceholderText="Mật khẩu máy in" Text="{Binding Print.Remote.Password, Mode=TwoWay}" />
+                                <Button Classes="soft printAction" Content="Lưu mật khẩu trên máy này" Command="{Binding Print.Remote.SaveCredentialCommand}" IsEnabled="{Binding Print.Remote.CanSaveCredential}" />
+                                <TextBlock Classes="label" Text="{Binding Print.Remote.CredentialMessage}" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Expander>
+                    </Border>
+                    <Border Classes="panel" Padding="16">
+                        <Expander Header="Bảo trì máy in" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                            <StackPanel Spacing="8" Margin="0,10,0,0" IsEnabled="{Binding Print.IsPrinterConnected}">
+                                <Button Classes="chip printAction" Content="Xóa buffer" Command="{Binding Print.ClearDataCommand}" />
+                                <Button Classes="chip printAction" Content="Reset số đếm" Command="{Binding Print.ResetCounterCommand}" />
+                                <Button Classes="chip printAction" Content="Vệ sinh đầu in" Command="{Binding Print.CleanNozzleCommand}" />
+                                <Button Classes="chip printAction" Content="Test phun JET" Command="{Binding Print.TriggerJetCommand}" />
+                                <Button Classes="chip printAction" Content="Đọc danh sách bản tin" Command="{Binding Print.RefreshFilesCommand}" />
+                            </StackPanel>
+                        </Expander>
+                    </Border>
+                    <Border Classes="panel" Padding="16">
+                        <Expander Header="Lịch sử lệnh" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                            <StackPanel Spacing="10" Margin="0,10,0,0">
+                                <Button Classes="chip" Content="Xóa lịch sử" HorizontalAlignment="Left" Command="{Binding Print.ClearHistoryCommand}" IsEnabled="{Binding Print.HasCommandHistory}" />
+                                <ListBox ItemsSource="{Binding Print.CommandHistory}" MaxHeight="260" Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate x:DataType="print:PrinterCommandLog">
+                                            <StackPanel Spacing="3" Margin="0,0,0,8">
+                                                <TextBlock Classes="mono" FontSize="12" Text="{Binding Command}" TextWrapping="Wrap" />
+                                                <TextBlock Classes="printValue" FontSize="11" Text="{Binding Response}" />
+                                                <TextBlock Classes="label mono" FontSize="10" Text="{Binding At, StringFormat='HH:mm:ss'}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                                <TextBlock Classes="label" Text="Chưa có lệnh nào." IsVisible="{Binding !Print.HasCommandHistory}" />
+                            </StackPanel>
+                        </Expander>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+            </Grid>
         </Grid>
-
-        <!-- Chua duoc mo khoa bang license -->
-        <Border Grid.Row="1" Grid.RowSpan="3" Classes="panel" Padding="20"
-                IsVisible="{Binding !Print.CanUse}">
-            <StackPanel Spacing="12"
-                        MaxWidth="620"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center">
-                <Border Width="56" Height="56"
-                        CornerRadius="16"
-                        Background="{StaticResource WarnSoft}"
-                        BorderBrush="{StaticResource LineWarn}"
-                        BorderThickness="1"
-                        HorizontalAlignment="Center">
-                    <Path Width="24" Height="24"
-                          HorizontalAlignment="Center"
-                          VerticalAlignment="Center"
-                          Stretch="Uniform"
-                          Stroke="{StaticResource Warn}"
-                          StrokeThickness="1.9"
-                          StrokeLineCap="Round"
-                          StrokeJoin="Round"
-                          Data="{StaticResource Icon.Lock}" />
-                </Border>
-                <TextBlock Classes="sectionTitle"
-                           Text="MÁY IN CHƯA ĐƯỢC MỞ KHÓA"
-                           HorizontalAlignment="Center" />
-                <TextBlock Classes="label"
-                           FontSize="12"
-                           Text="{Binding Print.LicenseMessage}"
-                           TextWrapping="Wrap"
-                           TextAlignment="Center" />
-                <TextBlock Classes="label"
-                           FontSize="12"
-                           Text="Nhập license có quyền printer để kết nối và gửi dữ liệu."
-                           TextWrapping="Wrap"
-                           TextAlignment="Center" />
+        <Border Grid.Row="1" Classes="panel" Padding="24" IsVisible="{Binding !Print.CanUse}">
+            <StackPanel Spacing="12" MaxWidth="560" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <TextBlock Classes="sectionTitle" Text="MÁY IN CHƯA ĐƯỢC MỞ KHÓA" HorizontalAlignment="Center" />
+                <TextBlock Classes="label" Text="{Binding Print.LicenseMessage}" TextWrapping="Wrap" TextAlignment="Center" />
+                <TextBlock Classes="label" Text="Nhập license có quyền printer để sử dụng máy in." TextWrapping="Wrap" TextAlignment="Center" />
             </StackPanel>
         </Border>
     </Grid>

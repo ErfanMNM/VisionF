@@ -53,6 +53,16 @@ public sealed record PrinterStatusSnapshot(
     string Message,
     DateTime ObservedUtc);
 
+/// <summary>Bản tin được máy in trả về qua GFILE; Id dùng để đối chiếu CU.</summary>
+public sealed record PrinterFileSnapshot(string Id, string Name);
+
+/// <summary>Danh sách bản tin và Id đang dùng trên máy in.</summary>
+public sealed record PrinterFilesSnapshot(string CurrentId, IReadOnlyList<PrinterFileSnapshot> Files)
+{
+    public string CurrentJob => Files.FirstOrDefault(file =>
+        file.Id.Equals(CurrentId, StringComparison.OrdinalIgnoreCase))?.Name ?? "";
+}
+
 public sealed record PrintQueueSummary(
     int Pending,
     int Sent,
@@ -92,6 +102,7 @@ public interface IPrinterClient : IAsyncDisposable
 {
     string PrinterId { get; }
     PrinterStatusSnapshot Status { get; }
+    PrinterFilesSnapshot Files { get; }
     event Func<string, Task>? PrintConfirmed;
     Task ConnectAsync(CancellationToken ct = default);
     Task DisconnectAsync(CancellationToken ct = default);

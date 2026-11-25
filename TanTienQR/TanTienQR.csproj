@@ -5,6 +5,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>TanTienQR</AssemblyName>
     <RootNamespace>TanTienQR</RootNamespace>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
@@ -81,5 +82,18 @@
     <ProjectReference Include="..\ClassLibraryMT.MultiConnect\ClassLibraryMT.MultiConnect.csproj" />
     <ProjectReference Include="..\ClassLibraryMT.Checkee\ClassLibraryMT.Checkee.csproj" />
   </ItemGroup>
+
+  <!-- Helper COM chạy riêng bằng JIT; bản phát hành đóng gói single-file qua build-release.ps1. -->
+  <Target Name="BuildPrinterRemoteHelper" AfterTargets="Build"
+          Condition="$([MSBuild]::IsOSPlatform('Windows')) and '$(RuntimeIdentifier)' != 'linux-x64' and '$(DesignTimeBuild)' != 'true' and '$(SkipPrinterRemoteHelper)' != 'true'">
+    <MSBuild Projects="$(MSBuildProjectDirectory)\..\tools\PrinterRemoteHost\PrinterRemoteHost.csproj"
+             Targets="Restore;Build"
+             RemoveProperties="RuntimeIdentifier;PublishAot;IsAotCompatible;PublishTrimmed;PublishSingleFile;SelfContained;TargetFramework;OutputPath;BaseOutputPath;IntermediateOutputPath"
+             Properties="Configuration=$(Configuration);PublishAot=false;PublishTrimmed=false;SelfContained=false" />
+    <ItemGroup>
+      <PrinterRemoteHelperFile Include="$(MSBuildProjectDirectory)\..\tools\PrinterRemoteHost\bin\$(Configuration)\net10.0-windows\*.exe;$(MSBuildProjectDirectory)\..\tools\PrinterRemoteHost\bin\$(Configuration)\net10.0-windows\*.dll;$(MSBuildProjectDirectory)\..\tools\PrinterRemoteHost\bin\$(Configuration)\net10.0-windows\*.json" />
+    </ItemGroup>
+    <Copy SourceFiles="@(PrinterRemoteHelperFile)" DestinationFolder="$(TargetDir)PrinterRemoteHost" SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

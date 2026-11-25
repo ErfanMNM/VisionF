@@ -168,6 +168,8 @@ public static partial class UpdatePackage
             || ReservedDevice().IsMatch(stem))
             return false;
         if (path == UpdateProtocol.AppFileName(rid)) return true;
+        // Chỉ helper RDP đã biết được cập nhật cùng app; không mở rộng cho EXE tùy ý.
+        if (rid == "win-x64" && path == "TanTien.PrinterRemoteHost.exe") return true;
         return rid == "win-x64" ? path.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)
             : LinuxLibrary().IsMatch(path);
     }

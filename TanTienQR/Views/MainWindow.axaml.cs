@@ -28,6 +28,24 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        WindowMenuPopup.Opened += (_, _) => UpdatePrinterRemoteOcclusion();
+        WindowMenuPopup.Closed += (_, _) => UpdatePrinterRemoteOcclusion();
+        MoreMenuPopup.Opened += (_, _) => UpdatePrinterRemoteOcclusion();
+        MoreMenuPopup.Closed += (_, _) => UpdatePrinterRemoteOcclusion();
+    }
+
+    private void UpdatePrinterRemoteOcclusion()
+    {
+        if (DataContext is MainViewModel vm)
+            vm.SetPrinterRemoteOverlayBlocked(!IsEnabled || WindowState == WindowState.Minimized
+                || WindowMenuPopup.IsOpen || MoreMenuPopup.IsOpen);
+    }
+
+    protected override void OnPropertyChanged(Avalonia.AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == IsEnabledProperty || change.Property == WindowStateProperty)
+            UpdatePrinterRemoteOcclusion();
     }
 
     // Kéo di chuyển cửa sổ từ thanh tiêu đề tự vẽ (bỏ qua khi bấm vào nút).
@@ -193,6 +211,7 @@ public partial class MainWindow : Window
             vm.AttachLoginOverlay(LoginOverlay);
 
             vm.Start(this);
+            UpdatePrinterRemoteOcclusion();
 
             // Máy chưa có license hợp lệ -> hiện hộp thoại license (không tắt được).
             if (!vm.IsLicenseValid)

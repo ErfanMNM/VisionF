@@ -86,8 +86,10 @@ public sealed class PrintService
             var response = await _printer
                 .SendRawCommandAsync(command, prefix, timeoutMs, ct)
                 .ConfigureAwait(false);
-            var ok = response.StartsWith(prefix + "|OK", StringComparison.OrdinalIgnoreCase)
-                     || response.StartsWith("OK", StringComparison.OrdinalIgnoreCase);
+            var ok = command == "GFILE"
+                ? G10PrinterClient.TryParseFilesResponse(response, out _)
+                : response.StartsWith(prefix + "|OK", StringComparison.OrdinalIgnoreCase)
+                  || response.StartsWith("OK", StringComparison.OrdinalIgnoreCase);
             var message = ok
                 ? successMessage
                 : $"Máy in từ chối lệnh {command}: {response}";

@@ -13,10 +13,13 @@ internal static class Program
     private static readonly string AppName = UpdateProtocol.AppFileName(Rid);
     private static readonly string LibraryName = Rid == "win-x64" ? "native.dll" : "libnative.so.1";
     private static readonly string NewLibraryName = Rid == "win-x64" ? "added.dll" : "libadded.so";
+    private const string RemoteHelperName = "TanTien.PrinterRemoteHost.exe";
     private static readonly byte[] OldApp = "chương trình cũ"u8.ToArray();
     private static readonly byte[] OldLibrary = "thư viện cũ"u8.ToArray();
     private static readonly byte[] NewApp = "chương trình mới"u8.ToArray();
     private static readonly byte[] NewLibrary = "thư viện mới"u8.ToArray();
+    private static readonly byte[] OldRemoteHelper = "helper máy in cũ"u8.ToArray();
+    private static readonly byte[] NewRemoteHelper = "helper máy in mới"u8.ToArray();
 
     private static async Task<int> Main(string[] args)
     {
@@ -54,6 +57,7 @@ internal static class Program
         {
             ("Từ chối chữ ký, nền tảng và manifest hỏng", ManifestChecks),
             ("Từ chối ZIP thừa, payload sai, symlink và tải thiếu", ZipChecks),
+            ("Helper máy in được ký, cập nhật và phục hồi cùng bộ binary Windows", RemoteHelperReplacement),
             ("Giữ cấu hình/license/DB và phục hồi sau mất điện", InterruptedReplacement),
             ("Phục hồi idempotent khi mất điện lần nữa", InterruptedRollback),
             ("Mất điện ngay trước commit trả cả version và binary cũ", InterruptedCommit),
@@ -89,11 +93,27 @@ internal static class Program
             UpdateJsonContext.Default.SignedEnvelope), key, Rid));
         Throws(() => UpdatePackage.ReadManifest(package.Envelope, key, Rid == "win-x64" ? "linux-x64" : "win-x64"));
         foreach (var invalid in new[] { "appsettings.json", "license.lic", "../TanTienQR", "/TanTienQR",
-                     "CON.dll", "TanTienLauncher.exe", "logs/app.db", "thing.dll:stream", "native.dll." })
+                     "CON.dll", "TanTienLauncher.exe", "logs/app.db", "thing.dll:stream", "native.dll.",
+                     "UnknownTool.exe", "TanTien.PrinterRemoteHost2.exe", "TanTien.PrinterRemoteHost.exe.bak" })
         {
             var manifest = fixture.Manifest(package.Zip);
             manifest.Files.Add(new UpdateFile { Path = invalid, Sha256 = new string('a', 64), Size = 1 });
             Throws(() => UpdatePackage.ReadManifest(fixture.Sign(manifest), key, Rid));
+        }
+        foreach (var targetRid in new[] { "win-x64", "linux-x64" })
+        {
+            var helperManifest = fixture.Manifest(package.Zip);
+            helperManifest.Rid = targetRid;
+            helperManifest.Files =
+            [
+                new() { Path = UpdateProtocol.AppFileName(targetRid), Size = 1, Sha256 = new string('a', 64), Executable = true },
+                new() { Path = RemoteHelperName, Size = 1, Sha256 = new string('b', 64) }
+            ];
+            if (targetRid == "win-x64")
+                Check(UpdatePackage.ReadManifest(fixture.Sign(helperManifest), key, targetRid).Files.Count == 2,
+                    "Manifest có chữ ký chấp nhận đúng helper Windows.");
+            else
+                Throws(() => UpdatePackage.ReadManifest(fixture.Sign(helperManifest), key, targetRid));
         }
         var duplicates = fixture.Manifest(package.Zip);
         duplicates.Files.Add(duplicates.Files[0]);
@@ -145,6 +165,36 @@ internal static class Program
         // Cài lại cùng phiên bản sau rollback được phép.
         fixture.Transaction().Apply("2.0.0");
         fixture.Transaction().Rollback();
+    }
+
+    private static async Task RemoteHelperReplacement()
+    {
+        if (Rid != "win-x64") return;
+        // Thử cả nâng cấp helper cũ và lần cài tính năng remote đầu tiên.
+        foreach (var hadHelper in new[] { true, false })
+        {
+            using var fixture = new Fixture(withRemoteHelper: hadHelper);
+            await fixture.Stage();
+            var stage = UpdateProtocol.GetStagingDirectory(fixture.Root, "2.0.0");
+            Check(File.ReadAllBytes(Path.Combine(stage, "content", RemoteHelperName)).SequenceEqual(NewRemoteHelper),
+                "Staging kiểm đúng nội dung helper đã ký.");
+            var transaction = fixture.Transaction();
+            transaction.Checkpoint = point =>
+            {
+                if (point == "replaced:" + RemoteHelperName) throw new SimulatedPowerLoss();
+            };
+            Throws<SimulatedPowerLoss>(() => transaction.Apply("2.0.0"));
+            Check(File.ReadAllBytes(Path.Combine(fixture.Root, RemoteHelperName)).SequenceEqual(NewRemoteHelper),
+                "Helper được thay trong cùng giao dịch cập nhật.");
+            Check(fixture.Transaction().Rollback(), "Phục hồi được khi mất điện ngay sau thay helper.");
+            fixture.AssertOld();
+            var retried = fixture.Transaction();
+            retried.Apply("2.0.0");
+            retried.Commit();
+            Check(File.ReadAllBytes(Path.Combine(fixture.Root, RemoteHelperName)).SequenceEqual(NewRemoteHelper),
+                "Commit giữ helper mới cùng bộ chương trình mới.");
+            fixture.AssertData();
+        }
     }
 
     private static async Task InterruptedRollback()
@@ -323,14 +373,18 @@ internal static class Program
     private sealed class Fixture : IDisposable
     {
         private readonly RSA _key = RSA.Create(2048);
+        private readonly bool _withRemoteHelper;
         public string Root { get; } = Path.Combine(Path.GetTempPath(), "tantien-update-tests-" + Guid.NewGuid().ToString("N"));
         public string PublicKey => Convert.ToBase64String(_key.ExportSubjectPublicKeyInfo());
 
-        public Fixture()
+        public Fixture(bool withRemoteHelper = true)
         {
+            _withRemoteHelper = withRemoteHelper;
             Directory.CreateDirectory(Root);
             File.WriteAllBytes(Path.Combine(Root, AppName), OldApp);
             File.WriteAllBytes(Path.Combine(Root, LibraryName), OldLibrary);
+            if (Rid == "win-x64" && withRemoteHelper)
+                File.WriteAllBytes(Path.Combine(Root, RemoteHelperName), OldRemoteHelper);
             File.WriteAllText(Path.Combine(Root, "appsettings.json"), "cấu hình khách");
             File.WriteAllText(Path.Combine(Root, "license.lic"), "license khách");
             Directory.CreateDirectory(Path.Combine(Root, "logs"));
@@ -342,8 +396,10 @@ internal static class Program
             using var stream = new MemoryStream();
             using (var zip = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
             {
-                foreach (var (path, bytes) in new[]
-                    { (AppName, NewApp), (LibraryName, NewLibrary), (NewLibraryName, NewLibrary) })
+                var binaries = new List<(string Path, byte[] Content)>
+                    { (AppName, NewApp), (LibraryName, NewLibrary), (NewLibraryName, NewLibrary) };
+                if (Rid == "win-x64") binaries.Add((RemoteHelperName, NewRemoteHelper));
+                foreach (var (path, bytes) in binaries)
                 {
                     var entry = zip.CreateEntry(path);
                     if (symlink && path == AppName) entry.ExternalAttributes = unchecked((int)0xa1ff0000);
@@ -356,16 +412,22 @@ internal static class Program
             return (Sign(Manifest(archive)), archive);
         }
 
-        public UpdateManifest Manifest(byte[] zip) => new()
+        public UpdateManifest Manifest(byte[] zip)
         {
-            Version = "2.0.0", Rid = Rid, Notes = "Thử nghiệm cập nhật", Size = zip.Length, Sha256 = Hash(zip),
-            Files =
-            [
-                new() { Path = AppName, Size = NewApp.Length, Sha256 = Hash(NewApp), Executable = true },
-                new() { Path = LibraryName, Size = NewLibrary.Length, Sha256 = Hash(NewLibrary) },
-                new() { Path = NewLibraryName, Size = NewLibrary.Length, Sha256 = Hash(NewLibrary) }
-            ]
-        };
+            var manifest = new UpdateManifest
+            {
+                Version = "2.0.0", Rid = Rid, Notes = "Thử nghiệm cập nhật", Size = zip.Length, Sha256 = Hash(zip),
+                Files =
+                [
+                    new() { Path = AppName, Size = NewApp.Length, Sha256 = Hash(NewApp), Executable = true },
+                    new() { Path = LibraryName, Size = NewLibrary.Length, Sha256 = Hash(NewLibrary) },
+                    new() { Path = NewLibraryName, Size = NewLibrary.Length, Sha256 = Hash(NewLibrary) }
+                ]
+            };
+            if (Rid == "win-x64")
+                manifest.Files.Add(new UpdateFile { Path = RemoteHelperName, Size = NewRemoteHelper.Length, Sha256 = Hash(NewRemoteHelper) });
+            return manifest;
+        }
 
         public byte[] Sign(UpdateManifest manifest)
         {
@@ -396,6 +458,14 @@ internal static class Program
             Check(File.ReadAllBytes(Path.Combine(Root, AppName)).SequenceEqual(OldApp), "EXE cũ đã phục hồi.");
             Check(File.ReadAllBytes(Path.Combine(Root, LibraryName)).SequenceEqual(OldLibrary), "Thư viện cũ đã phục hồi.");
             Check(!File.Exists(Path.Combine(Root, NewLibraryName)), "Thư viện mới không còn sau rollback.");
+            if (Rid == "win-x64")
+            {
+                var helperPath = Path.Combine(Root, RemoteHelperName);
+                if (_withRemoteHelper)
+                    Check(File.ReadAllBytes(helperPath).SequenceEqual(OldRemoteHelper), "Helper cũ đã phục hồi cùng app.");
+                else
+                    Check(!File.Exists(helperPath), "Lần cài remote đầu tiên được gỡ helper khi rollback.");
+            }
             AssertData();
         }
 
