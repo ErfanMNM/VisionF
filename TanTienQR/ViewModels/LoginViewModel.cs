@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using Avalonia.Controls;
 using Avalonia.Media;
 using ClassLibraryMT.Auth;
@@ -13,7 +14,7 @@ namespace TanTienQR.ViewModels;
 /// </summary>
 internal enum LoginStep
 {
-    /// <summary>Bước 1: nhập tên đăng nhập + mật khẩu.</summary>
+    /// <summary>Bước 1: chọn tài khoản và nhập mật khẩu.</summary>
     SignIn,
 
     /// <summary>Bước 2: bắt buộc đổi mật khẩu (tài khoản seed / vừa bị reset).</summary>
@@ -174,9 +175,34 @@ internal sealed partial class LoginViewModel : ViewModelBase
 
     // ---------- Form bước 1 ----------
 
-    /// <summary>Tên đăng nhập.</summary>
+    /// <summary>Các tài khoản đang hoạt động trên thiết bị.</summary>
+    public ObservableCollection<LoginAccountOption> Accounts { get; } = [];
+
+    /// <summary>Tài khoản được chọn để đăng nhập.</summary>
     [ObservableProperty]
-    public partial string Username { get; set; } = string.Empty;
+    [NotifyPropertyChangedFor(nameof(Username))]
+    [NotifyPropertyChangedFor(nameof(CanSubmit))]
+    public partial LoginAccountOption? SelectedAccount { get; set; }
+
+    /// <summary>Tên đăng nhập lấy từ tài khoản đã chọn.</summary>
+    public string Username => SelectedAccount?.Username ?? string.Empty;
+
+    /// <summary>True khi đang đọc danh sách tài khoản.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanChooseAccount))]
+    [NotifyPropertyChangedFor(nameof(CanRefreshAccounts))]
+    [NotifyPropertyChangedFor(nameof(CanSubmit))]
+    public partial bool IsLoadingAccounts { get; set; }
+
+    /// <summary>Hướng dẫn hoặc trạng thái danh sách tài khoản.</summary>
+    [ObservableProperty]
+    public partial string AccountListMessage { get; set; } = "Đang tải danh sách tài khoản…";
+
+    /// <summary>Cho phép chọn tài khoản khi danh sách đã sẵn sàng.</summary>
+    public bool CanChooseAccount => !IsBusy && !IsLoadingAccounts && Accounts.Count > 0;
+
+    /// <summary>Cho phép thử tải lại nếu danh sách bị lỗi hoặc vừa thay đổi.</summary>
+    public bool CanRefreshAccounts => !IsBusy && !IsLoadingAccounts;
 
     /// <summary>Mật khẩu.</summary>
     [ObservableProperty]
@@ -201,7 +227,7 @@ internal sealed partial class LoginViewModel : ViewModelBase
     public bool HasWarning => !string.IsNullOrWhiteSpace(WarningMessage);
 
     /// <summary>True khi nút đăng nhập có thể bấm.</summary>
-    public bool CanSubmit => !IsBusy;
+    public bool CanSubmit => !IsBusy && !IsLoadingAccounts && SelectedAccount is not null;
 
     partial void OnErrorMessageChanged(string value) => OnPropertyChanged(nameof(HasError));
 
@@ -211,17 +237,61 @@ internal sealed partial class LoginViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(CanSubmit));
         OnPropertyChanged(nameof(CanSubmitPasswordChange));
+        OnPropertyChanged(nameof(CanChooseAccount));
+        OnPropertyChanged(nameof(CanRefreshAccounts));
     }
 
     /// <summary>
-    /// Hiển thị cảnh báo ngay khi người dùng gõ tên đăng nhập của tài khoản
-    /// quản trị mặc định được tạo sẵn (admin/admin) — nhắc họ đổi mật khẩu.
+    /// Đổi tài khoản luôn xoá mật khẩu cũ và cập nhật cảnh báo quản trị mặc định.
     /// </summary>
-    partial void OnUsernameChanged(string value)
+    partial void OnSelectedAccountChanged(LoginAccountOption? value)
     {
-        WarningMessage = IsSeedAdminUsername(value)
+        Password = string.Empty;
+        ErrorMessage = string.Empty;
+        WarningMessage = IsSeedAdminUsername(value?.Username)
             ? "Tài khoản quản trị mặc định — hãy đổi mật khẩu ở lần đăng nhập đầu tiên."
             : string.Empty;
+    }
+
+    /// <summary>
+    /// Đọc lại tài khoản sau khi khởi tạo dữ liệu hoặc khi mở lại màn hình đăng nhập.
+    /// Không tự tạo tài khoản: App hoàn tất seed trước lần tải đầu tiên.
+    /// </summary>
+    [RelayCommand]
+    public async Task RefreshAccountsAsync()
+    {
+        if (IsBusy || IsLoadingAccounts) return;
+
+        IsLoadingAccounts = true;
+        AccountListMessage = "Đang tải danh sách tài khoản…";
+        var previousUsername = Username;
+        SelectedAccount = null;
+        Password = string.Empty;
+        ErrorMessage = string.Empty;
+        Accounts.Clear();
+
+        try
+        {
+            var users = await _users.GetAllAsync().ConfigureAwait(true);
+            foreach (var user in users.Where(user => user.IsActive))
+                Accounts.Add(new LoginAccountOption(user.Username, user.DisplayName));
+
+            SelectedAccount = Accounts.FirstOrDefault(account =>
+                string.Equals(account.Username, previousUsername, StringComparison.OrdinalIgnoreCase));
+            AccountListMessage = Accounts.Count == 0
+                ? "Không có tài khoản đang hoạt động. Liên hệ quản trị viên."
+                : "Chọn tài khoản, sau đó nhập mật khẩu.";
+        }
+        catch (Exception ex)
+        {
+            AccountListMessage = "Không tải được danh sách tài khoản. Bấm tải lại để thử lại.";
+            ErrorMessage = "Lỗi khi tải tài khoản: " + ex.Message;
+        }
+        finally
+        {
+            IsLoadingAccounts = false;
+            OnPropertyChanged(nameof(CanChooseAccount));
+        }
     }
 
     // ---------- Form bước 2 ----------
@@ -293,19 +363,19 @@ internal sealed partial class LoginViewModel : ViewModelBase
     [RelayCommand]
     private async Task LoginAsync()
     {
-        if (IsBusy || IsChangePasswordStep)
+        if (IsBusy || IsLoadingAccounts || IsChangePasswordStep)
         {
             return;
         }
 
         ErrorMessage = string.Empty;
 
-        // Cảnh báo tài khoản seed do OnUsernameChanged quản lý -> không xoá ở đây
+        // Cảnh báo tài khoản seed do OnSelectedAccountChanged quản lý -> không xoá ở đây
         // để người dùng vẫn thấy sau khi đăng nhập sai.
 
         if (string.IsNullOrWhiteSpace(Username))
         {
-            ErrorMessage = "Vui lòng nhập tên đăng nhập.";
+            ErrorMessage = "Vui lòng chọn tài khoản.";
             return;
         }
 
@@ -522,10 +592,10 @@ internal sealed partial class LoginViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// True nếu tên đăng nhập nhập vào trùng với tài khoản quản trị mặc định
+    /// True nếu tài khoản được chọn trùng với tài khoản quản trị mặc định
     /// được tạo sẵn (theo cấu hình <c>Auth:SeedAdminUser</c>).
     /// </summary>
-    /// <param name="username">Tên đăng nhập đang nhập.</param>
+    /// <param name="username">Tên đăng nhập được chọn.</param>
     /// <returns>True nếu trùng tài khoản seed mặc định.</returns>
     private bool IsSeedAdminUsername(string? username)
     {
@@ -543,7 +613,7 @@ internal sealed partial class LoginViewModel : ViewModelBase
     /// <summary>
     /// Đặt lại form đăng nhập về trạng thái sạch (dùng khi đăng xuất).
     ///
-    /// - Xoá tên đăng nhập / mật khẩu / thông báo lỗi.
+    /// - Bỏ chọn tài khoản / xoá mật khẩu / thông báo lỗi.
     /// - Về lại bước 1 (<see cref="LoginStep.SignIn"/>).
     /// - Xoá trạng thái <see cref="IsAuthenticated"/>.
     ///
@@ -557,7 +627,7 @@ internal sealed partial class LoginViewModel : ViewModelBase
 
         _pendingUser = null;
 
-        Username = string.Empty;
+        SelectedAccount = null;
         Password = string.Empty;
         CurrentPassword = string.Empty;
         NewPassword = string.Empty;

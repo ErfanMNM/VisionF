@@ -7,8 +7,10 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Headless;
+using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using ClassLibraryMT.Auth;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -118,8 +120,21 @@ var keyboardService = services.GetRequiredService<KeyboardService>();
 VirtualKeyboardHost.Register(keyboardService);
 
 // Seed tài khoản quản trị (giống App).
-var userService = services.GetRequiredService<ClassLibraryMT.Auth.IUserService>();
+var userService = services.GetRequiredService<IUserService>();
 await userService.EnsureSeedAdminAsync();
+
+// Danh sach thuc trong SQLite: tai khoan hoat dong, vo hieu hoa va khoa tam thoi.
+Check("Tao tai khoan van hanh", (await userService.CreateAsync(
+    "operator", "Vận hành dây chuyền", "Operator123!", UserRole.Operator)).Ok);
+Check("Tao tai khoan vo hieu hoa", (await userService.CreateAsync(
+    "disabled", "Tài khoản ngừng sử dụng", "Disabled123!", UserRole.Worker)).Ok);
+Check("Tao tai khoan khoa tam thoi", (await userService.CreateAsync(
+    "locked", "Tài khoản đang khoá", "Locked123!", UserRole.Worker)).Ok);
+var disabledUser = (await userService.GetByUsernameAsync("disabled"))!;
+await userService.UpdateAsync(disabledUser.Id, null, null, false);
+for (var i = 0; i < 5; i++) await userService.AuthenticateAsync("locked", "wrong");
+var lockedUser = (await userService.GetByUsernameAsync("locked"))!;
+Check("Fixture da khoa tai khoan", lockedUser.IsLocked);
 
 // ---------------------------------------------------------------
 // Helper reflection (VM la internal)
@@ -142,7 +157,31 @@ double GetDouble(object target, string name) => (double)(GetProp(target, name) ?
 
 string GetStr(object target, string name) => (string)(GetProp(target, name) ?? string.Empty);
 
-async Task ExecAsync(object target, string commandPropertyName)
+// Async VM quay lai UI dispatcher, nen pump trong khi doi de tranh deadlock headless.
+void CompleteUiTask(Task task)
+{
+    var deadline = Environment.TickCount64 + 15000;
+    while (!task.IsCompleted && Environment.TickCount64 < deadline)
+    {
+        Dispatcher.UIThread.RunJobs();
+        Thread.Sleep(5);
+    }
+    if (!task.IsCompleted) throw new TimeoutException("Tac vu UI khong hoan tat trong 15 giay.");
+    task.GetAwaiter().GetResult();
+    Dispatcher.UIThread.RunJobs();
+}
+
+void RefreshAccounts(object target)
+{
+    var refresh = target.GetType().GetMethod("RefreshAccountsAsync", All)
+        ?? throw new MissingMethodException(target.GetType().FullName, "RefreshAccountsAsync");
+    CompleteUiTask((Task)refresh.Invoke(target, null)!);
+}
+
+object[] Accounts(object target) =>
+    ((System.Collections.IEnumerable)GetProp(target, "Accounts")!).Cast<object>().ToArray();
+
+Task ExecAsync(object target, string commandPropertyName)
 {
     var prop = target.GetType().GetProperty(commandPropertyName, All)
         ?? throw new MissingMemberException(target.GetType().FullName, commandPropertyName);
@@ -162,13 +201,14 @@ async Task ExecAsync(object target, string commandPropertyName)
         var task = executionTaskProp.GetValue(cmd) as Task;
         if (task is not null)
         {
-            await task;
+            CompleteUiTask(task);
         }
 
-        return;
+        return Task.CompletedTask;
     }
 
     cmd.GetType().GetMethod("Execute", All)?.Invoke(cmd, new object?[] { null });
+    return Task.CompletedTask;
 }
 
 int CountWindows()
@@ -185,6 +225,9 @@ int CountWindows()
 // MainViewModel la `internal` -> lay qua reflection.
 var mainVmType = typeof(App).Assembly.GetType("TanTienQR.ViewModels.MainViewModel")!;
 var mainVm = services.GetRequiredService(mainVmType);
+var loginVm = GetProp(mainVm, "Login")!;
+// App that tai danh sach SAU khi seed xong; harness khong chay App startup.
+RefreshAccounts(loginVm);
 var mainWindow = new MainWindow { DataContext = mainVm };
 keyboardService.Attach(mainWindow);
 
@@ -202,7 +245,6 @@ Check("Overlay dang nhap bat dau HIEN",
 var loginView = mainWindow.GetVisualDescendants().OfType<LoginView>().FirstOrDefault();
 Check("Co LoginView trong cay hinh anh cua MainWindow", loginView is not null);
 
-var loginVm = GetProp(mainVm, "Login");
 Check("LoginView dung chung VM voi MainViewModel",
     loginView is not null && ReferenceEquals(loginView.DataContext, loginVm),
     loginView?.DataContext?.GetType().Name ?? "null");
@@ -221,7 +263,23 @@ Check("Overlay co ZIndex cao",
 Console.WriteLine("\n[2] Form dang nhap render dung");
 
 var loginTextBoxes = loginView?.GetVisualDescendants().OfType<TextBox>().ToList() ?? new List<TextBox>();
-Check("Co TextBox ten dang nhap", loginTextBoxes.Any(t => t.Name == "UsernameBox"));
+var accountSelector = loginView?.GetVisualDescendants().OfType<ComboBox>()
+    .SingleOrDefault(c => c.Name == "AccountSelector");
+Check("Co bo chon tai khoan", accountSelector is not null);
+Check("Khong con o nhap ten dang nhap", loginTextBoxes.All(t => t.Name != "UsernameBox"));
+Check("Bo chon du cao cho man hinh cam ung", accountSelector?.Bounds.Height >= 48,
+    "height=" + accountSelector?.Bounds.Height);
+var accountNames = Accounts(loginVm).Select(a => GetStr(a, "Username")).ToArray();
+Check("Tai danh sach nhieu tai khoan hoat dong",
+    accountNames.SequenceEqual(new[] { "admin", "locked", "operator" }),
+    string.Join(",", accountNames));
+Check("Tai khoan vo hieu hoa khong hien trong bo chon", !accountNames.Contains("disabled"));
+Check("Bo chon hien dung danh sach tu VM", accountSelector is not null
+    && accountSelector.Items.Cast<object>().SequenceEqual(Accounts(loginVm)));
+Check("Nhan tai khoan gom ten hien thi va username", Accounts(loginVm).Any(a =>
+    GetStr(a, "Username") == "operator"
+    && GetStr(a, "Label").Contains("Vận hành dây chuyền")
+    && GetStr(a, "Label").Contains("operator")));
 Check("Co TextBox mat khau", loginTextBoxes.Any(t => t.Name == "LoginPasswordBox"));
 Check("Co nut Dang nhap",
     loginView?.GetVisualDescendants().OfType<Button>().Any(b => b.Content as string == "Đăng nhập") == true);
@@ -243,12 +301,80 @@ Check("Hai ban phim ao dung CHUNG 1 ViewModel",
     "overlay=" + (overlayKeyboard?.DataContext?.GetType().Name ?? "null")
         + " main=" + (mainKeyboard?.DataContext?.GetType().Name ?? "null"));
 
-// Overlay phai focus o "Ten dang nhap" khi mo (buoc 1).
-var focusedName = mainWindow.FocusManager?.GetFocusedElement() is TextBox focused
+// Overlay phai focus bo chon, khong mo ban phim ten tai khoan.
+var initialFocus = mainWindow.FocusManager?.GetFocusedElement();
+var focusedName = initialFocus is Control focused
     ? focused.Name
     : null;
-Check("Overlay focus o 'Ten dang nhap' khi mo", focusedName == "UsernameBox",
-    "focused=" + (focusedName ?? "null"));
+Check("Overlay focus o bo chon tai khoan khi mo", ReferenceEquals(initialFocus, accountSelector)
+    || (initialFocus is Control initialFocusedControl
+        && initialFocusedControl.FindAncestorOfType<ComboBox>() == accountSelector),
+    "focused=" + (focusedName ?? "null") + "/" + initialFocus?.GetType().Name);
+
+if (accountSelector is not null)
+{
+    accountSelector.IsDropDownOpen = true;
+    for (var pass = 0; pass < 3; pass++)
+    {
+        Dispatcher.UIThread.RunJobs();
+        mainWindow.UpdateLayout();
+        AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+    }
+    var shotRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+        "../../../../../artifacts/login-account-picker"));
+    Directory.CreateDirectory(shotRoot);
+    using (var bitmap = mainWindow.CaptureRenderedFrame())
+        bitmap?.Save(Path.Combine(shotRoot, "login.png"), new PngBitmapEncoderOptions());
+    Console.WriteLine("  [Shot] " + shotRoot);
+    accountSelector.IsDropDownOpen = false;
+    Dispatcher.UIThread.RunJobs();
+}
+
+void SelectAccount(string username)
+{
+    if (accountSelector is null) throw new InvalidOperationException("Khong tim thay AccountSelector.");
+    accountSelector.SelectedItem = Accounts(loginVm).Single(a => GetStr(a, "Username") == username);
+    Dispatcher.UIThread.RunJobs();
+}
+
+Console.WriteLine("\n[2b] Chon tai khoan + xac thuc bang mat khau");
+Check("Ban dau chua chon tai khoan", GetProp(loginVm, "SelectedAccount") is null);
+SetProp(loginVm, "Password", "Operator123!");
+await ExecAsync(loginVm, "LoginCommand");
+Check("Bat buoc chon tai khoan truoc khi dang nhap", !GetBool(loginVm, "IsAuthenticated")
+    && GetStr(loginVm, "ErrorMessage") == "Vui lòng chọn tài khoản.",
+    GetStr(loginVm, "ErrorMessage"));
+SelectAccount("operator");
+Check("Chon tai khoan cap nhat dung username", GetStr(loginVm, "Username") == "operator");
+Check("Chon tai khoan xoa mat khau va loi cu", GetStr(loginVm, "Password").Length == 0
+    && GetStr(loginVm, "ErrorMessage").Length == 0);
+Check("Chon xong focus mat khau", (mainWindow.FocusManager?.GetFocusedElement() as Control)?.Name
+    == "LoginPasswordBox");
+SetProp(loginVm, "Password", "Operator123!");
+accountSelector!.Focus();
+accountSelector!.IsDropDownOpen = true;
+SelectAccount("locked");
+Check("Doi lua chon khi danh sach mo khong ep focus mat khau",
+    accountSelector.IsDropDownOpen
+    && (mainWindow.FocusManager?.GetFocusedElement() as Control)?.Name != "LoginPasswordBox");
+accountSelector.IsDropDownOpen = false;
+Dispatcher.UIThread.RunJobs();
+Check("Dong danh sach xong focus mat khau",
+    (mainWindow.FocusManager?.GetFocusedElement() as Control)?.Name == "LoginPasswordBox");
+Check("Doi tai khoan xoa mat khau tai khoan truoc", GetStr(loginVm, "Password").Length == 0);
+SetProp(loginVm, "Password", "Locked123!");
+await ExecAsync(loginVm, "LoginCommand");
+Check("Tai khoan khoa van bi service chan du chon trong danh sach",
+    !GetBool(loginVm, "IsAuthenticated") && GetStr(loginVm, "ErrorMessage").Contains("khoá"),
+    GetStr(loginVm, "ErrorMessage"));
+SelectAccount("admin");
+Check("Chon admin hien canh bao tai khoan mac dinh", GetBool(loginVm, "HasWarning"));
+SetProp(loginVm, "Password", "wrong");
+await ExecAsync(loginVm, "LoginCommand");
+Check("Chon tai khoan van can mat khau chinh xac", !GetBool(loginVm, "IsAuthenticated")
+    && GetStr(loginVm, "ErrorMessage").Contains("không đúng"), GetStr(loginVm, "ErrorMessage"));
+Check("Sai mat khau giu tai khoan da chon va xoa mat khau",
+    GetStr(loginVm, "Username") == "admin" && GetStr(loginVm, "Password").Length == 0);
 
 Console.WriteLine("\n[3] FullScreen ngay tu dau (khong chuyen state 2 lan)");
 
@@ -258,7 +384,7 @@ Check("WindowState = FullScreen", mainWindow.WindowState == WindowState.FullScre
 Console.WriteLine("\n[4] Tab lazy: chi InfoView dung san");
 
 var tabHosts = mainWindow.GetVisualDescendants().OfType<LazyTabHost>().ToList();
-Check("Co 11 LazyTabHost", tabHosts.Count == 11, "count=" + tabHosts.Count);
+Check("Co 12 LazyTabHost", tabHosts.Count == 12, "count=" + tabHosts.Count);
 
 var createdHosts = tabHosts.Where(h => h.IsCreated).ToList();
 Check("Chi 1 tab duoc dung san (Info)",
@@ -285,7 +411,7 @@ Console.WriteLine("\n[5] Dang nhap thanh cong -> overlay AN, khong tao cua so mo
 
 var windowCountBefore = CountWindows();
 
-SetProp(loginVm!, "Username", "admin");
+SelectAccount("admin");
 SetProp(loginVm!, "Password", "admin");
 Dispatcher.UIThread.RunJobs();
 
@@ -295,6 +421,9 @@ Dispatcher.UIThread.RunJobs();
 
 // Tai khoan seed (admin/admin) BANG BUOC doi mat khau lan dau -> buoc 2.
 // Neu vay thi hoan tat buoc 2 truoc khi kiem tra overlay.
+Check("Tai khoan seed van bat buoc doi mat khau", GetBool(loginVm!, "IsChangePasswordStep"));
+Check("Buoc doi mat khau focus mat khau hien tai",
+    (mainWindow.FocusManager?.GetFocusedElement() as Control)?.Name == "CurrentBox");
 if (GetBool(loginVm!, "IsChangePasswordStep"))
 {
     Console.WriteLine("  (buoc 2: doi mat khau lan dau)");
@@ -389,8 +518,23 @@ Check("Tab Dev: dung view chi khi vai tro cho phep",
 
 Console.WriteLine("\n[8] Dang xuat -> overlay HIEN LAI + form reset sach");
 
+// Quan tri thay doi danh sach trong phien: dang xuat phai lay trang thai moi.
+CompleteUiTask(userService.CreateAsync("newworker", "Nhân viên mới", "Worker123!", UserRole.Worker));
+var operatorLookup = userService.GetByUsernameAsync("operator");
+CompleteUiTask(operatorLookup);
+var operatorUser = operatorLookup.Result!;
+CompleteUiTask(userService.UpdateAsync(operatorUser.Id, null, null, false));
+CompleteUiTask(userService.DeleteAsync(lockedUser.Id));
+
 await ExecAsync(mainVm, "LogoutCommand");
 Dispatcher.UIThread.RunJobs();
+// ShowLoginOverlay tai lai bat dong bo. Pump cho toi khi thay tai khoan vua tao.
+var accountRefreshDeadline = Environment.TickCount64 + 15000;
+while (!Accounts(loginVm).Any(a => GetStr(a, "Username") == "newworker")
+    && Environment.TickCount64 < accountRefreshDeadline)
+{
+    PumpFor(10);
+}
 
 Check("Overlay hien lai sau dang xuat", GetBool(mainVm, "IsLoginOverlayVisible"),
     "IsLoginOverlayVisible=" + GetBool(mainVm, "IsLoginOverlayVisible"));
@@ -399,6 +543,11 @@ Check("Overlay hien lai day du (Opacity = 1)",
     "opacity=" + GetDouble(mainVm, "LoginOverlayOpacity"));
 Check("Form reset: Username rong", GetStr(loginVm!, "Username").Length == 0,
     "u=" + GetStr(loginVm!, "Username"));
+Check("Form reset: bo chon tai khoan rong", GetProp(loginVm, "SelectedAccount") is null
+    && accountSelector?.SelectedItem is null);
+accountNames = Accounts(loginVm).Select(a => GetStr(a, "Username")).ToArray();
+Check("Dang xuat refresh them, xoa va vo hieu hoa tai khoan",
+    accountNames.SequenceEqual(new[] { "admin", "newworker" }), string.Join(",", accountNames));
 Check("Form reset: Password rong", GetStr(loginVm!, "Password").Length == 0);
 Check("Form reset: Error rong", GetStr(loginVm!, "ErrorMessage").Length == 0);
 Check("Form reset: ve buoc 1 (SignIn)", GetBool(loginVm!, "IsSignInStep"));
@@ -410,7 +559,7 @@ Check("Cua so chinh van con hien", mainWindow.IsVisible);
 Console.WriteLine("\n[9] Dang nhap lai van duoc");
 
 // Mat khau admin da doi o [5] -> dung mat khau moi.
-SetProp(loginVm!, "Username", "admin");
+SelectAccount("admin");
 SetProp(loginVm!, "Password", "Overlay123!");
 await ExecAsync(loginVm!, "LoginCommand");
 Dispatcher.UIThread.RunJobs();

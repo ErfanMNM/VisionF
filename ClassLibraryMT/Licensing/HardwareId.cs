@@ -1,22 +1,15 @@
-using System.Globalization;
-using System.Net.NetworkInformation;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Win32;
 
 namespace ClassLibraryMT.Licensing;
 
-// Ma dinh danh may: ket hop MachineGuid + serial o C + MAC + CPU,
-// bam SHA256, lay 32 ky tu hex dau (128-bit). On dinh qua cac lan cai lai app.
-public static partial class HardwareId
+// HWID v2 chi dua tren MachineGuid, khong phu thuoc trang thai adapter hay volume.
+public static class HardwareId
 {
-    public static string Get()
-    {
-        var raw = Collect();
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(raw));
-        return Normalize(Convert.ToHexString(hash))[..32];
-    }
+    private const string AlgorithmPrefix = "VisionF-HWID-v2|";
+
+    public static string Get() => Compute(ReadMachineIdentifier());
 
     // Dang de nhin, de doc qua dien thoai: XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX
     public static string GetGrouped()
@@ -36,54 +29,51 @@ public static partial class HardwareId
         return sb.ToString();
     }
 
-    private static string Collect()
+    internal static string Compute(string machineIdentifier)
     {
-        var machineGuid = "";
+        var normalized = NormalizeMachineIdentifier(machineIdentifier);
+        var input = Encoding.UTF8.GetBytes(AlgorithmPrefix + normalized);
+        return Convert.ToHexString(SHA256.HashData(input))[..32];
+    }
+
+    private static string ReadMachineIdentifier()
+    {
         try
         {
             if (OperatingSystem.IsWindows())
-                machineGuid = Registry.GetValue(
-                    @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Cryptography", "MachineGuid", "") as string ?? "";
+            {
+                var value = Registry.GetValue(
+                    @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Cryptography", "MachineGuid", "") as string;
+                if (!string.IsNullOrWhiteSpace(value)) return value;
+            }
+            else if (OperatingSystem.IsLinux() && File.Exists("/etc/machine-id"))
+            {
+                var value = File.ReadAllText("/etc/machine-id");
+                if (!string.IsNullOrWhiteSpace(value)) return value;
+            }
         }
-        catch { /* bo qua, dung thanh phan khac */ }
-
-        // Linux: /etc/machine-id tuong duong MachineGuid cua Windows.
-        try
+        catch (Exception ex)
         {
-            if (OperatingSystem.IsLinux() && File.Exists("/etc/machine-id"))
-                machineGuid = File.ReadAllText("/etc/machine-id").Trim();
+            throw new InvalidOperationException("Khong doc duoc dinh danh he dieu hanh de tao HWID.", ex);
         }
-        catch { /* bo qua */ }
 
-        var volume = "";
-        try
-        {
-            if (OperatingSystem.IsWindows() &&
-                GetVolumeInformationW(@"C:\", null, 0, out var serial, out _, out _, null, 0) != 0)
-                volume = serial.ToString("X8", CultureInfo.InvariantCulture);
-        }
-        catch { /* bo qua */ }
-
-        var mac = "";
-        try
-        {
-            mac = NetworkInterface.GetAllNetworkInterfaces()
-                .Where(n => n.OperationalStatus == OperationalStatus.Up &&
-                            n.NetworkInterfaceType != NetworkInterfaceType.Loopback)
-                .OrderByDescending(n => n.Speed)
-                .Select(n => n.GetPhysicalAddress()?.ToString())
-                .FirstOrDefault(s => !string.IsNullOrEmpty(s)) ?? "";
-        }
-        catch { /* bo qua */ }
-
-        var cpu = Environment.GetEnvironmentVariable("PROCESSOR_IDENTIFIER") ?? "";
-        return $"{machineGuid}|{volume}|{mac}|{cpu}";
+        throw new InvalidOperationException("Khong tim thay MachineGuid hoac machine-id de tao HWID.");
     }
 
-    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
-    private static extern int GetVolumeInformationW(
-        string rootPathName,
-        StringBuilder? volumeNameBuffer, int volumeNameSize,
-        out uint volumeSerialNumber, out uint maximumComponentLength, out uint fileSystemFlags,
-        StringBuilder? fileSystemNameBuffer, int fileSystemNameSize);
+    private static string NormalizeMachineIdentifier(string machineIdentifier)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(machineIdentifier);
+
+        var normalized = machineIdentifier.Trim()
+            .Replace("-", "", StringComparison.Ordinal)
+            .Replace("{", "", StringComparison.Ordinal)
+            .Replace("}", "", StringComparison.Ordinal)
+            .ToUpperInvariant();
+
+        if (normalized.Length != 32 || normalized.Any(c =>
+                !((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F'))))
+            throw new ArgumentException("Machine identifier phai la UUID 32 ky tu hex.", nameof(machineIdentifier));
+
+        return normalized;
+    }
 }

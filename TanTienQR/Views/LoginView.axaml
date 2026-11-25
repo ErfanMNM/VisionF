@@ -13,6 +13,14 @@
     </Design.DataContext>
 
     <UserControl.Styles>
+        <Style Selector="ComboBox.accountPicker">
+            <Setter Property="FontSize" Value="15" />
+        </Style>
+        <Style Selector="ComboBox.accountPicker ComboBoxItem">
+            <Setter Property="MinHeight" Value="48" />
+            <Setter Property="Padding" Value="14,12" />
+        </Style>
+
         <!-- Nút hiện/ẩn mật khẩu nằm bên phải ô nhập -->
         <Style Selector="ToggleButton.reveal">
             <Setter Property="Background" Value="Transparent" />
@@ -248,27 +256,54 @@
                             </StackPanel>
 
                             <StackPanel Spacing="6">
-                                <TextBlock Classes="fieldLabel" Text="TÊN ĐĂNG NHẬP" />
-                                <TextBox x:Name="UsernameBox"
-                                         Classes="field"
-                                         Height="44"
-                                         TabIndex="0"
-                                         VerticalContentAlignment="Center"
-                                         PlaceholderText="Nhập tên đăng nhập"
-                                         TextInputOptions.ContentType="Name"
-                                         Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}">
-                                    <TextBox.InnerLeftContent>
-                                        <Path Width="16" Height="16"
-                                              Margin="12,0,0,0"
-                                              VerticalAlignment="Center"
+                                <TextBlock Classes="fieldLabel" Text="TÀI KHOẢN" />
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <ComboBox x:Name="AccountSelector"
+                                              Classes="field accountPicker"
+                                              Height="52"
+                                              TabIndex="0"
+                                              HorizontalAlignment="Stretch"
+                                              HorizontalContentAlignment="Stretch"
+                                              VerticalContentAlignment="Center"
+                                              MaxDropDownHeight="320"
+                                              PlaceholderText="Chọn tài khoản"
+                                              IsEnabled="{Binding CanChooseAccount}"
+                                              ItemsSource="{Binding Accounts}"
+                                              DropDownClosed="OnAccountDropDownClosed"
+                                              SelectedItem="{Binding SelectedAccount, Mode=TwoWay}">
+                                        <ComboBox.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:LoginAccountOption">
+                                                <TextBlock Text="{Binding Label}"
+                                                           FontSize="15"
+                                                           VerticalAlignment="Center"
+                                                           TextTrimming="CharacterEllipsis" />
+                                            </DataTemplate>
+                                        </ComboBox.ItemTemplate>
+                                    </ComboBox>
+                                    <Button Grid.Column="1"
+                                            Classes="soft"
+                                            Width="52"
+                                            Height="52"
+                                            TabIndex="4"
+                                            HorizontalContentAlignment="Center"
+                                            VerticalContentAlignment="Center"
+                                            ToolTip.Tip="Tải lại danh sách tài khoản"
+                                            AutomationProperties.Name="Tải lại danh sách tài khoản"
+                                            IsEnabled="{Binding CanRefreshAccounts}"
+                                            Command="{Binding RefreshAccountsCommand}">
+                                        <Path Width="18" Height="18"
                                               Stretch="Uniform"
                                               Stroke="{StaticResource TextMuted}"
                                               StrokeThickness="1.8"
                                               StrokeLineCap="Round"
                                               StrokeJoin="Round"
-                                              Data="{StaticResource Icon.User}" />
-                                    </TextBox.InnerLeftContent>
-                                </TextBox>
+                                              Data="M20,7 L20,3 M20,7 L16,7 M20,7 A8,8 0 1 0 21,13" />
+                                    </Button>
+                                </Grid>
+                                <TextBlock Text="{Binding AccountListMessage}"
+                                           FontSize="12"
+                                           Foreground="{StaticResource TextMuted}"
+                                           TextWrapping="Wrap" />
                             </StackPanel>
 
                             <StackPanel Spacing="6">

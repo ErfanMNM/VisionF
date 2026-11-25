@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Threading;
@@ -25,6 +26,8 @@ public partial class LoginView : UserControl
     /// </summary>
     private LoginViewModel? _boundVm;
 
+    private Window? _ownerWindow;
+
     public LoginView()
     {
         InitializeComponent();
@@ -32,6 +35,7 @@ public partial class LoginView : UserControl
         DataContextChanged += OnDataContextChanged;
         AttachedToVisualTree += OnAttachedToVisualTree;
         DetachedFromVisualTree += OnDetachedFromVisualTree;
+        Loaded += (_, _) => FocusStepInput();
     }
 
     /// <summary>VM đăng nhập đang gắn (null nếu chưa có DataContext).</summary>
@@ -42,9 +46,16 @@ public partial class LoginView : UserControl
     /// <param name="e">Tham số sự kiện.</param>
     private void OnDataContextChanged(object? sender, EventArgs e)
     {
+        BindViewModel();
+        FocusStepInput();
+    }
+
+    private void BindViewModel()
+    {
         if (_boundVm is not null)
         {
             _boundVm.StepChanged -= OnStepChanged;
+            _boundVm.PropertyChanged -= OnViewModelPropertyChanged;
             _boundVm = null;
         }
 
@@ -52,9 +63,8 @@ public partial class LoginView : UserControl
         if (_boundVm is not null)
         {
             _boundVm.StepChanged += OnStepChanged;
+            _boundVm.PropertyChanged += OnViewModelPropertyChanged;
         }
-
-        FocusStepInput();
     }
 
     /// <summary>Vào cây hình ảnh -> focus ô nhập của bước hiện tại.</summary>
@@ -62,17 +72,39 @@ public partial class LoginView : UserControl
     /// <param name="e">Tham số sự kiện.</param>
     private void OnAttachedToVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
     {
+        BindViewModel();
+        BindOwnerWindow(TopLevel.GetTopLevel(this) as Window);
         FocusStepInput();
     }
+
+    private void BindOwnerWindow(Window? window)
+    {
+        if (_ownerWindow is not null)
+        {
+            _ownerWindow.Opened -= OnOwnerReady;
+            _ownerWindow.Activated -= OnOwnerReady;
+        }
+
+        _ownerWindow = window;
+        if (_ownerWindow is not null)
+        {
+            _ownerWindow.Opened += OnOwnerReady;
+            _ownerWindow.Activated += OnOwnerReady;
+        }
+    }
+
+    private void OnOwnerReady(object? sender, EventArgs e) => FocusStepInput();
 
     /// <summary>Rời cây hình ảnh -> hủy đăng ký sự kiện (tránh giữ tham chiếu).</summary>
     /// <param name="sender">Control.</param>
     /// <param name="e">Tham số sự kiện.</param>
     private void OnDetachedFromVisualTree(object? sender, VisualTreeAttachmentEventArgs e)
     {
+        BindOwnerWindow(null);
         if (_boundVm is not null)
         {
             _boundVm.StepChanged -= OnStepChanged;
+            _boundVm.PropertyChanged -= OnViewModelPropertyChanged;
             _boundVm = null;
         }
     }
@@ -96,8 +128,26 @@ public partial class LoginView : UserControl
     /// <param name="e">Tham số sự kiện.</param>
     private void OnStepChanged(object? sender, EventArgs e) => FocusStepInput();
 
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (this.FindControl<ComboBox>("AccountSelector")?.IsDropDownOpen == true)
+            return;
+
+        if (e.PropertyName == nameof(LoginViewModel.SelectedAccount)
+            || (e.PropertyName == nameof(LoginViewModel.IsLoadingAccounts) && Vm?.IsLoadingAccounts == false))
+            FocusStepInput();
+    }
+
+    private void OnAccountDropDownClosed(object? sender, EventArgs e)
+    {
+        // Giữ focus trong danh sách khi dùng phím mũi tên, chỉ chuyển sang
+        // mật khẩu sau khi đã chốt một tài khoản và đóng danh sách.
+        if (Vm?.IsSignInStep == true && Vm.SelectedAccount is not null)
+            FocusStepInput();
+    }
+
     /// <summary>
-    /// Focus ô nhập của bước hiện tại (bước 1: tên đăng nhập, bước 2: mật khẩu hiện tại).
+    /// Focus bộ chọn tài khoản, mật khẩu sau khi chọn, hoặc mật khẩu hiện tại ở bước 2.
     ///
     /// Focus được ĐĂNG KÝ lại ở lượt dispatcher kế tiếp: khi control vừa
     /// được attach vào cây hình ảnh thì cửa sổ cha có thể chưa sẵn sàng
@@ -111,21 +161,28 @@ public partial class LoginView : UserControl
             return;
         }
 
-        Dispatcher.UIThread.Post(ApplyFocus, DispatcherPriority.Input);
+        // Đợi các callback kích hoạt cửa sổ hoàn tất thiết lập focus scope.
+        Dispatcher.UIThread.Post(ApplyFocus, DispatcherPriority.Background);
     }
 
     /// <summary>Thực hiện focus ô nhập (sau khi dispatcher đã ổn định).</summary>
     private void ApplyFocus()
     {
         var vm = Vm;
-        if (vm is null || !IsVisible)
+        if (vm is null || !IsEffectivelyVisible || _ownerWindow?.IsActive == false)
         {
             return;
         }
 
+        // Một callback focus có thể đã được xếp lịch trước khi mở danh sách.
+        if (vm.IsSignInStep && this.FindControl<ComboBox>("AccountSelector")?.IsDropDownOpen == true)
+            return;
+
         Control? target = vm.IsChangePasswordStep
             ? this.FindControl<TextBox>("CurrentBox")
-            : this.FindControl<TextBox>("UsernameBox");
+            : vm.SelectedAccount is not null
+                ? this.FindControl<TextBox>("LoginPasswordBox")
+                : this.FindControl<ComboBox>("AccountSelector");
 
         if (target is null)
         {
@@ -137,7 +194,7 @@ public partial class LoginView : UserControl
         // Cửa sổ cha có thể chưa có focus (đặc biệt lúc app vừa mở) ->
         // đưa focus về cửa sổ trước để ô nhập nhận được focus.
         var top = TopLevel.GetTopLevel(this);
-        if (top is not null && top.FocusManager?.GetFocusedElement() is not TextBox)
+        if (top is not null && !ReferenceEquals(top.FocusManager?.GetFocusedElement(), target))
         {
             top.Focus();
             target.Focus();

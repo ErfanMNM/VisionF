@@ -125,6 +125,7 @@ internal static class AuditRunner
             ?? throw new InvalidOperationException("Không tìm thấy LoginViewModel.");
 
         var loginVm = provider.GetRequiredService(loginVmType);
+        await Reflect.ExecuteCommandAsync(loginVm, "RefreshAccountsCommand");
 
         var loginWindow = new LoginShellWindow { DataContext = loginVm };
         Reflect.Invoke(loginVm, "Attach", loginWindow);
@@ -135,8 +136,12 @@ internal static class AuditRunner
 
         CaptureView("LoginShellWindow", "01_login_signin", loginWindow);
 
-        // Nhập tài khoản
-        SetProp(loginVm, "Username", AdminUser);
+        // Chọn tài khoản từ đúng danh sách mà màn hình đăng nhập sử dụng.
+        var accounts = (System.Collections.IEnumerable?)Reflect.GetProperty(loginVm, "Accounts");
+        var adminAccount = accounts?.Cast<object>().FirstOrDefault(account =>
+            string.Equals(Reflect.GetProperty(account, "Username") as string, AdminUser,
+                StringComparison.OrdinalIgnoreCase));
+        SetProp(loginVm, "SelectedAccount", adminAccount);
         SetProp(loginVm, "Password", AdminPass);
         AuditCapture.Settle(300);
 

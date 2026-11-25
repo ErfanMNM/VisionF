@@ -140,7 +140,7 @@ internal partial class MainViewModel
     /// <summary>
     /// Hiện lại overlay đăng nhập (khi đăng xuất).
     ///
-    /// Form được reset về trạng thái sạch (tên đăng nhập / mật khẩu / lỗi rỗng,
+    /// Form được reset về trạng thái sạch (bỏ chọn tài khoản / xoá mật khẩu / lỗi,
     /// về bước 1) và app tạm dừng (dừng poll + timer tab Dev) cho tới khi
     /// đăng nhập lại.
     /// </summary>
@@ -151,6 +151,7 @@ internal partial class MainViewModel
         _overlayHideCts?.Cancel();
 
         _login.Reset();
+        _ = _login.RefreshAccountsAsync();
 
         // Hiện overlay trước (kèm độ mờ 1) -> hiệu ứng mờ dần khi hiện lại.
         IsLoginOverlayVisible = true;

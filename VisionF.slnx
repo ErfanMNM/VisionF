@@ -15,6 +15,7 @@
   <Project Path="tools/ConfigTests/ConfigTests.csproj" />
   <Project Path="tools/ConfigUiTests/ConfigUiTests.csproj" />
   <Project Path="tools/FullscreenNumpadTests/FullscreenNumpadTests.csproj" />
+  <Project Path="tools/HardwareIdTests/HardwareIdTests.csproj" />
   <Project Path="tools/LicensePortalTests/LicensePortalTests.csproj" />
   <Project Path="tools/LicenseTool/LicenseTool.csproj" />
   <Project Path="tools/MultiConnectGateway/MultiConnectGateway.csproj" />

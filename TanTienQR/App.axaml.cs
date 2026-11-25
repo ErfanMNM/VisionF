@@ -132,6 +132,7 @@ public partial class App : Application
             // Tài khoản này bắt buộc đổi mật khẩu ở lần đăng nhập đầu tiên.
             // Chạy nền (fire-and-forget) để không chặn framework khởi tạo —
             // đăng nhập thật sự chỉ có thể xảy ra sau khi seed xong.
+            _host.Services.GetRequiredService<LoginViewModel>().IsLoadingAccounts = true;
             _seedTask = EnsureSeedAdminAsync();
 
             // ---- Bàn phím ảo: đăng ký singleton toàn cục ----
@@ -317,6 +318,7 @@ public partial class App : Application
     /// </summary>
     private async Task EnsureSeedAdminAsync()
     {
+        var login = _host!.Services.GetRequiredService<LoginViewModel>();
         try
         {
             var seeded = await _host!.Services
@@ -330,11 +332,18 @@ public partial class App : Application
                     "[TanTienQR] Da tao tai khoan quan tri mac dinh admin/admin. "
                     + "Hay doi mat khau ngay khi dang nhap.");
             }
+
+            // Tải sau seed để lần chạy đầu cũng chọn được tài khoản quản trị.
+            login.IsLoadingAccounts = false;
+            await login.RefreshAccountsAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine(
                 "[TanTienQR] Khong tao duoc tai khoan quan tri mac dinh: " + ex.Message);
+            login.IsLoadingAccounts = false;
+            login.AccountListMessage = "Không khởi tạo được tài khoản. Bấm tải lại để thử đọc danh sách.";
+            login.ErrorMessage = "Lỗi khi khởi tạo tài khoản: " + ex.Message;
         }
     }
 
