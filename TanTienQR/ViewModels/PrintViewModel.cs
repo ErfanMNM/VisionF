@@ -17,6 +17,7 @@ internal sealed partial class PrintViewModel : ViewModelBase, IDisposable
     private readonly DispatcherTimer _timer;
     private readonly CancellationTokenSource _cts = new();
     private int _lastCommandVersion = -1;
+    private bool? _lastModuleEnabled;
     private bool _disposed;
 
     public PrintViewModel(
@@ -54,20 +55,23 @@ internal sealed partial class PrintViewModel : ViewModelBase, IDisposable
     public string PrinterEndpoint => _monitor.Snapshot.Endpoint;
 
     // ---- Trạng thái thiết bị: cùng mô hình LED với camera/PLC ----
-    public bool IsPrinterConnected => ConnectionText == "Đã kết nối";
-    public string PrinterLedClass => ConnectionText switch
+    /// <summary>Dựa trên cấu hình đang chạy, không dựa trên giá trị chưa lưu của form.</summary>
+    public bool IsPrinterDisabled => !_options.Enabled;
+    public bool IsPrinterConnected => !IsPrinterDisabled && ConnectionText == "Đã kết nối";
+    public bool IsPrinterWarning => !IsPrinterDisabled && !IsPrinterConnected;
+    public string PrinterLedClass => IsPrinterDisabled ? "disabled" : ConnectionText switch
     {
         "Đã kết nối" => "on",
         "Đang kết nối lại" => "warn",
         _ => "off",
     };
-    public string PrinterCardClass => ConnectionText switch
+    public string PrinterCardClass => IsPrinterDisabled ? "disabled" : ConnectionText switch
     {
         "Đã kết nối" => "ok",
         "Đang kết nối lại" => "warn blink",
         _ => "fault",
     };
-    public bool IsPrinterBlinking => ConnectionText == "Đang kết nối lại";
+    public bool IsPrinterBlinking => !IsPrinterDisabled && ConnectionText == "Đang kết nối lại";
 
     [ObservableProperty] public partial int Quantity { get; set; }
     [ObservableProperty] public partial bool IsBusy { get; set; }
@@ -75,6 +79,7 @@ internal sealed partial class PrintViewModel : ViewModelBase, IDisposable
     [ObservableProperty] public partial string OrderText { get; set; } = "Chưa có PO đang chạy.";
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsPrinterConnected))]
+    [NotifyPropertyChangedFor(nameof(IsPrinterWarning))]
     [NotifyPropertyChangedFor(nameof(PrinterLedClass))]
     [NotifyPropertyChangedFor(nameof(PrinterCardClass))]
     [NotifyPropertyChangedFor(nameof(IsPrinterBlinking))]
@@ -106,10 +111,25 @@ internal sealed partial class PrintViewModel : ViewModelBase, IDisposable
     private void PullMonitor()
     {
         var snapshot = _monitor.Snapshot;
-        ConnectionText = snapshot.StatusText;
-        PrinterStatusText = snapshot.DetailText;
+        ConnectionText = IsPrinterDisabled ? "Đã tắt" : snapshot.StatusText;
+        PrinterStatusText = IsPrinterDisabled ? "Module máy in đã tắt." : snapshot.DetailText;
         InkText = snapshot.InkText;
         QueueText = snapshot.QueueText;
+
+        // Các dịch vụ hiện áp dụng cấu hình kết nối sau restart. Vẫn theo dõi
+        // options đang chạy để presentation không giữ màu/chớp cũ khi nó đổi.
+        if (_lastModuleEnabled != _options.Enabled)
+        {
+            _lastModuleEnabled = _options.Enabled;
+            OnPropertyChanged(nameof(IsPrinterDisabled));
+            OnPropertyChanged(nameof(IsPrinterConnected));
+            OnPropertyChanged(nameof(IsPrinterWarning));
+            OnPropertyChanged(nameof(PrinterLedClass));
+            OnPropertyChanged(nameof(PrinterCardClass));
+            OnPropertyChanged(nameof(IsPrinterBlinking));
+            OnPropertyChanged(nameof(CanConnect));
+            OnPropertyChanged(nameof(ModuleMessage));
+        }
         OnPropertyChanged(nameof(PrinterEndpoint));
         OnPropertyChanged(nameof(IsPrinting));
         OnPropertyChanged(nameof(JobText));

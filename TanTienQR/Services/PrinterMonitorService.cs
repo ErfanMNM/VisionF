@@ -46,6 +46,8 @@ internal sealed class PrinterMonitorService : BackgroundService
         _options = options;
         _license = license;
         _logger = logger;
+        if (!_options.Enabled)
+            Publish("Đã tắt", "Module máy in đã tắt.", _snapshot.InkText, _snapshot.QueueText);
     }
 
     public PrinterMonitorSnapshot Snapshot => Volatile.Read(ref _snapshot);
@@ -66,7 +68,7 @@ internal sealed class PrinterMonitorService : BackgroundService
     {
         if (!_options.Enabled)
         {
-            Publish("Module tắt", "Bật module máy in trong Cấu hình để tự kết nối.", _snapshot.InkText, _snapshot.QueueText);
+            Publish("Đã tắt", "Module máy in đã tắt.", _snapshot.InkText, _snapshot.QueueText);
             return;
         }
 

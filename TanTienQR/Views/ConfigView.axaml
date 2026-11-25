@@ -219,9 +219,12 @@
                                                         </DataTemplate>
 
                                                         <DataTemplate DataType="vm:BoolField">
-                                                            <CheckBox IsChecked="{Binding Value, Mode=TwoWay}"
-                                                                      Content="{Binding HelpText}"
-                                                                      VerticalAlignment="Center" />
+                                                            <ToggleSwitch Theme="{StaticResource IosToggleSwitchTheme}"
+                                                                          IsChecked="{Binding Value, Mode=TwoWay}"
+                                                                          Content="{Binding HelpText}"
+                                                                          AutomationProperties.Name="{Binding Label}"
+                                                                          HorizontalAlignment="Stretch"
+                                                                          VerticalAlignment="Center" />
                                                         </DataTemplate>
 
                                                         <DataTemplate DataType="vm:ComboField">

@@ -113,10 +113,12 @@
                          PlaceholderText="nội dung log"
                          Text="{Binding DevView.LogMessageFilter}" />
 
-                <CheckBox Grid.Column="6"
-                          VerticalContentAlignment="Center"
-                          IsChecked="{Binding DevView.IsLogAutoRefresh}"
-                          Content="Tự làm mới log" />
+                <ToggleSwitch Grid.Column="6"
+                              Theme="{StaticResource IosToggleSwitchTheme}"
+                              VerticalContentAlignment="Center"
+                              IsChecked="{Binding DevView.IsLogAutoRefresh, Mode=TwoWay}"
+                              AutomationProperties.Name="Tự làm mới log"
+                              Content="Tự làm mới log" />
             </Grid>
         </Border>
 

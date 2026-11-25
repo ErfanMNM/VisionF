@@ -111,6 +111,8 @@ builder.Configuration
 builder.Logging.AddConsole();
 builder.Logging.SetMinimumLevel(LogLevel.Error);
 builder.Services.AddTanTienServices(builder.Configuration);
+// Bộ đo giả: kiểm thử sidebar không gửi ICMP ra Internet.
+builder.Services.AddSingleton(new InternetStatusViewModel(new InternetConnectionMonitor(new UiInternetProbe())));
 using var host = builder.Build();
 
 var services = host.Services;
@@ -573,6 +575,55 @@ Check("Dang nhap lai thanh cong", GetBool(loginVm!, "IsAuthenticated"),
 Check("Overlay lai an", !GetBool(mainVm, "IsLoginOverlayVisible"));
 Check("Van chi co 1 cua so", CountWindows() == windowCountBefore);
 
+Console.WriteLine("\n[10] Card thiet bi + Internet trong sidebar");
+await ExecAsync(mainVm, "ShowInfoTabCommand");
+var internetVm = (InternetStatusViewModel)GetProp(mainVm, "Internet")!;
+internetVm.ApplySample(new InternetPingSample(true, 42));
+mainWindow.WindowState = WindowState.Normal;
+mainWindow.Width = 1100;
+mainWindow.Height = 700;
+Dispatcher.UIThread.RunJobs();
+mainWindow.UpdateLayout();
+AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+var sidebarScroll = mainWindow.FindControl<ScrollViewer>("DeviceSidebarScroll");
+var printerCard = mainWindow.FindControl<Border>("PrinterStatusCard");
+var internetCard = mainWindow.FindControl<InternetStatusCard>("InternetStatusCard");
+Check("Card Internet nam cung sidebar may in", internetCard is not null && printerCard is not null
+    && ReferenceEquals(internetCard.Parent, printerCard.Parent));
+Check("Card Internet dung VM do tre", ReferenceEquals(internetCard?.DataContext, internetVm));
+Check("Internet hien dung ping va 5 muc", internetVm.StatusText == "Tốt · 42 ms"
+    && internetVm.Level == 4);
+Check("Module may in tat thi ca card xam", printerCard?.Classes.Contains("printerDisabled") == true
+    && printerCard.Background?.ToString() == "#ffeef0f3"
+    && printerCard.BorderBrush?.ToString() == "#ffd3d8df",
+    "background=" + printerCard?.Background + " border=" + printerCard?.BorderBrush);
+Check("Sidebar cuon doc khi man hinh thap", sidebarScroll is not null
+    && sidebarScroll.VerticalScrollBarVisibility == Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
+    && sidebarScroll.Viewport.Height > 0 && sidebarScroll.Extent.Height >= sidebarScroll.Viewport.Height);
+if (sidebarScroll is not null && internetCard is not null)
+{
+    internetCard.BringIntoView();
+    Dispatcher.UIThread.RunJobs();
+    mainWindow.UpdateLayout();
+    var position = internetCard.TranslatePoint(default, sidebarScroll);
+    Check("Card Internet truy cap duoc o 1100x700", position is { } pt
+        && pt.Y >= -1 && pt.Y + internetCard.Bounds.Height <= sidebarScroll.Viewport.Height + 1,
+        "position=" + position + " viewport=" + sidebarScroll.Viewport);
+}
+var sidebarShotRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,
+    "../../../../../artifacts/device-status"));
+Directory.CreateDirectory(sidebarShotRoot);
+using (var bitmap = mainWindow.CaptureRenderedFrame())
+    bitmap?.Save(Path.Combine(sidebarShotRoot, "sidebar-1100.png"), new PngBitmapEncoderOptions());
+mainWindow.Width = 1360;
+mainWindow.Height = 820;
+if (sidebarScroll is not null) sidebarScroll.Offset = default;
+Dispatcher.UIThread.RunJobs();
+mainWindow.UpdateLayout();
+AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+using (var bitmap = mainWindow.CaptureRenderedFrame())
+    bitmap?.Save(Path.Combine(sidebarShotRoot, "sidebar-1360.png"), new PngBitmapEncoderOptions());
+
 mainWindow.Close();
 Dispatcher.UIThread.RunJobs();
 
@@ -581,3 +632,9 @@ Console.WriteLine($"  KET QUA: {passed} pass / {failed} fail");
 Console.WriteLine("========================================");
 
 return failed == 0 ? 0 : 1;
+
+sealed class UiInternetProbe : IInternetPingProbe
+{
+    public Task<InternetPingSample> ProbeAsync(CancellationToken cancellationToken) =>
+        Task.FromResult(new InternetPingSample(true, 42));
+}

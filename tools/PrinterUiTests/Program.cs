@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Avalonia;
@@ -92,6 +93,7 @@ internal static class Program
         var assembly = typeof(PrintView).Assembly;
         var printType = assembly.GetType("TanTienQR.ViewModels.PrintViewModel")!;
         var print = host.Services.GetRequiredService(printType);
+        RunDeviceStatusChecks(host.Services, printType, print);
         var mainType = assembly.GetType("TanTienQR.ViewModels.MainViewModel")!;
         // View chỉ dùng Print; tránh khởi tạo các tab/service không liên quan trong bài kiểm tra này.
         var main = RuntimeHelpers.GetUninitializedObject(mainType);
@@ -128,6 +130,63 @@ internal static class Program
         Check(operations.IsVisible && Grid.GetColumn(operations) == 1, "Thu gọn phục hồi bố cục");
         window.Close();
         Console.WriteLine("Ảnh kiểm tra: " + shots);
+    }
+
+    private static void RunDeviceStatusChecks(IServiceProvider services, Type printType, object print)
+    {
+        var options = services.GetRequiredService<PrintOptions>();
+        var monitorType = typeof(PrintView).Assembly.GetType("TanTienQR.Services.PrinterMonitorService")!;
+        var monitor = services.GetRequiredService(monitorType);
+        var snapshotField = monitorType.GetField("_snapshot", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var pullMonitor = printType.GetMethod("PullMonitor", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        object? Get(string name) => printType.GetProperty(name)!.GetValue(print);
+        void Pull(string status)
+        {
+            snapshotField.SetValue(monitor, Activator.CreateInstance(snapshotField.FieldType,
+                status, "Trạng thái thử", "Mực: —", "Chưa có dữ liệu hàng đợi.", "127.0.0.1:6007", DateTimeOffset.UtcNow));
+            pullMonitor.Invoke(print, null);
+        }
+
+        Pull("Đã kết nối");
+        Check((bool)Get("IsPrinterConnected")! && (string)Get("PrinterCardClass")! == "ok", "Module bật giữ trạng thái máy in đã kết nối");
+
+        var notifications = new HashSet<string>();
+        PropertyChangedEventHandler onChanged = (_, args) => notifications.Add(args.PropertyName ?? "");
+        ((INotifyPropertyChanged)print).PropertyChanged += onChanged;
+        try
+        {
+            options.Enabled = false;
+            // Snapshot cũ vẫn báo connected: cờ module phải luôn thắng trạng thái cũ.
+            Check((bool)Get("IsPrinterDisabled")! && !(bool)Get("IsPrinterConnected")!, "Tắt module ưu tiên hơn snapshot kết nối cũ");
+            pullMonitor.Invoke(print, null);
+            Check((string)Get("ConnectionText")! == "Đã tắt" && (string)Get("PrinterStatusText")! == "Module máy in đã tắt.", "Module tắt có nhãn và mô tả riêng");
+            Check((string)Get("PrinterCardClass")! == "disabled" && (string)Get("PrinterLedClass")! == "disabled", "Module tắt dùng class trung tính cho card và LED");
+            Check(!(bool)Get("IsPrinterWarning")! && !(bool)Get("IsPrinterBlinking")! && !(bool)Get("CanConnect")!, "Module tắt không cảnh báo, không chớp và không cho kết nối");
+            Check(notifications.Contains("IsPrinterDisabled") && notifications.Contains("IsPrinterWarning"), "Đổi module thông báo lại binding card và LED");
+
+            options.Enabled = true;
+            Pull("Đang kết nối lại");
+            Check(!(bool)Get("IsPrinterDisabled")! && (bool)Get("IsPrinterWarning")! && (bool)Get("IsPrinterBlinking")!, "Bật module phục hồi cảnh báo và chớp khi đang kết nối lại");
+            options.Enabled = false;
+            pullMonitor.Invoke(print, null);
+            Check(!(bool)Get("IsPrinterWarning")! && !(bool)Get("IsPrinterBlinking")!, "Tắt module dừng cảnh báo và chớp của snapshot reconnect cũ");
+
+            // Worker chưa chạy cũng phải công bố trạng thái disabled ngay từ constructor.
+            var arguments = monitorType.GetConstructors().Single().GetParameters()
+                .Select(parameter => services.GetRequiredService(parameter.ParameterType)).ToArray();
+            using var disabledMonitor = (IDisposable)Activator.CreateInstance(monitorType, arguments)!;
+            var snapshot = monitorType.GetProperty("Snapshot")!.GetValue(disabledMonitor)!;
+            Check((string)snapshot.GetType().GetProperty("StatusText")!.GetValue(snapshot)! == "Đã tắt", "Module tắt có snapshot đúng trước khi worker khởi động");
+
+            options.Enabled = true;
+            Pull("Đã kết nối");
+            Check((bool)Get("IsPrinterConnected")! && !(bool)Get("IsPrinterWarning")! && (string)Get("PrinterCardClass")! == "ok", "Bật lại module phục hồi màu kết nối bình thường");
+        }
+        finally
+        {
+            options.Enabled = true;
+            ((INotifyPropertyChanged)print).PropertyChanged -= onChanged;
+        }
     }
 
     private static int RunNativeSmoke()

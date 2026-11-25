@@ -45,6 +45,9 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     /// <summary>Tab MultiConnect: dữ liệu vào/ra của các kênh gateway.</summary>
     public MultiConnectViewModel MultiConnect { get; }
 
+    /// <summary>Độ trễ Internet, độc lập với kết nối camera và PLC.</summary>
+    public InternetStatusViewModel Internet { get; }
+
     private readonly VirtualKeyboardViewModel _keyboard;
     private readonly IUserActionLogger _actionLog;
     private readonly ISessionContext _session;
@@ -77,6 +80,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         ProductionOrdersViewModel productionOrders,
         PrintViewModel print,
         MultiConnectViewModel multiConnect,
+        InternetStatusViewModel internet,
         VirtualKeyboardViewModel keyboard,
         LoginViewModel login,
         IUserActionLogger actionLog,
@@ -99,6 +103,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         _productionOrders = productionOrders;
         Print = print;
         MultiConnect = multiConnect;
+        Internet = internet;
         _keyboard = keyboard;
         _login = login;
         _actionLog = actionLog;
@@ -655,6 +660,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     public void Start(Window? window = null)
     {
         _window = window;
+        Internet.Start();
 
         // Trang Lịch sử cần cửa sổ chính để mở hộp thoại lưu file xuất.
         if (window is not null)
@@ -826,6 +832,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         _disposed = true;
         RefreshPrinterRemotePresentation();
         Print.Dispose();
+        Internet.Dispose();
 
         // Ngừng theo dõi phiên đăng nhập (tránh giữ tham chiếu tới VM).
         _session.Changed -= OnSessionChanged;

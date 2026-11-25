@@ -5,8 +5,12 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
+using Avalonia.Input;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Microsoft.Extensions.Configuration;
@@ -15,6 +19,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using TanTienQR;
 using TanTienQR.Services;
+using TanTienQR.ViewModels;
 using TanTienQR.Views;
 
 // ===================================================================
@@ -372,6 +377,7 @@ Console.WriteLine("\n[8] View that render off-screen");
 
 try
 {
+    Invoke("Load");
     var viewType = typeof(TanTienQR.App).Assembly.GetType("TanTienQR.Views.ConfigView")!;
     var view = (Control)Activator.CreateInstance(viewType)!;
 
@@ -402,8 +408,29 @@ try
 
     // Cac loai control deu duoc render tu schema.
     Check("Form render ComboBox", view.GetVisualDescendants().OfType<ComboBox>().Any());
-    Check("Form render CheckBox", view.GetVisualDescendants().OfType<CheckBox>().Any());
+    var switches = view.GetVisualDescendants().OfType<ToggleSwitch>().ToList();
+    Check("Form render cong tac cho tat ca truong bool", switches.Count > 0
+        && switches.Count == AllFieldsOf(vm).OfType<BoolField>().Count(),
+        "switches=" + switches.Count);
+    Check("Form khong con CheckBox", !view.GetVisualDescendants().OfType<CheckBox>().Any());
+    Check("Cong tac co vung cham cao it nhat 44px", switches.All(toggle => toggle.Bounds.Height >= 44));
+    Check("Cong tac giu nhan huong dan va ten truy cap", switches.All(toggle =>
+        toggle.DataContext is BoolField field && Equals(toggle.Content, field.HelpText)
+        && AutomationProperties.GetName(toggle) == field.Label));
+
+    var boundSwitch = switches.First();
+    var boundField = (BoolField)boundSwitch.DataContext!;
+    var originalValue = (bool)boundField.Value!;
+    boundSwitch.SetCurrentValue(ToggleSwitch.IsCheckedProperty, !originalValue);
+    Dispatcher.UIThread.RunJobs();
+    Check("Bat/tat cong tac cap nhat cau hinh va danh dau chua luu",
+        Equals(boundField.Value, !originalValue) && (bool?)Get("IsDirty") == true);
+    boundField.Value = originalValue;
+    Dispatcher.UIThread.RunJobs();
+    Check("Cau hinh cap nhat lai trang thai cong tac", boundSwitch.IsChecked == originalValue);
     Check("Form render NumericUpDown", view.GetVisualDescendants().OfType<NumericUpDown>().Any());
+
+    CaptureWindow(window, "config-switches.png");
 
     window.Close();
     Dispatcher.UIThread.RunJobs();
@@ -411,6 +438,98 @@ try
 catch (Exception ex)
 {
     Check("ConfigView tao duoc va render", false, ex.Message);
+}
+
+// Cong tac van dung input native: cham vao ca nhan, Space va trang thai disabled.
+Console.WriteLine("\n[8b] Cong tac cam ung + ban phim + disabled");
+try
+{
+    var theme = (Avalonia.Styling.ControlTheme)Application.Current!.Resources["IosToggleSwitchTheme"]!;
+    var offSwitch = new ToggleSwitch { Theme = theme, Content = "Tắt · chạm để bật", IsChecked = false };
+    var onSwitch = new ToggleSwitch { Theme = theme, Content = "Bật", IsChecked = true };
+    var disabledOff = new ToggleSwitch { Theme = theme, Content = "Tắt · đã khoá", IsChecked = false, IsEnabled = false };
+    var disabledOn = new ToggleSwitch { Theme = theme, Content = "Bật · đã khoá", IsChecked = true, IsEnabled = false };
+    var window = new Window
+    {
+        Width = 460,
+        Height = 330,
+        Content = new StackPanel
+        {
+            Margin = new Thickness(24),
+            Spacing = 8,
+            Children =
+            {
+                new TextBlock { Text = "Công tắc", FontSize = 20, FontWeight = FontWeight.Bold },
+                offSwitch, onSwitch, disabledOff, disabledOn,
+            },
+        },
+    };
+    window.Show();
+    Dispatcher.UIThread.RunJobs();
+    CaptureWindow(window, "switch-states.png");
+
+    void Click(ToggleSwitch toggle)
+    {
+        // Chạm vào nhãn để kiểm tra toàn bộ hàng là vùng thao tác.
+        var point = toggle.TranslatePoint(new Point(toggle.Bounds.Width - 6, toggle.Bounds.Height / 2), window)
+            ?? throw new InvalidOperationException("Khong doi duoc toa do cong tac.");
+        window.MouseDown(point, MouseButton.Left, RawInputModifiers.None);
+        window.MouseUp(point, MouseButton.Left, RawInputModifiers.None);
+        Dispatcher.UIThread.RunJobs();
+    }
+
+    Click(offSwitch);
+    Check("Cham vao nhan van bat duoc cong tac", offSwitch.IsChecked == true);
+    onSwitch.Focus();
+    offSwitch.Focus(NavigationMethod.Tab);
+    Dispatcher.UIThread.RunJobs();
+    Check("Cong tac nhan focus tu ban phim", ReferenceEquals(window.FocusManager?.GetFocusedElement(), offSwitch));
+    Check("Focus ban phim co vien nhin thay", offSwitch.GetVisualDescendants().OfType<Border>()
+        .Any(border => border.Name == "SwitchFocusRing"
+            && border.BorderBrush is ISolidColorBrush brush && brush.Color.A > 0));
+    window.KeyPress(Key.Space, RawInputModifiers.None, PhysicalKey.Space, " ");
+    window.KeyRelease(Key.Space, RawInputModifiers.None, PhysicalKey.Space, " ");
+    Dispatcher.UIThread.RunJobs();
+    Check("Space doi trang thai cong tac", offSwitch.IsChecked == false);
+    Click(disabledOff);
+    Click(disabledOn);
+    Check("Cong tac disabled khong doi trang thai khi cham", disabledOff.IsChecked == false && disabledOn.IsChecked == true);
+    Check("Disabled van phan biet duoc trang thai nhung hien mo", disabledOff.Opacity < 1 && disabledOn.Opacity < 1);
+    window.Close();
+    Dispatcher.UIThread.RunJobs();
+}
+catch (Exception ex)
+{
+    Check("Cong tac native hoat dong", false, ex.ToString());
+}
+
+Console.WriteLine("\n[8c] Cong tac tu lam moi log giu binding hai chieu");
+try
+{
+    var mainVm = services.GetRequiredService(typeof(App).Assembly.GetType("TanTienQR.ViewModels.MainViewModel")!);
+    var devVm = mainVm.GetType().GetProperty("DevView")!.GetValue(mainVm)!;
+    var autoRefresh = devVm.GetType().GetProperty("IsLogAutoRefresh")!;
+    var originalValue = (bool)autoRefresh.GetValue(devVm)!;
+    var view = new DevView { DataContext = mainVm };
+    var window = new Window { Width = 1360, Height = 820, Content = view };
+    window.Show();
+    Dispatcher.UIThread.RunJobs();
+    var toggle = view.GetVisualDescendants().OfType<ToggleSwitch>().Single();
+    Check("Dev dung cong tac va giu nguyen nhan", Equals(toggle.Content, "Tự làm mới log")
+        && !view.GetVisualDescendants().OfType<CheckBox>().Any());
+    toggle.SetCurrentValue(ToggleSwitch.IsCheckedProperty, !originalValue);
+    Dispatcher.UIThread.RunJobs();
+    Check("Cong tac cap nhat co tu lam moi log", Equals(autoRefresh.GetValue(devVm), !originalValue));
+    autoRefresh.SetValue(devVm, originalValue);
+    Dispatcher.UIThread.RunJobs();
+    Check("Co tu lam moi cap nhat lai cong tac", toggle.IsChecked == originalValue);
+    CaptureWindow(window, "dev-switch.png");
+    window.Close();
+    Dispatcher.UIThread.RunJobs();
+}
+catch (Exception ex)
+{
+    Check("DevView render va bind cong tac", false, ex.ToString());
 }
 
 // [9] Tab Giới thiệu dùng MainViewModel thật, không khởi động host hoặc thiết bị.
@@ -473,6 +592,22 @@ try
 catch (Exception ex)
 {
     Check("AboutView tạo được và render", false, ex.ToString());
+}
+
+static void CaptureWindow(Window window, string fileName)
+{
+    for (var frame = 0; frame < 3; frame++)
+    {
+        Dispatcher.UIThread.RunJobs();
+        window.UpdateLayout();
+        AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+    }
+    var output = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../artifacts/ios-switches"));
+    Directory.CreateDirectory(output);
+    using var bitmap = window.CaptureRenderedFrame()
+        ?? throw new InvalidOperationException("Khong chup duoc anh off-screen.");
+    bitmap.Save(Path.Combine(output, fileName), new PngBitmapEncoderOptions());
+    Console.WriteLine("  [Shot] " + Path.Combine(output, fileName));
 }
 
 static int CountVisuals(Control root)

@@ -20,6 +20,22 @@
         WindowState="FullScreen"
         WindowStartupLocation="CenterScreen">
 
+    <Window.Styles>
+        <Style Selector="Border.deviceCard.printerDisabled">
+            <Setter Property="Background" Value="#EEF0F3" />
+            <Setter Property="BorderBrush" Value="#D3D8DF" />
+        </Style>
+        <Style Selector="Border.deviceCard.printerDisabled TextBlock.deviceTitle">
+            <Setter Property="Foreground" Value="#7B8490" />
+        </Style>
+        <Style Selector="Border.deviceCard.printerDisabled TextBlock.deviceStatus">
+            <Setter Property="Foreground" Value="#7B8490" />
+        </Style>
+        <Style Selector="Border.deviceCard.printerDisabled Ellipse.led">
+            <Setter Property="Fill" Value="#9CA3AF" />
+        </Style>
+    </Window.Styles>
+
     <Design.DataContext>
         <!-- Chỉ dùng cho trình xem trước trong IDE; DataContext lúc chạy được gán trong App.axaml.cs -->
         <vm:MainViewModel />
@@ -491,7 +507,11 @@
                     BorderBrush="{StaticResource LineColor}"
                     BorderThickness="0,0,1,0"
                     Padding="16,18">
-                <Grid RowDefinitions="Auto,Auto,*" RowSpacing="16">
+                <ScrollViewer x:Name="DeviceSidebarScroll"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto">
+                <Grid RowDefinitions="Auto,Auto,*" RowSpacing="16"
+                      MinHeight="{Binding #DeviceSidebarScroll.Viewport.Height}">
 
                     <!-- Trạng thái app -->
                     <Border Grid.Row="0" Classes="device" Padding="14,16">
@@ -552,16 +572,20 @@
                             </Grid>
                         </Border>
 
-                        <!-- Máy in G10: tự kết nối, LED chớp khi mất kết nối -->
-                        <Border Classes="deviceCard {Binding Print.PrinterCardClass}" Padding="12,16">
+                        <!-- Module máy in tắt: toàn bộ card xám, không cảnh báo kết nối. -->
+                        <Border x:Name="PrinterStatusCard"
+                                Classes="deviceCard {Binding Print.PrinterCardClass}"
+                                Classes.printerDisabled="{Binding Print.IsPrinterDisabled}"
+                                Padding="12,16">
                             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
                                 <Grid Width="10" Height="10" VerticalAlignment="Center">
                                     <Ellipse Classes="ledHalo"
-                                             Classes.warn="{Binding !Print.IsPrinterConnected}"
+                                             IsVisible="{Binding !Print.IsPrinterDisabled}"
+                                             Classes.warn="{Binding Print.IsPrinterWarning}"
                                              Classes.blink="{Binding Print.IsPrinterBlinking}" />
                                     <Ellipse Classes="led"
                                              Classes.on="{Binding Print.IsPrinterConnected}"
-                                             Classes.warn="{Binding !Print.IsPrinterConnected}"
+                                             Classes.warn="{Binding Print.IsPrinterWarning}"
                                              Classes.blink="{Binding Print.IsPrinterBlinking}" />
                                 </Grid>
                                 <StackPanel Grid.Column="1" Spacing="2">
@@ -570,6 +594,9 @@
                                 </StackPanel>
                             </Grid>
                         </Border>
+
+                        <views:InternetStatusCard x:Name="InternetStatusCard"
+                                                  DataContext="{Binding Internet}" />
                     </StackPanel>
 
                     <!-- Gợi ý: license và cập nhật nằm trong tab Giới thiệu -->
@@ -580,6 +607,7 @@
                                TextWrapping="Wrap"
                                Text="Mở tab Giới thiệu (dấu ? hoặc menu Thêm) để xem license và cập nhật phần mềm." />
                 </Grid>
+                </ScrollViewer>
             </Border>
 
             <!-- ===== Vùng nội dung tab =====

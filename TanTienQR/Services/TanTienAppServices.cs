@@ -253,6 +253,7 @@ public static class TanTienAppServices
         services.AddSingleton<ProductionOrdersViewModel>();
         services.AddSingleton<PrintViewModel>();
         services.AddSingleton<MultiConnectViewModel>();
+        services.AddSingleton<InternetStatusViewModel>(_ => new InternetStatusViewModel());
 
         // ---- Bàn phím ảo cho máy cảm ứng ----
         // VM bàn phím là singleton để mọi cửa sổ dùng chung một trạng thái

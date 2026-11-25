@@ -1,0 +1,59 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:TanTienQR.ViewModels"
+             x:Class="TanTienQR.Views.InternetStatusCard"
+             x:DataType="vm:InternetStatusViewModel">
+    <UserControl.Styles>
+        <Style Selector="Border.internetCard.unavailable">
+            <Setter Property="Background" Value="{StaticResource IdleSoft}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineColor}" />
+        </Style>
+        <Style Selector="Rectangle.signalBar">
+            <Setter Property="Fill" Value="#CAD5DC" />
+            <Setter Property="RadiusX" Value="1" />
+            <Setter Property="RadiusY" Value="1" />
+        </Style>
+        <Style Selector="Border.internetCard.ok Rectangle.signalBar.active">
+            <Setter Property="Fill" Value="{StaticResource Ok}" />
+        </Style>
+        <Style Selector="Border.internetCard.warn Rectangle.signalBar.active">
+            <Setter Property="Fill" Value="{StaticResource Warn}" />
+        </Style>
+    </UserControl.Styles>
+
+    <Border x:Name="InternetCard" Classes="deviceCard internetCard"
+            Classes.ok="{Binding IsGood}"
+            Classes.warn="{Binding IsSlow}"
+            Classes.unavailable="{Binding !IsReachable}"
+            Padding="12,14"
+            ToolTip.Tip="{Binding ToolTipText}"
+            AutomationProperties.Name="{Binding AccessibleDescription}">
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+            <Ellipse Classes="led"
+                     Classes.on="{Binding IsGood}"
+                     Classes.warn="{Binding IsSlow}"
+                     VerticalAlignment="Center" />
+            <StackPanel Grid.Column="1" Spacing="3">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                    <TextBlock Classes="deviceTitle" Text="Internet" VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2"
+                                Height="14" VerticalAlignment="Center" IsHitTestVisible="False">
+                        <Rectangle Width="3" Height="4" VerticalAlignment="Bottom"
+                                   Classes="signalBar" Classes.active="{Binding IsBar1Active}" />
+                        <Rectangle Width="3" Height="6" VerticalAlignment="Bottom"
+                                   Classes="signalBar" Classes.active="{Binding IsBar2Active}" />
+                        <Rectangle Width="3" Height="9" VerticalAlignment="Bottom"
+                                   Classes="signalBar" Classes.active="{Binding IsBar3Active}" />
+                        <Rectangle Width="3" Height="11" VerticalAlignment="Bottom"
+                                   Classes="signalBar" Classes.active="{Binding IsBar4Active}" />
+                        <Rectangle Width="3" Height="14" VerticalAlignment="Bottom"
+                                   Classes="signalBar" Classes.active="{Binding IsBar5Active}" />
+                    </StackPanel>
+                </Grid>
+                <TextBlock Classes="deviceStatus" Text="{Binding StatusText}" TextWrapping="Wrap" />
+                <TextBlock Classes="deviceStatus" Text="{Binding DetailText}" FontSize="10"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </Grid>
+    </Border>
+</UserControl>
