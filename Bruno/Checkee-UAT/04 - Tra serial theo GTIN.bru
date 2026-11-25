@@ -1,0 +1,23 @@
+meta {
+  name: 04 - Tra serial theo GTIN
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/middleware-api/serials/find?GTIN={{gtin}}&serialNumber={{serialNumber}}
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+  x-api-key: {{apiKey}}
+}
+
+tests {
+  test("Response contains a success or Checkee error envelope", function() {
+    expect(res.body).to.have.property("status");
+    expect(res.body).to.have.property("message");
+  });
+}

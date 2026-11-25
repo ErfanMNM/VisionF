@@ -1,0 +1,6 @@
+{
+  "version": "1",
+  "name": "Checkee UAT - Kích hoạt theo index",
+  "type": "collection",
+  "ignore": ["node_modules", ".git"]
+}

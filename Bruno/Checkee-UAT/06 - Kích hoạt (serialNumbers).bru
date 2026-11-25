@@ -1,0 +1,41 @@
+meta {
+  name: 06 - Kích hoạt (serialNumbers)
+  type: http
+  seq: 6
+}
+
+post {
+  url: {{baseUrl}}/middleware-api/CTEs/active
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+  x-api-key: {{apiKey}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "GTIN": "{{gtin}}",
+    "batchCode": "{{batchCode}}",
+    "type": "{{serialType}}",
+    "serialNumbers": ["{{serialNumber}}"]
+  }
+}
+
+vars:pre-request {
+  gtin: 8931234567892
+  batchCode: A002
+  serialType: RANDOM
+  serialNumber: BN8joxxKwx
+  apiKey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2YWUxYTUwM2ViZGNjMzQ0NTE2YjIyZTAiLCJ1c2VybmFtZSI6ImFzdGEtaGVhbHRoY2FyZSIsInN0YXR1cyI6dHJ1ZSwidHlwZSI6IlBBUlRORVIiLCJyZXNvdXJjZSI6Ik1FRCIsImxldmVsIjoiUEFDS0FHRSIsInJvbGUiOiJNQVNURVIiLCJlbnRlcnByaXNlSWQiOiIiLCJuZGFUcmFjZVRva2VuIjoiIiwiaWF0IjoxNzk1NTc4MTgxLCJleHAiOjE3OTYxODI5ODF9.0gWFzNa5Wb1koZxMSq_8d0GOVTAk4-1wcL_dsrfumC
+}
+
+tests {
+  test("Activation response contains a Checkee envelope", function() {
+    expect(res.body).to.have.property("status");
+    expect(res.body).to.have.property("message");
+  });
+}

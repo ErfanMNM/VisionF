@@ -1,0 +1,28 @@
+meta {
+  name: 02 - Hồ sơ doanh nghiệp
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/middleware-api/enterprises/profile
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+  x-api-key: {{apiKey}}
+}
+
+tests {
+  test("Successful response includes enterprise profile", function() {
+    if (res.status === 200) {
+      expect(res.body.status).to.equal(true);
+      expect(res.body.data).to.have.property("name");
+      expect(res.body.data).to.have.property("taxCode");
+    } else {
+      expect(res.body).to.have.property("message");
+    }
+  });
+}

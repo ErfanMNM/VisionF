@@ -1,0 +1,23 @@
+meta {
+  name: 03 - Tổng quan hạn mức
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/middleware-api/enterprises/quota-overview
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+  x-api-key: {{apiKey}}
+}
+
+tests {
+  test("Response contains a success or Checkee error envelope", function() {
+    expect(res.body).to.have.property("status");
+    expect(res.body).to.have.property("message");
+  });
+}

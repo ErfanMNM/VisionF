@@ -1,0 +1,23 @@
+meta {
+  name: 05 - Tra serial theo serial
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/middleware-api/serials/find?serial={{serialNumber}}
+  body: none
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+  x-api-key: {{apiKey}}
+}
+
+tests {
+  test("Response contains a success or Checkee error envelope", function() {
+    expect(res.body).to.have.property("status");
+    expect(res.body).to.have.property("message");
+  });
+}

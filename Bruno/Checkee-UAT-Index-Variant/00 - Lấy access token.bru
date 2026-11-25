@@ -1,0 +1,30 @@
+meta {
+  name: Lấy access token
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/onboarding/token
+  body: none
+  auth: none
+}
+
+headers {
+  x-client-id: {{clientId}}
+  x-api-key: {{apiKey}}
+}
+
+script:post-response {
+  if (res.status === 200 && res.body && res.body.status === true && res.body.data && res.body.data.token) {
+    bru.setVar("accessToken", res.body.data.token);
+  }
+}
+
+tests {
+  test("Token endpoint returns a successful envelope", function() {
+    expect(res.status).to.equal(200);
+    expect(res.body.status).to.equal(true);
+    expect(res.body.data.token).to.be.a("string");
+  });
+}

@@ -1,0 +1,34 @@
+meta {
+  name: Kích hoạt theo index
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/middleware-api/CTEs/active
+  body: json
+  auth: none
+}
+
+headers {
+  Authorization: Bearer {{accessToken}}
+  x-api-key: {{apiKey}}
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "GTIN": "{{gtin}}",
+    "batchCode": "{{batchCode}}",
+    "type": "{{serialType}}",
+    "fromIndex": 1,
+    "toIndex": 1
+  }
+}
+
+tests {
+  test("Activation response contains a Checkee envelope", function() {
+    expect(res.body).to.have.property("status");
+    expect(res.body).to.have.property("message");
+  });
+}
