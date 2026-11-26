@@ -27,3 +27,5 @@ Trang `docs/po-demo/` đã gửi FormData thật tới relative `POST /api/po`, 
 Node **18/18** đạt, CEO chạy lại sau source cuối. Browser trên receiver thật đã đạt nhận đủ/partial/toàn trùng, 400/401/409/422, mất mạng, chặn gửi kép, key/storage/pagehide và bố cục desktop/mobile 390px. Sau rebuild backend delta cuối, browser kiểm planned **1→4→1**, SQLite giữ **planned4/actual1**, raw URL nguyên vẹn và GTIN chuẩn hóa; tài nguyên embedded khớp source theo SHA-256. Host thử nghiệm đã dừng, không còn listener 18085. Hướng dẫn mở trang: `docs/po-demo/README.md`; hồ sơ phòng: `.session-org/visionf/departments/po-demo-ui/STATE.md`.
 
 Phạm vi nghiệm thu là local/temp DB; chưa kiểm định gói publish single-file/Native AOT hoặc thiết bị PLC thật. Nhánh bàn giao: `codex/po-gtin-demo`; chỉ commit/push để người dùng duyệt, không tự merge hoặc deploy.
+
+Xác nhận bàn giao Git: source commit `f99a54be9c7cbcd191e7c5688357b84d121b100a` đã được đẩy thật lên `origin/codex/po-gtin-demo`; đối chiếu bằng `git ls-remote` cho SHA remote bằng local. Chờ người dùng duyệt mới gộp.

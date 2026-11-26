@@ -22,3 +22,9 @@
 - Staged audit source39 PASS, thêm hai docs được PO-01 sửa. Chọn hồ sơ Markdown hiện tại/final; bốn tệp archive có whitespace gốc (LOG khảo sát/ACK/HANDOVER cũ) giữ nguyên local, không sửa hồ sơ của owner khác và không đưa vào commit. Source working-tree khớp index, tám deletion vẫn ngoài index.
 
 - PO-01 đã khôi phục STATE/TASKS sau lỗi ghi rỗng, owner/readback xác minh không đổi. Hai docs hẹp final và mọi executor source đã dừng. Cổng nghiệm thu khép; CEO thực hiện Git publish nhánh riêng, không merge/deploy.
+
+## Commit và push đã xác minh
+- Commit source/test/docs và hồ sơ PO: f99a54be9c7cbcd191e7c5688357b84d121b100a, thông điệp Hoàn thiện hợp đồng PO một GTIN và trang gửi PO; 69 tệp, không có deletion ngoài scope.
+- Push thật origin/codex/po-gtin-demo đã thành công, tracking được thiết lập. git ls-remote trả đúng SHA f99a54be9c7cbcd191e7c5688357b84d121b100a bằng local; không chỉ dry-run.
+- PO-06 đã đóng, đang chờ người dùng duyệt gộp. Commit hồ sơ xác nhận sau publish chỉ thay Markdown; source/test/UI không đổi nên không chạy lại suite. Receipt SHA tip cuối được lưu riêng dưới publish-result.json (không commit).
+- Giữ nguyên tám plan deleted, .playwright-cli và evidence/budget/output/archives local ngoài commit. Không merge/deploy/production.

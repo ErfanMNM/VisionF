@@ -11,5 +11,5 @@
 - Kết quả browser/acceptance cuối do CEO: UI browser 18 assertion sau rebuild; planned 1→4→1 giữ DB planned=4/actual=1; hash hai asset embedded khớp source; host stopped/process=0/listener=0. `PoAcceptanceTests` Release 154 assertion, 0 nhóm lỗi, exit 0; Node 18/18 pass.
 - PO-05-DOCS: chỉ sửa `docs/production-order.md` và `tools/PoAcceptanceTests/README.md`; diffcheck `docs/production-order.md` sạch, README đã kiểm tra trailing whitespace riêng; không sửa source/test và không chạy suite.
 - Trạng thái task: backend/browser/acceptance đã khép; hồ sơ docs đã cập nhật. CEO được phép stage đúng scope, commit/push `codex/po-gtin-demo`, không merge.
-- Budget session phòng snapshot gần nhất: `46/100`, còn `54`, `normal`, `exact=true`; file `.session-org\visionf\sessions\01a21732-6f6f-7080-8837-7ba41e45516a\budget.json`.
+- Budget session phòng snapshot: `46/100`, còn `54`, `normal`, `exact=true`; file `.session-org\visionf\sessions\01a21732-6f6f-7080-8837-7ba41e45516a\budget.json`.
 - Bước tiếp theo: CEO kiểm tra/stage hồ sơ và docs đúng phạm vi rồi commit/push; phòng không sửa source hoặc Git.

@@ -13,3 +13,5 @@
 - Mục tiêu bổ sung do user trực tiếp giao: sau khi hoàn tất và kiểm tra, commit + push lên nhánh riêng; chờ user duyệt mới gộp. Chỉ CEO thực hiện Git publish; không merge/deploy/production.
 
 - Kết quả nghiệm thu ngày26/11/2026: hai nhiệm vụ PO đã đạt, xem docs/plans/nhiemvu.md. Đang chuẩn bị commit/push nhánh riêng codex/po-gtin-demo; việc gộp cần user duyệt. CEO hiện tại:01a21787-5ed2-7ac2-a73d-80c07b4996d0.
+
+- Xác nhận publish: source commit f99a54be9c7cbcd191e7c5688357b84d121b100a đã push thật lên origin/codex/po-gtin-demo; SHA remote đã đối chiếu bằng SHA local. Hai nhiệm vụ hoàn tất, chờ người dùng duyệt trước khi gộp. Không merge/deploy.
