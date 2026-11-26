@@ -13,7 +13,7 @@ namespace ClassLibraryMT.Scans;
 /// đồng bộ.
 /// </para>
 /// </summary>
-internal sealed class ScanSendStatusStore : IScanSendStatusStore
+internal sealed partial class ScanSendStatusStore : IScanSendStatusStore
 {
     private readonly ScanStore _store;
 
@@ -251,9 +251,10 @@ internal sealed class ScanSendStatusStore : IScanSendStatusStore
                 SET SendStatus = $pending,
                     SendStatusCode = 0,
                     SendMessage = ''
-                WHERE Id IN ({string.Join(",", names)});
+                WHERE SendStatus = $failed AND Id IN ({string.Join(",", names)});
                 """;
             cmd.Parameters.AddWithValue("$pending", ScanSendStatuses.Pending);
+            cmd.Parameters.AddWithValue("$failed", ScanSendStatuses.Failed);
             for (var index = 0; index < chunk.Length; index++)
                 cmd.Parameters.AddWithValue(names[index], chunk[index]);
             changed += await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);

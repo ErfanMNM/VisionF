@@ -1,0 +1,12 @@
+# Status · Settings V2
+- Owner: /root/settings_v2; thread 01a2186f-79fc-7433-a878-cdf44b059ba5
+- Timestamp: 2026-11-26T22:38:48+07:00
+- State: SOURCE FROZEN; build slot RELEASED after SettingsV2Tests process exit0.
+- Source: flow diagram QRBox=PLC plus real property inspector sharing ConfigEditor; separate other settings; menu/lazy tab added; old config remains; shared drafts preserved both ways. Selection/load/resize BringIntoView keeps active node in viewport without shrinking touch targets.
+- Files: Models/AppSection.cs; ViewModels/MainViewModel.Tabs.cs/MainViewModel.SettingsV2.cs/SettingsV2ViewModel.cs; Views/MainWindow.axaml/MainWindow.axaml.cs/LazyTabFactories.cs/SettingsV2View.axaml(.cs)/SettingsV2SectionEditor.axaml(.cs); tools/SettingsV2Tests/; docs/settings-v2.md.
+- Latest validation: dotnet run --project tools/SettingsV2Tests -c Release -p:PublishAot=false -p:SkipPrinterRemoteHelper=true -- artifacts/settings-v2 => exit0,28 passed/0 failed. Log settings-v2-tests.log. This replaces prior24/0 run.
+- Evidence: artifacts/settings-v2/settings-v2-flow-1048x540.png and1280x720.png; other at both sizes; security1048x540.png; results.json. Visually inspected compact screenshot after BringIntoView fix; QRBox and Camera selected visible, inspector350px usable.
+- Harness: fresh temp DB/config, host/workers not started, fake device applier; permissions/draft/validation/cancel/save/unknown-keys/password masking; actual viewport coordinate checks for default QRBox and selected Camera.
+- Counter independent review: read-only. Legacy/mixed fallback addresses, Int32 bounds, FailIncludesTimeout, startup/hotapply copy, reset/Clear authorize-after-gate found consistent; no mandatory finding. App counts all camera results, including ignored/error outcomes, distinct from PLC/PO.
+- Constraints: no real PLC/Camera/Printer/Checkee or productionDB verified. No commit/push/deploy.
+- Next owner: CEO integrated regression/QA. No active processes from this agent.

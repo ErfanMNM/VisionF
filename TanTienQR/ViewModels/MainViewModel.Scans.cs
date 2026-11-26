@@ -48,6 +48,7 @@ internal partial class MainViewModel
 
         LastScanText = record.CodeContent;
         LastScanTimeText = record.TimestampUtc.ToLocalTime().ToString("HH:mm:ss.fff", ViCulture);
+        RefreshPlcCounters();
 
         switch (record.Outcome)
         {

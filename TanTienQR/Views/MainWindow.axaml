@@ -387,6 +387,19 @@
                                 </StackPanel>
                             </Button>
                             <Button Classes="menubtn"
+                                    Classes.active="{Binding IsSettingsV2Visible}"
+                                    IsVisible="{Binding CanEditConfig}"
+                                    Command="{Binding ShowSettingsV2TabCommand}"
+                                    Click="OnMoreItemClick">
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <Path Width="16" Height="16" Stretch="Uniform"
+                                          Stroke="{StaticResource TextMuted}" StrokeThickness="1.9"
+                                          StrokeLineCap="Round" StrokeJoin="Round"
+                                          VerticalAlignment="Center" Data="{StaticResource Icon.CpuChip}" />
+                                    <TextBlock Text="Cài đặt V2" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                            <Button Classes="menubtn"
                                     Classes.active="{Binding IsHistoryVisible}"
                             IsVisible="{Binding CanViewHistory}"
                                     Command="{Binding ShowHistoryTabCommand}"
@@ -625,6 +638,9 @@
                 <views:LazyTabHost x:Name="ConfigTab"
                                    IsVisible="{Binding IsConfigVisible}"
                                    Factory="{x:Static views:LazyTabFactories.Config}" />
+                <views:LazyTabHost x:Name="SettingsV2Tab"
+                                   IsVisible="{Binding IsSettingsV2Visible}"
+                                   Factory="{x:Static views:LazyTabFactories.SettingsV2}" />
                 <views:LazyTabHost x:Name="HistoryTab"
                                    IsVisible="{Binding IsHistoryVisible}"
                                    Factory="{x:Static views:LazyTabFactories.History}" />

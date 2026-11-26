@@ -25,6 +25,8 @@ public static class LazyTabFactories
     /// <summary>Tab Cấu hình (bảng tham số lớn — dựng khi mở tab).</summary>
     public static Func<Control> Config => static () => new ConfigView();
 
+    public static Func<Control> SettingsV2 => static () => new SettingsV2View();
+
     /// <summary>Tab Lịch sử (bảng log lớn — dựng khi mở tab).</summary>
     public static Func<Control> History => static () => new HistoryView();
 

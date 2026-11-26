@@ -183,6 +183,15 @@ sealed class FakeWriter : IScanRecordWriter
 
 sealed class FakeStore : IScanSendStatusStore
 {
+    public Task<long> BeginSendAttemptAsync(IReadOnlyList<ScanRecordEntity> records, string productGtin,
+        string batchCode, string serialType, CancellationToken cancellationToken = default) => Task.FromResult(1L);
+    public Task CompleteSendAttemptAsync(long attemptId, string status, int statusCode, string message,
+        CancellationToken cancellationToken = default) => status == CheckeeSendAttemptStatuses.Sent
+            ? MarkSentAsync(1, message, cancellationToken) : Task.CompletedTask;
+    public Task<IReadOnlyList<CheckeeSendAttempt>> GetRecentSendAttemptsAsync(int limit = 60,
+        CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<CheckeeSendAttempt>>([]);
+    public Task<IReadOnlyList<CheckeeSendAttemptItem>> GetSendAttemptItemsAsync(long attemptId,
+        CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<CheckeeSendAttemptItem>>([]);
     public int ReadCount;
     public int Sent;
     public bool ThrowOnRead;

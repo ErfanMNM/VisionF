@@ -186,6 +186,49 @@ foreach (var address in new[] { "D32768", "D-1", "C100", "D100.1", "D+100" })
         !ConfigValidation.Validate(s, out var resetError), resetError ?? "");
 }
 
+var counterFields = new[] { "TotalCounterAddress", "PassCounterAddress", "FailCounterAddress", "TimeoutCounterAddress" };
+foreach (var name in counterFields)
+{
+    foreach (var address in new[] { "", " ", "D0", "DM100", "D32766" })
+    {
+        s = NewSnapshot();
+        typeof(PlcConfig).GetProperty(name)!.SetValue(s.Plc, address);
+        Check(name + " chấp nhận địa chỉ Int32 đủ 2 word: " + address,
+            ConfigValidation.Validate(s, out var addressError), addressError ?? "");
+    }
+    foreach (var address in new[] { "D32767", "D32768", "D-1", "D100.1", "C100", "D+100" })
+    {
+        s = NewSnapshot();
+        typeof(PlcConfig).GetProperty(name)!.SetValue(s.Plc, address);
+        Check(name + " từ chối địa chỉ sai hoặc thiếu word: " + address,
+            !ConfigValidation.Validate(s, out var addressError), addressError ?? "");
+    }
+}
+foreach (var address in new[] { "", " ", "D0", "DM32767" })
+{
+    s = NewSnapshot();
+    s.Plc.ClearErrorAddress = address;
+    Check("D Clear tùy chọn hoặc một word: " + address, ConfigValidation.Validate(s, out var clearError), clearError ?? "");
+}
+foreach (var address in new[] { "D32768", "D2.0", "X100" })
+{
+    s = NewSnapshot();
+    s.Plc.ClearErrorAddress = address;
+    Check("D Clear từ chối địa chỉ sai: " + address, !ConfigValidation.Validate(s, out var clearError), clearError ?? "");
+}
+foreach (var source in new[] { "PLC", "App" })
+{
+    s = NewSnapshot();
+    s.Plc.CounterDisplaySource = source;
+    Check("Nguồn đếm hợp lệ: " + source, ConfigValidation.Validate(s, out var sourceError), sourceError ?? "");
+}
+foreach (var source in new[] { "", "PO", "Other" })
+{
+    s = NewSnapshot();
+    s.Plc.CounterDisplaySource = source;
+    Check("Nguồn đếm sai bị từ chối: " + source, !ConfigValidation.Validate(s, out var sourceError), sourceError ?? "");
+}
+
 s = NewSnapshot();
 s.Scanner.TcpPort = 0;
 Check("Scanner TCP Port 0 -> bao loi", !ConfigValidation.Validate(s, out var e15), e15 ?? "");
@@ -323,6 +366,17 @@ Check("Doi ResetCounterAddress hot-apply, khong restart",
 Check("Schema counter/reset cung hot-apply, reset khong bat buoc",
     ConfigSchemaProvider.FindField("Plc:CounterAddress") is { RequiresRestart: false, Required: true }
     && ConfigSchemaProvider.FindField("Plc:ResetCounterAddress") is { RequiresRestart: false, Required: false });
+foreach (var name in counterFields.Concat(new[] { "CounterDisplaySource", "FailIncludesTimeout", "ClearErrorAddress" }))
+{
+    after = NewSnapshot();
+    var property = typeof(PlcConfig).GetProperty(name)!;
+    property.SetValue(after.Plc, property.PropertyType == typeof(bool) ? true
+        : name == "CounterDisplaySource" ? "App" : "D600");
+    Check(name + " dirty, hot-apply và có trong xác nhận đổi PLC",
+        !ConfigDiff.AreEquivalent(before, after)
+        && ConfigDiff.DescribeCriticalChanges(before, after).Count == 0
+        && DeviceConfigurationChanges.Describe(before, after, "Plc").Count == 1);
+}
 
 after = NewSnapshot();
 after.Scanner.TcpHost = "10.0.0.20";
@@ -441,6 +495,28 @@ Console.WriteLine("\n[6] Persist: round-trip JSON appsettings");
 
 var json = JsonSerializer.Serialize(baseSnapshot, AppConfigJsonContext.Default.AppConfigSnapshot);
 var restored = JsonSerializer.Deserialize(json, AppConfigJsonContext.Default.AppConfigSnapshot);
+var customCounterSnapshot = NewSnapshot();
+customCounterSnapshot.Plc.TotalCounterAddress = "D400";
+customCounterSnapshot.Plc.PassCounterAddress = "D500";
+customCounterSnapshot.Plc.FailCounterAddress = "D600";
+customCounterSnapshot.Plc.TimeoutCounterAddress = "D700";
+customCounterSnapshot.Plc.ClearErrorAddress = "D80";
+customCounterSnapshot.Plc.CounterDisplaySource = "App";
+customCounterSnapshot.Plc.FailIncludesTimeout = true;
+var customCounterJson = JsonSerializer.Serialize(customCounterSnapshot, AppConfigJsonContext.Default.AppConfigSnapshot);
+var counterRestored = JsonSerializer.Deserialize(customCounterJson, AppConfigJsonContext.Default.AppConfigSnapshot)!;
+Check("Địa chỉ riêng, nguồn App và contract Fail lưu/đọc nguyên vẹn qua JSON",
+    counterRestored.Plc.TotalCounterAddress == "D400" && counterRestored.Plc.PassCounterAddress == "D500"
+    && counterRestored.Plc.FailCounterAddress == "D600" && counterRestored.Plc.TimeoutCounterAddress == "D700"
+    && counterRestored.Plc.ClearErrorAddress == "D80" && counterRestored.Plc.CounterDisplaySource == "App"
+    && counterRestored.Plc.FailIncludesTimeout);
+var legacyCounterJson = """{"Plc":{"CounterAddress":"DM200"}}""";
+var legacyCounterRestored = JsonSerializer.Deserialize(legacyCounterJson, AppConfigJsonContext.Default.AppConfigSnapshot)!;
+Check("JSON cũ không bị áp địa chỉ D100 mới đè mapping CounterAddress đã có",
+    legacyCounterRestored.Plc.CounterAddress == "DM200" && legacyCounterRestored.Plc.TotalCounterAddress == ""
+    && legacyCounterRestored.Plc.PassCounterAddress == "" && legacyCounterRestored.Plc.FailCounterAddress == ""
+    && legacyCounterRestored.Plc.TimeoutCounterAddress == "" && legacyCounterRestored.Plc.CounterDisplaySource == "PLC"
+    && !legacyCounterRestored.Plc.FailIncludesTimeout && legacyCounterRestored.Plc.ClearErrorAddress == "");
 using var snapshotJson = JsonDocument.Parse(json);
 Check("Camera JSON chi luu IP va port", snapshotJson.RootElement.GetProperty("Camera")
     .EnumerateObject().Select(property => property.Name).OrderBy(name => name)

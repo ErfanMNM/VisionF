@@ -320,6 +320,26 @@ public sealed class CheckeeClient : IDisposable
                     };
                 }
 
+                // Chỉ envelope status=true xác nhận batch. HTTP 2xx đơn lẻ
+                // không đủ để gán OK cho từng mã trong lịch sử gửi.
+                bool? acknowledged = null;
+                try
+                {
+                    using var envelope = JsonDocument.Parse(body);
+                    if (envelope.RootElement.ValueKind == JsonValueKind.Object
+                        && envelope.RootElement.TryGetProperty("status", out var status)
+                        && status.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                        acknowledged = status.GetBoolean();
+                }
+                catch (JsonException) { }
+                if (acknowledged is null)
+                    return new CheckeeSendResult
+                    {
+                        Ok = false, IsUnknown = true, StatusCode = (int)response.StatusCode,
+                        Message = "Checkee trả về phản hồi chưa xác định kết quả. Cần đối soát trước khi chủ động gửi lại.",
+                        RawMessage = body,
+                    };
+
                 // HTTP 200 nhưng body có status=false -> vẫn là lỗi nghiệp vụ.
                 CheckeeResponse<CheckeeActiveData>? parsed = null;
                 try
@@ -332,17 +352,17 @@ public sealed class CheckeeClient : IDisposable
                 }
                 catch (JsonException)
                 {
-                    // Body không đọc được -> coi như thành công (HTTP 200 đã đúng).
+                    // ACK đã kiểm tra phía trên; metadata phụ không quyết định kết quả.
                 }
 
-                if (parsed is not null && !parsed.Status && !string.IsNullOrWhiteSpace(parsed.Message))
+                if (acknowledged == false)
                 {
                     return new CheckeeSendResult
                     {
                         Ok = false,
                         StatusCode = (int)response.StatusCode,
-                        Message = DescribeError(response.StatusCode, parsed.Message),
-                        RawMessage = parsed.Message,
+                        Message = DescribeError(response.StatusCode, parsed?.Message ?? "Checkee từ chối batch."),
+                        RawMessage = body,
                         IsTransient = false,
                     };
                 }

@@ -17,7 +17,7 @@ namespace ClassLibraryMT.Scans;
 internal sealed class ScanStore
 {
     /// <summary>Phiên bản schema hiện tại.</summary>
-    public const int CurrentSchemaVersion = 4;
+    public const int CurrentSchemaVersion = 5;
 
     private readonly string _dbPath;
 
@@ -47,16 +47,23 @@ internal sealed class ScanStore
         }
 
         var connection = new SqliteConnection($"Data Source={_dbPath}");
-        await connection.OpenAsync(ct).ConfigureAwait(false);
-
-        await ExecutePragmaAsync(connection, "PRAGMA journal_mode=WAL;", ct).ConfigureAwait(false);
-        await ExecutePragmaAsync(connection, "PRAGMA busy_timeout=5000;", ct).ConfigureAwait(false);
-        await ExecutePragmaAsync(connection, "PRAGMA synchronous=NORMAL;", ct).ConfigureAwait(false);
-        await ExecutePragmaAsync(connection, "PRAGMA foreign_keys=ON;", ct).ConfigureAwait(false);
-
-        await EnsureSchemaAsync(connection, ct).ConfigureAwait(false);
-
-        return connection;
+        try
+        {
+            await connection.OpenAsync(ct).ConfigureAwait(false);
+            await ExecutePragmaAsync(connection, "PRAGMA journal_mode=WAL;", ct).ConfigureAwait(false);
+            await ExecutePragmaAsync(connection, "PRAGMA busy_timeout=5000;", ct).ConfigureAwait(false);
+            await ExecutePragmaAsync(connection, "PRAGMA synchronous=NORMAL;", ct).ConfigureAwait(false);
+            await ExecutePragmaAsync(connection, "PRAGMA foreign_keys=ON;", ct).ConfigureAwait(false);
+            await EnsureSchemaAsync(connection, ct).ConfigureAwait(false);
+            return connection;
+        }
+        catch
+        {
+            // Open/PRAGMA/schema có thể bị hủy khi writer dừng. Caller chưa
+            // nhận connection nên store phải đóng handle trong đường lỗi.
+            await connection.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
     }
 
     /// <summary>
@@ -93,6 +100,29 @@ internal sealed class ScanStore
             CREATE INDEX IF NOT EXISTS IX_ScanRecords_ReceivedUtc ON ScanRecords (ReceivedUtc DESC);
             CREATE INDEX IF NOT EXISTS IX_ScanRecords_Status      ON ScanRecords (Status);
             CREATE INDEX IF NOT EXISTS IX_ScanRecords_BatchNo     ON ScanRecords (BatchNo);
+
+            CREATE TABLE IF NOT EXISTS CheckeeSendAttempts (
+                Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                StartedUtc TEXT NOT NULL,
+                CompletedUtc TEXT NULL,
+                ProductGtin TEXT NOT NULL,
+                BatchCode TEXT NOT NULL,
+                SerialType TEXT NOT NULL,
+                Status TEXT NOT NULL DEFAULT 'InProgress',
+                StatusCode INTEGER NOT NULL DEFAULT 0,
+                Message TEXT NOT NULL DEFAULT ''
+            );
+            CREATE TABLE IF NOT EXISTS CheckeeSendAttemptItems (
+                AttemptId INTEGER NOT NULL REFERENCES CheckeeSendAttempts(Id) ON DELETE CASCADE,
+                Position INTEGER NOT NULL,
+                ScanRecordId INTEGER NOT NULL,
+                CodeContent TEXT NOT NULL,
+                OrderNo TEXT NOT NULL,
+                Status TEXT NOT NULL DEFAULT 'InProgress',
+                StatusCode INTEGER NOT NULL DEFAULT 0,
+                Message TEXT NOT NULL DEFAULT '',
+                PRIMARY KEY (AttemptId, Position)
+            );
             """;
 
         await using var cmd = connection.CreateCommand();

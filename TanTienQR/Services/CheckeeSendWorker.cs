@@ -280,6 +280,8 @@ internal sealed class CheckeeSendWorker : BackgroundService
             var codeContents = recordsToSend.Select(record => record.CodeContent)
                 .Distinct(StringComparer.Ordinal).ToList();
 
+            var attemptId = await _sendStore.BeginSendAttemptAsync(
+                recordsToSend, gtin, batchCode, _opt.SerialType, ct).ConfigureAwait(false);
             CheckeeSendResult result;
             try
             {
@@ -289,26 +291,31 @@ internal sealed class CheckeeSendWorker : BackgroundService
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
+                // HTTP có thể đã đến máy chủ. Lưu trạng thái chưa xác định,
+                // không đánh dấu Sent và không tự gửi lại khi khởi động tiếp.
+                await _sendStore.CompleteSendAttemptAsync(attemptId, CheckeeSendAttemptStatuses.Unknown, 0,
+                    "Lượt gửi bị hủy trước khi xác nhận kết quả; cần đối soát trước khi gửi lại.", CancellationToken.None)
+                    .ConfigureAwait(false);
                 throw;
             }
             catch (Exception ex)
             {
                 // Lỗi không lường trước -> coi như lỗi tạm thời, giữ mã chờ gửi.
                 _logger.LogError(ex, "Lỗi khi gọi API kích hoạt mã trên Checkee.");
-                await MarkTransientAsync(recordsToSend, ex.Message, ct).ConfigureAwait(false);
-                transientCount += recordsToSend.Count;
-                continue;
+                result = new CheckeeSendResult { Message = ex.Message, IsTransient = true };
             }
+
+            var attemptStatus = result.IsUnknown ? CheckeeSendAttemptStatuses.Unknown
+                : result.Ok ? CheckeeSendAttemptStatuses.Sent
+                : result.IsTransient ? CheckeeSendAttemptStatuses.RetryPending : CheckeeSendAttemptStatuses.Failed;
+            // Sau khi server trả lời, hoàn tất SQLite độc lập token của caller.
+            // History và trạng thái từng mã được commit chung một transaction.
+            await _sendStore.CompleteSendAttemptAsync(attemptId, attemptStatus,
+                result.StatusCode, result.Message, CancellationToken.None).ConfigureAwait(false);
 
             if (result.Ok)
             {
-                foreach (var record in recordsToSend)
-                {
-                    await _sendStore.MarkSentAsync(record.Id, result.Message, ct)
-                        .ConfigureAwait(false);
-
-                    sentCount++;
-                }
+                sentCount += recordsToSend.Count;
 
                 _logger.LogInformation(
                     "Đã gửi {Count} mã (GTIN {Gtin}, lô {Batch}) lên Checkee.",
@@ -319,8 +326,6 @@ internal sealed class CheckeeSendWorker : BackgroundService
             else if (result.IsTransient)
             {
                 // Server không phản hồi -> giữ mã ở trạng thái chờ gửi.
-                await MarkTransientAsync(recordsToSend, result.Message, ct)
-                    .ConfigureAwait(false);
                 transientCount += recordsToSend.Count;
 
                 _logger.LogWarning(
@@ -331,16 +336,7 @@ internal sealed class CheckeeSendWorker : BackgroundService
             else
             {
                 // Server đã trả lỗi -> đánh dấu Failed, KHÔNG tự thử lại.
-                foreach (var record in recordsToSend)
-                {
-                    await _sendStore.MarkFailedAsync(
-                        record.Id,
-                        result.StatusCode,
-                        result.Message,
-                        ct).ConfigureAwait(false);
-
-                    failedCount++;
-                }
+                failedCount += recordsToSend.Count;
 
                 _logger.LogWarning(
                     "Checkee từ chối {Count} mã (HTTP {Code}): {Message}",
@@ -358,21 +354,6 @@ internal sealed class CheckeeSendWorker : BackgroundService
         _state.SetLastRunUtc(DateTime.UtcNow);
 
         return sentCount;
-    }
-
-    /// <summary>
-    /// Đánh dấu các mã là "chờ gửi" (không tự thử lại ngay) khi lỗi là tạm thời.
-    /// </summary>
-    private async Task MarkTransientAsync(
-        IReadOnlyList<ScanRecordEntity> records,
-        string message,
-        CancellationToken ct)
-    {
-        foreach (var record in records)
-        {
-            await _sendStore.MarkPendingAsync(record.Id, message, ct)
-                .ConfigureAwait(false);
-        }
     }
 
     /// <summary>

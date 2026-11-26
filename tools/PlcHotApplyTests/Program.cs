@@ -25,7 +25,9 @@ internal static class Program
             await CheckWriterAsync();
             await CheckPassAcknowledgementAsync();
             await CheckCountersAsync();
+            await CheckSeparateCountersAndAppSourceAsync();
             await CheckResetAuthorizationAsync();
+            await CheckClearErrorsAsync();
             await CheckHeartbeatAsync();
             Console.WriteLine($"Đã qua {_passed} kiểm tra PLC hot-apply; chỉ dùng UDP localhost.");
             return 0;
@@ -301,6 +303,82 @@ internal static class Program
                 $"Fake PLC nạp được Int32 tại D{start + offset}");
     }
 
+    private static async Task CheckSeparateCountersAndAppSourceAsync()
+    {
+        using var server = new FakePlc();
+        using var host = BuildHost(server.Port, enabled: true, interval: 1000);
+        var writer = GetService(host.Services, "PlcWriter");
+        var plc = host.Services.GetRequiredService<OmronPlc>();
+        var config = Config(server.Port, enabled: true, interval: 1000);
+        config.TotalCounterAddress = "D300";
+        config.PassCounterAddress = "DM410";
+        config.FailCounterAddress = "D520";
+        config.TimeoutCounterAddress = "D32766";
+        foreach (var (address, value) in new[] { ("D300", 90_000), ("D410", 80_000), ("D520", 6000), ("D32766", 4000) })
+            Check(plc.WriteInt32(address, value).IsSuccess, "Nạp counter riêng " + address);
+        using (var startupHost = BuildHost(server.Port, true, 1000, new Dictionary<string, string?>
+        {
+            ["Plc:TotalCounterAddress"] = "D300", ["Plc:PassCounterAddress"] = "DM410",
+            ["Plc:FailCounterAddress"] = "D520", ["Plc:TimeoutCounterAddress"] = "D32766",
+            ["Plc:FailIncludesTimeout"] = "true", ["Plc:CounterDisplaySource"] = "App",
+            ["Plc:ClearErrorAddress"] = "D70",
+        }))
+        {
+            var startupWriter = GetService(startupHost.Services, "PlcWriter");
+            Check(await ReadCountersAsync(startupWriter) == new CounterValues(90_000, 6000, 80_000, 4000, 6000)
+                && (string)startupWriter.GetType().GetProperty("CounterDisplaySource")!.GetValue(startupWriter)! == "App"
+                && (bool)startupWriter.GetType().GetProperty("CanClearErrors")!.GetValue(startupWriter)!,
+                "Khởi động bind đầy đủ địa chỉ riêng, contract Fail, nguồn App và D Clear từ cấu hình");
+        }
+        await Apply(writer, config);
+        var before = server.Requests.Count;
+        Check(await ReadCountersAsync(writer) == new CounterValues(90_000, 6000, 80_000, 4000, 10_000),
+            "Đọc đủ bốn Int32 rời, ghép word đúng và giữ Fail cộng Timeout mặc định");
+        Check(server.Requests.Skip(before).Where(request => request.Command == 1).Select(request => request.Address)
+            .SequenceEqual(new[] { 300, 520, 410, 32766 }), "Đọc đúng các D riêng đã cấu hình thay vì khối D100");
+        config.FailIncludesTimeout = true;
+        await Apply(writer, config);
+        Check((await ReadCountersAsync(writer))?.Fail == 6000,
+            "FailIncludesTimeout bật lấy nguyên D Fail, không cộng Timeout lần hai");
+        config.PassCounterAddress = string.Empty;
+        config.CounterAddress = "DM200";
+        Check(plc.WriteInt32("D204", 79_000).IsSuccess, "Nạp vùng Pass kế thừa cấu hình cũ");
+        await Apply(writer, config);
+        Check((await ReadCountersAsync(writer))?.Pass == 79_000,
+            "Một địa chỉ riêng để trống kế thừa đúng offset từ CounterAddress cũ đã đổi");
+        server.FailNextReadAt(520);
+        Check(await ReadCountersAsync(writer) is null && LatestCounters(writer) is null,
+            "Một D riêng đọc lỗi loại toàn snapshot, không trộn số mới/cũ");
+        Check(await ReadCountersAsync(writer) is not null, "Bộ đếm rời phục hồi ở tick thành công kế tiếp");
+
+        var runtime = GetService(host.Services, "RuntimeCounters");
+        var addScan = runtime.GetType().GetMethod("AddScan")!;
+        addScan.Invoke(runtime, [true]);
+        addScan.Invoke(runtime, [false]);
+        addScan.Invoke(runtime, [true]);
+        config.CounterDisplaySource = "App";
+        config.Enabled = false;
+        await Apply(writer, config);
+        Check((string)writer.GetType().GetProperty("CounterDisplaySource")!.GetValue(writer)! == "App",
+            "Nguồn hiển thị App hot-apply cả khi tắt PLC");
+        object AppSnapshot() => writer.GetType().GetProperty("AppCounters")!.GetValue(writer)!;
+        var snapshot = AppSnapshot();
+        long Count(string name) => (long)snapshot.GetType().GetProperty(name)!.GetValue(snapshot)!;
+        Check(Count("Total") == 3 && Count("Pass") == 2 && Count("Fail") == 1,
+            "Snapshot App lấy kết quả xử lý camera, độc lập số PO và số PLC");
+        for (var i = 0; i < 20; i++) snapshot = AppSnapshot();
+        Check(Count("Total") == 3 && Count("Pass") == 2 && Count("Fail") == 1,
+            "Đọc/refresh snapshot App không làm tăng số đếm");
+        config.CounterDisplaySource = "PLC";
+        await Apply(writer, config);
+        config.CounterDisplaySource = "App";
+        await Apply(writer, config);
+        snapshot = AppSnapshot();
+        Check(Count("Total") == 3, "Đổi nguồn nhiều lần không reset số App");
+        config.TotalCounterAddress = "D32767";
+        await MustRejectAsync(() => Apply(writer, config), "D counter riêng không đủ hai word bị từ chối trước swap");
+    }
+
     private static async Task<CounterValues?> ReadCountersAsync(object writer)
     {
         var task = (Task)writer.GetType().GetMethod("ReadCountersAsync")!
@@ -374,6 +452,57 @@ internal static class Program
         (Task<bool>)writer.GetType().GetMethod("ResetCountersAuthorizedAsync")!
             .Invoke(writer, [authorize, CancellationToken.None])!;
 
+    private static async Task CheckClearErrorsAsync()
+    {
+        using var server = new FakePlc();
+        using var host = BuildHost(server.Port, enabled: true, interval: 1000);
+        var writer = GetService(host.Services, "PlcWriter");
+        Task<bool> Clear(Func<bool> authorize) => (Task<bool>)writer.GetType().GetMethod("ClearErrorsAuthorizedAsync")!
+            .Invoke(writer, [authorize, CancellationToken.None])!;
+        Check(!await Clear(() => true) && server.Requests.IsEmpty,
+            "Chưa cấu hình Clear thì không đoán D hoặc gửi UDP");
+        var config = Config(server.Port, enabled: true, interval: 100);
+        config.ClearErrorAddress = "D70";
+        config.ResetCounterAddress = "D60";
+        await Apply(writer, config);
+        Check(!await Clear(() => false) && server.Requests.IsEmpty, "Clear cần quyền trước khi phát lệnh");
+        await ReadCountersAsync(writer);
+        var original = LatestCounters(writer);
+        Check(await Clear(() => true) && server.Requests.Last() is { Command: 2, Address: 70, Value: 1 },
+            "Thao tác Clear chủ động chỉ ghi Int16=1 tới D Clear, tách D reset counter");
+        Check(Equals(original, LatestCounters(writer)), "ACK Clear không giả reset số hoặc sửa snapshot PLC");
+        var held = server.HoldNextRead();
+        var reading = ReadCountersAsync(writer);
+        await held.Entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        var permission = 1;
+        var pending = Clear(() => Volatile.Read(ref permission) == 1);
+        Volatile.Write(ref permission, 0);
+        var before = server.Requests.Count;
+        held.Release.TrySetResult();
+        await reading;
+        Check(!await pending && server.Requests.Count == before,
+            "Thu hồi quyền trong lúc Clear chờ gate ngăn lệnh trước lúc gửi");
+        var intake = host.Services.GetRequiredService<ScanIntakeGate>();
+        var setSuspended = typeof(ScanIntakeGate).GetMethod("SetSuspended", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        setSuspended.Invoke(intake, [true]);
+        Check(!await Clear(() => true), "Bảo trì tạm dừng intake chặn Clear");
+        setSuspended.Invoke(intake, [false]);
+        var heartbeatType = AppAssembly.GetType("TanTienQR.Services.PlcHeartbeatService")!;
+        var constructor = heartbeatType.GetConstructors().OrderByDescending(candidate => candidate.GetParameters().Length).First();
+        using var heartbeat = (BackgroundService)constructor.Invoke(constructor.GetParameters()
+            .Select(parameter => host.Services.GetRequiredService(parameter.ParameterType)).ToArray());
+        before = server.Requests.Count;
+        await heartbeat.StartAsync(CancellationToken.None);
+        await server.WaitForCountAsync(before + 4);
+        await heartbeat.StopAsync(CancellationToken.None);
+        Check(server.Requests.Skip(before).All(request => request.Command != 2 || request.Address == 16),
+            "Heartbeat/polling không tự gửi Clear hoặc reset, dù đã cấu hình cả hai D");
+        config.Enabled = false;
+        await Apply(writer, config);
+        before = server.Requests.Count;
+        Check(!await Clear(() => true) && server.Requests.Count == before, "PLC tắt chặn Clear không phát UDP");
+    }
+
     private static async Task CheckHeartbeatAsync()
     {
         using var server = new FakePlc();
@@ -407,7 +536,7 @@ internal static class Program
             "Shutdown hủy waiter/timer và không còn ghi PLC");
     }
 
-    private static IHost BuildHost(int port, bool enabled, int interval)
+    private static IHost BuildHost(int port, bool enabled, int interval, Dictionary<string, string?>? overrides = null)
     {
         var root = Path.Combine(Path.GetTempPath(), "VisionF-PlcHotApply-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
@@ -423,6 +552,7 @@ internal static class Program
             ["Auth:DbPath"] = Path.Combine(root, "auth.db"), ["Scans:DbPath"] = Path.Combine(root, "scans.db"),
             ["PlcSettings:DbPath"] = Path.Combine(root, "plc.db"), ["Logging:Sqlite:Path"] = Path.Combine(root, "app.db"),
         });
+        if (overrides is not null) builder.Configuration.AddInMemoryCollection(overrides);
         builder.Logging.ClearProviders();
         builder.Services.AddTanTienServices(builder.Configuration);
         // Không Start host: chỉ khởi động heartbeat được tạo tường minh ở bài riêng.
@@ -471,12 +601,14 @@ internal sealed class FakePlc : IDisposable
     private readonly Dictionary<int, ushort> _words = new();
     private HeldRead? _held;
     private int _failNextRead;
+    private int _failReadAddress = -1;
     private int _nextWriteResponse;
     public ConcurrentQueue<FinsRequest> Requests { get; } = new();
     public int Port => ((IPEndPoint)_socket.Client.LocalEndPoint!).Port;
     public FakePlc() => _worker = Task.Run(RunAsync);
     public HeldRead HoldNextRead() => _held = new HeldRead();
     public void FailNextRead() => Interlocked.Exchange(ref _failNextRead, 1);
+    public void FailNextReadAt(int address) => Interlocked.Exchange(ref _failReadAddress, address);
     public void RespondToNextWrite(WriteResponse response) => Interlocked.Exchange(ref _nextWriteResponse, (int)response);
 
     public async Task WaitForCountAsync(int count, int timeoutMs = 3000)
@@ -511,7 +643,8 @@ internal sealed class FakePlc : IDisposable
                 var writeResponse = command == 2
                     ? (WriteResponse)Interlocked.Exchange(ref _nextWriteResponse, 0) : WriteResponse.Normal;
                 if (writeResponse == WriteResponse.Reject
-                    || command == 1 && Interlocked.Exchange(ref _failNextRead, 0) != 0)
+                    || command == 1 && (Interlocked.Exchange(ref _failNextRead, 0) != 0
+                        || Interlocked.CompareExchange(ref _failReadAddress, -1, address) == address))
                 {
                     // FINS 0x1101: vùng nhớ không hợp lệ. Phản hồi ngay, không đợi timeout.
                     response[12] = 0x11;

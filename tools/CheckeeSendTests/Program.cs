@@ -288,7 +288,161 @@ await using (var test = new SendTestSession("PRODUCT"))
     Check(await test.Worker.SendPendingAsync() == 1, "Kết thúc bảo trì vẫn gửi mã đã giữ trong hàng đợi");
 }
 
-Console.WriteLine($"Đã qua {checks} kiểm thử Checkee CodeContent, HTTP giả và SQLite tạm; không build UI/PO backend.");
+// Lịch sử ghi từng batch thực tế, giữ snapshot kể cả khi gửi lại đổi trạng thái hiện tại.
+await using (var test = new SendTestSession("PRODUCT"))
+{
+    test.Http.ActivationStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    test.Http.AllowActivation = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    test.Writer.Enqueue(Pass("inflight-resend-must-not-duplicate"));
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+    var original = test.Worker.SendPendingAsync(timeout.Token);
+    await test.Http.ActivationStarted.Task.WaitAsync(timeout.Token);
+    var captured = await test.Store.GetBySendStatusAsync(new ScanSendFilter { SendStatus = ScanSendStatuses.Failed });
+    Check(captured.Count == 1, "Intent giữ mã trong flight ngoài hàng đợi tự retry");
+    var queuedRetry = test.Worker.ResendFailedAsync(captured.Select(row => row.Id).ToArray(), timeout.Token);
+    test.Http.AllowActivation.TrySetResult();
+    Check(await original == 1 && await queuedRetry == (0, 0) && test.Http.Payloads.Count == 1,
+        "Gửi lại xếp hàng recheck Failed sau gate, không reset/gửi lặp mã original vừa được ACK Sent");
+    Check((await test.Store.GetRecentSendAttemptsAsync()).Count == 1
+        && (await test.RowsAsync()).Single().SendStatus == ScanSendStatuses.Sent,
+        "Race resend không tạo lần gửi thứ hai hoặc ghi đè trạng thái Sent");
+}
+
+await using (var test = new SendTestSession("PRODUCT"))
+{
+    test.Http.ActivateStatus = HttpStatusCode.BadRequest;
+    test.Writer.Enqueue(Pass(fullCode));
+    await test.Worker.SendPendingAsync();
+    var failed = (await test.Store.GetRecentSendAttemptsAsync()).Single();
+    Check(failed.TotalCount == 1 && failed.FailCount == 1 && failed.OkCount == 0
+        && failed.StatusCode == 400 && failed.CompletedUtc.HasValue, "Lần HTTP từ chối được lưu đúng tổng/OK/Fail/HTTP và thời điểm hoàn tất");
+    var detail = (await test.Store.GetSendAttemptItemsAsync(failed.Id)).Single();
+    Check(detail.CodeContent == fullCode && detail.Status == CheckeeSendAttemptStatuses.Failed
+        && detail.Message.Length > 0, "Chi tiết lưu nguyên CodeContent Unicode dài, kết quả và thông điệp của đúng lần gửi");
+    test.Http.ActivateStatus = HttpStatusCode.OK;
+    await test.Worker.ResendFailedAsync([(await test.RowsAsync()).Single().Id]);
+    var attempts = await test.Store.GetRecentSendAttemptsAsync();
+    Check(attempts.Count == 2 && attempts[0].Id > failed.Id && attempts[0].OkCount == 1
+        && attempts[1].FailCount == 1 && (await test.Store.GetSendAttemptItemsAsync(failed.Id)).Single().Status == CheckeeSendAttemptStatuses.Failed,
+        "Retry tạo lần gửi mới, mới nhất đứng trước và không ghi đè snapshot lỗi cũ");
+    Check((await test.RowsAsync()).Single().SendAttempts == 2, "Mỗi lần gửi thực tế chỉ tăng SendAttempts một lần");
+    await test.Worker.SendPendingAsync();
+    Check((await test.Store.GetRecentSendAttemptsAsync()).Count == 2, "Chu kỳ không có mã không tạo lịch sử giả");
+}
+
+await using (var test = new SendTestSession(""))
+{
+    test.Writer.Enqueue(Pass("missing-product"));
+    await test.Worker.SendPendingAsync();
+    Check((await test.Store.GetRecentSendAttemptsAsync()).Count == 0,
+        "Thiếu metadata, chưa gửi HTTP thì không tạo lần gửi giả");
+}
+
+await using (var test = new SendTestSession("PRODUCT"))
+{
+    test.Http.ThrowNetwork = true;
+    test.Writer.Enqueue(Pass("offline-then-online"));
+    await test.Worker.SendPendingAsync();
+    var attempt = (await test.Store.GetRecentSendAttemptsAsync()).Single();
+    Check(attempt.FailCount == 1 && attempt.Status == CheckeeSendAttemptStatuses.RetryPending
+        && (await test.RowsAsync()).Single().SendStatus == ScanSendStatuses.Pending,
+        "Lỗi mạng hiện Fail/chờ thử lại trong lần cũ và vẫn Pending để gửi lại");
+    test.Http.ThrowNetwork = false;
+    await test.Worker.SendPendingAsync();
+    Check((await test.Store.GetRecentSendAttemptsAsync()).Count == 2
+        && (await test.Store.GetSendAttemptItemsAsync(attempt.Id)).Single().Status == CheckeeSendAttemptStatuses.RetryPending,
+        "Mạng hồi phục tạo lần OK mới, giữ nguyên chi tiết lỗi mạng trước");
+}
+
+foreach (var body in new[] { "not-json", "{}", "{\"data\":{}}" })
+{
+    await using var test = new SendTestSession("PRODUCT");
+    test.Http.ActivateBody = body;
+    test.Writer.Enqueue(Pass("unconfirmed-" + body));
+    Check(await test.Worker.SendPendingAsync() == 0, "HTTP200 thiếu ACK không được tính gửi thành công: " + body);
+    var attempt = (await test.Store.GetRecentSendAttemptsAsync()).Single();
+    Check(attempt.OkCount == 0 && attempt.FailCount == 0 && attempt.UnknownCount == 1
+        && attempt.Status == CheckeeSendAttemptStatuses.Unknown && (await test.RowsAsync()).Single().SendStatus == ScanSendStatuses.Failed,
+        "History Unknown tách riêng khỏi OK/Fail; trạng thái gửi cần đối soát, không tự retry");
+    await test.Worker.SendPendingAsync();
+    Check(test.Http.Payloads.Count == 1, "Lượt chưa xác nhận không tự gửi lại");
+}
+
+await using (var test = new SendTestSession("PRODUCT"))
+{
+    test.Http.ActivateBody = """{"code":200,"status":false,"data":null}""";
+    test.Writer.Enqueue(Pass("explicit-false-no-message"));
+    await test.Worker.SendPendingAsync();
+    Check((await test.Store.GetRecentSendAttemptsAsync()).Single().FailCount == 1,
+        "status=false không có message vẫn là Fail, không gán OK vì HTTP200");
+}
+
+await using (var test = new SendTestSession("PRODUCT"))
+{
+    test.Http.ActivateBody = """{"code":200,"status":true,"data":{"activeSerials":0,"quantityInBatch":1000}}""";
+    test.Writer.Enqueue(Pass("batch-ack-A"));
+    test.Writer.Enqueue(Pass("batch-ack-B"));
+    Check(await test.Worker.SendPendingAsync() == 2 && (await test.Store.GetRecentSendAttemptsAsync()).Single().OkCount == 2,
+        "status=true là ACK batch; không suy activeSerials là số chấp nhận riêng request hoặc gán mã ngẫu nhiên khi số khác");
+}
+
+await using (var test = new SendTestSession("PRODUCT"))
+{
+    test.Writer.Enqueue(Pass("durable-intent"));
+    var row = (await test.RowsAsync()).Single();
+    var id = await test.Store.BeginSendAttemptAsync([row], "PRODUCT", "BATCH", "RANDOM");
+    using var restarted = test.OpenAnotherStore();
+    var reopened = restarted.GetRequiredService<IScanSendStatusStore>();
+    var attempt = (await reopened.GetRecentSendAttemptsAsync()).Single();
+    Check(attempt.Id == id && attempt.CompletedUtc is null && attempt.UnknownCount == 1
+        && (await reopened.GetSendAttemptItemsAsync(id)).Single().CodeContent == row.CodeContent,
+        "Mở store mới vẫn thấy intent/chi tiết chưa hoàn tất, không dựng OK giả sau crash");
+    Check(await test.Worker.SendPendingAsync() == 0 && test.Http.RequestCount == 0,
+        "Intent chưa xác nhận chặn tự retry sau khi process bị gián đoạn");
+}
+
+await using (var test = new SendTestSession("PRODUCT"))
+{
+    test.Http.ActivationStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    test.Http.AllowActivation = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    test.Writer.Enqueue(Pass("cancel-after-http-start"));
+    using var cancellation = new CancellationTokenSource();
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+    var sending = test.Worker.SendPendingAsync(cancellation.Token);
+    await test.Http.ActivationStarted.Task.WaitAsync(timeout.Token);
+    cancellation.Cancel();
+    try { await sending; throw new InvalidOperationException("Expected caller cancellation"); }
+    catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+    var attempt = (await test.Store.GetRecentSendAttemptsAsync()).Single();
+    Check(attempt.CompletedUtc.HasValue && attempt.UnknownCount == 1 && attempt.OkCount == 0
+        && (await test.RowsAsync()).Single().SendStatus == ScanSendStatuses.Failed,
+        "Hủy sau khi bắt đầu HTTP vẫn lưu Unknown bền vững bằng token độc lập; không gán OK hoặc tự retry");
+}
+
+await using (var test = new SendTestSession("PRODUCT"))
+{
+    test.Writer.Enqueue(Pass("retention-preserves-source"));
+    var row = (await test.RowsAsync()).Single();
+    for (var index = 0; index < 65; index++)
+    {
+        var id = await test.Store.BeginSendAttemptAsync([row], "PRODUCT", "BATCH-" + index, "RANDOM");
+        await test.Store.CompleteSendAttemptAsync(id, CheckeeSendAttemptStatuses.Sent, 200, "ACK");
+    }
+    using var restarted = test.OpenAnotherStore();
+    var reopened = restarted.GetRequiredService<IScanSendStatusStore>();
+    var attempts = await reopened.GetRecentSendAttemptsAsync(5000);
+    Check(attempts.Count == 60 && attempts[0].BatchCode == "BATCH-64" && attempts[^1].BatchCode == "BATCH-5",
+        "Lưu bền đúng 60 lần mới nhất qua restart và cap cả query yêu cầu quá lớn");
+    await using var connection = new SqliteConnection("Data Source=" + test.DbPath);
+    await connection.OpenAsync();
+    await using var cmd = connection.CreateCommand();
+    cmd.CommandText = "SELECT COUNT(*) FROM CheckeeSendAttemptItems WHERE AttemptId NOT IN (SELECT Id FROM CheckeeSendAttempts);";
+    Check(Convert.ToInt32(await cmd.ExecuteScalarAsync()) == 0
+        && (await test.RowsAsync()).Single().CodeContent == row.CodeContent,
+        "Retention cascade chi tiết cũ và giữ nguyên bản ghi quét nguồn");
+}
+
+Console.WriteLine($"Đã qua {checks} kiểm thử Checkee CodeContent, lịch sử gửi, HTTP giả và SQLite tạm; không build UI/PO backend.");
 
 sealed class SendTestSession : IAsyncDisposable
 {
@@ -307,6 +461,17 @@ sealed class SendTestSession : IAsyncDisposable
     public readonly IScanRecordWriter Writer;
     public readonly CheckeeSendWorker Worker;
     private readonly IScanRecordQuery _query;
+    public IScanSendStatusStore Store => _services.GetRequiredService<IScanSendStatusStore>();
+    public string DbPath => Path.Combine(_root, "scans.db");
+    public ServiceProvider OpenAnotherStore()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            { ["Scans:DbPath"] = DbPath }).Build();
+        var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(configuration);
+        services.AddScanStore(configuration);
+        return services.BuildServiceProvider();
+    }
 
     public SendTestSession(string productGtin)
     {
@@ -366,6 +531,9 @@ sealed class RecordingHttpHandler : HttpMessageHandler
     public HttpStatusCode ActivateStatus = HttpStatusCode.OK;
     public bool ThrowNetwork;
     public bool BusinessFailure;
+    public string? ActivateBody;
+    public TaskCompletionSource? ActivationStarted;
+    public TaskCompletionSource? AllowActivation;
     public int RequestCount;
 
     protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -379,8 +547,11 @@ sealed class RecordingHttpHandler : HttpMessageHandler
         if (request.Method != HttpMethod.Post || request.RequestUri!.AbsolutePath != "/middleware-api/CTEs/active")
             throw new InvalidOperationException("Unexpected Checkee request: " + request.RequestUri);
 
+        ActivationStarted?.TrySetResult();
+        if (AllowActivation is not null) await AllowActivation.Task.WaitAsync(cancellationToken);
         using var payload = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken));
         Payloads.Add(payload.RootElement.Clone());
+        if (ActivateBody is not null) return Json(ActivateStatus, ActivateBody);
         return ActivateStatus == HttpStatusCode.OK && !BusinessFailure
             ? Json(ActivateStatus, """{"code":200,"status":true,"message":"accepted","data":{}}""")
             : Json(ActivateStatus, """{"code":400,"status":false,"message":"NOTFOUND_SERIAL","data":null}""");

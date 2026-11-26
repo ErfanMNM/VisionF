@@ -126,6 +126,13 @@ public static class TanTienAppServices
                 o.RefreshIntervalMs = ConfigReader.GetInt(cfg, $"{PlcSectionName}:RefreshIntervalMs", o.RefreshIntervalMs);
                 o.CounterAddress = ConfigReader.GetString(cfg, $"{PlcSectionName}:CounterAddress", o.CounterAddress);
                 o.ResetCounterAddress = ConfigReader.GetString(cfg, $"{PlcSectionName}:ResetCounterAddress", o.ResetCounterAddress);
+                o.TotalCounterAddress = ConfigReader.GetString(cfg, $"{PlcSectionName}:TotalCounterAddress", o.TotalCounterAddress);
+                o.PassCounterAddress = ConfigReader.GetString(cfg, $"{PlcSectionName}:PassCounterAddress", o.PassCounterAddress);
+                o.FailCounterAddress = ConfigReader.GetString(cfg, $"{PlcSectionName}:FailCounterAddress", o.FailCounterAddress);
+                o.TimeoutCounterAddress = ConfigReader.GetString(cfg, $"{PlcSectionName}:TimeoutCounterAddress", o.TimeoutCounterAddress);
+                o.FailIncludesTimeout = ConfigReader.GetBool(cfg, $"{PlcSectionName}:FailIncludesTimeout", o.FailIncludesTimeout);
+                o.CounterDisplaySource = ConfigReader.GetString(cfg, $"{PlcSectionName}:CounterDisplaySource", o.CounterDisplaySource).Trim();
+                o.ClearErrorAddress = ConfigReader.GetString(cfg, $"{PlcSectionName}:ClearErrorAddress", o.ClearErrorAddress);
             })
             .Validate(o => !string.IsNullOrWhiteSpace(o.Ip), "Plc:Ip không được để trống.")
             .Validate(o => o.Port is > 0 and <= 65535, "Plc:Port phải từ 1 đến 65535.")
@@ -136,6 +143,11 @@ public static class TanTienAppServices
             .Validate(o => !string.IsNullOrWhiteSpace(o.ReadyAddress), "Plc:ReadyAddress không được để trống.")
             .Validate(o => ConfigValidation.IsValidPlcWordAddress(o.CounterAddress, 10), "Plc:CounterAddress phải chứa đủ khối 5 Int32.")
             .Validate(o => string.IsNullOrWhiteSpace(o.ResetCounterAddress) || ConfigValidation.IsValidPlcWordAddress(o.ResetCounterAddress), "Plc:ResetCounterAddress phải là word D hợp lệ.")
+            .Validate(o => new[] { o.TotalCounterAddress, o.PassCounterAddress, o.FailCounterAddress,
+                o.TimeoutCounterAddress }.All(address => string.IsNullOrWhiteSpace(address)
+                    || ConfigValidation.IsValidPlcWordAddress(address, 2)), "Địa chỉ bộ đếm PLC riêng phải đủ hai word D.")
+            .Validate(o => string.IsNullOrWhiteSpace(o.ClearErrorAddress) || ConfigValidation.IsValidPlcWordAddress(o.ClearErrorAddress), "Plc:ClearErrorAddress phải là word D hợp lệ.")
+            .Validate(o => o.CounterDisplaySource is "PLC" or "App", "Plc:CounterDisplaySource phải là PLC hoặc App.")
             .ValidateOnStart();
 
         // OmronPlc: singleton, dùng chung một kết nối UDP cho cả ghi kết quả

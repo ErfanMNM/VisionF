@@ -61,4 +61,7 @@ public enum AppSection
     /// MultiConnect: dữ liệu vào/ra của các kênh chuyển giao thức sang TCP.
     /// </summary>
     MultiConnect = 11,
+
+    /// <summary>Cài đặt V2: sơ đồ thiết bị và bảng thuộc tính dùng chung cấu hình.</summary>
+    ConfigurationV2 = 12,
 }

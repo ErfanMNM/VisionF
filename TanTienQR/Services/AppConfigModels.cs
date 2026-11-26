@@ -68,11 +68,32 @@ public sealed class PlcConfig
     [ConfigField("Chu kỳ heartbeat (ms)", Order = 9, Min = 100, Max = 60000, RequiresRestart = false)]
     [JsonPropertyName("RefreshIntervalMs")] public int RefreshIntervalMs { get; set; } = 1000;
 
-    [ConfigField("Bộ đếm PLC (Int32 × 5)", Order = 10, Validation = "PlcCounterAddress", RequiresRestart = false, HelpText = "Word bắt đầu khối Total, ReadFail, Pass, dự phòng, Timeout. Mỗi số Int32 chiếm 2 word; Fail = ReadFail + Timeout.")]
+    [ConfigField("Khối bộ đếm cũ (dự phòng)", Order = 10, Validation = "PlcCounterAddress", RequiresRestart = false, HelpText = "Giữ tương thích cấu hình cũ. Khi địa chỉ riêng để trống: Total +0, Fail +2, Pass +4, Timeout +8 word. Mỗi số Int32 chiếm 2 word.")]
     [JsonPropertyName("CounterAddress")] public string CounterAddress { get; set; } = "D100";
 
-    [ConfigField("Lệnh xóa số PLC", Order = 11, Validation = "PlcWordAddress", Required = false, RequiresRestart = false, HelpText = "Word reset thực tế của máy: ghi Int16 = 1 theo TApp. Để trống để khóa nút xóa; không tự xóa số trên ứng dụng.")]
+    [ConfigField("D Total (Int32)", Order = 11, Validation = "PlcInt32Address", Required = false, RequiresRestart = false, Placeholder = "Kế thừa D100", HelpText = "Địa chỉ bắt đầu 2 word của tổng số PLC. Để trống dùng khối bộ đếm cũ +0.")]
+    [JsonPropertyName("TotalCounterAddress")] public string TotalCounterAddress { get; set; } = string.Empty;
+
+    [ConfigField("D Pass (Int32)", Order = 12, Validation = "PlcInt32Address", Required = false, RequiresRestart = false, Placeholder = "Kế thừa D104", HelpText = "Địa chỉ bắt đầu 2 word của số Pass PLC. Để trống dùng khối bộ đếm cũ +4.")]
+    [JsonPropertyName("PassCounterAddress")] public string PassCounterAddress { get; set; } = string.Empty;
+
+    [ConfigField("D Fail (Int32)", Order = 13, Validation = "PlcInt32Address", Required = false, RequiresRestart = false, Placeholder = "Kế thừa D102", HelpText = "Địa chỉ bắt đầu 2 word của số lỗi PLC. Mặc định Fail hiển thị = giá trị này + Timeout để giữ cách tính cũ.")]
+    [JsonPropertyName("FailCounterAddress")] public string FailCounterAddress { get; set; } = string.Empty;
+
+    [ConfigField("D Timeout (Int32)", Order = 14, Validation = "PlcInt32Address", Required = false, RequiresRestart = false, Placeholder = "Kế thừa D108", HelpText = "Địa chỉ bắt đầu 2 word của số Timeout PLC. Để trống dùng khối bộ đếm cũ +8.")]
+    [JsonPropertyName("TimeoutCounterAddress")] public string TimeoutCounterAddress { get; set; } = string.Empty;
+
+    [ConfigField("Bộ đếm Fail đã gồm Timeout", Order = 15, RequiresRestart = false, HelpText = "Chỉ bật khi ladder đã cộng Timeout vào D Fail. Tắt = Fail + Timeout, tương thích phiên bản cũ; bật = lấy nguyên D Fail, tránh cộng hai lần.")]
+    [JsonPropertyName("FailIncludesTimeout")] public bool FailIncludesTimeout { get; set; }
+
+    [ConfigField("Nguồn số đếm hiển thị", Order = 16, Options = new[] { "PLC", "App" }, Validation = "CounterDisplaySource", RequiresRestart = false, HelpText = "PLC: số đọc từ máy. App: kết quả camera đã xử lý từ lúc mở ứng dụng; không phải tiến độ PO. Chỉ đổi nguồn hiển thị, không xóa số.")]
+    [JsonPropertyName("CounterDisplaySource")] public string CounterDisplaySource { get; set; } = "PLC";
+
+    [ConfigField("D reset counter", Order = 17, Validation = "PlcWordAddress", Required = false, RequiresRestart = false, HelpText = "Word reset thực tế của máy: chỉ ghi Int16 = 1 khi người có quyền nhấn Xóa số PLC. Để trống để khóa nút; không xóa số của App.")]
     [JsonPropertyName("ResetCounterAddress")] public string ResetCounterAddress { get; set; } = string.Empty;
+
+    [ConfigField("D Clear (xóa lỗi PLC)", Order = 18, Validation = "PlcWordAddress", Required = false, RequiresRestart = false, HelpText = "Word xóa lỗi do ladder quy định. Chỉ ghi Int16 = 1 khi người có quyền chủ động nhấn Xóa lỗi PLC; không gửi tự động. Để trống để khóa nút.")]
+    [JsonPropertyName("ClearErrorAddress")] public string ClearErrorAddress { get; set; } = string.Empty;
 
 }
 

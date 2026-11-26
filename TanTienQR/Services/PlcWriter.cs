@@ -34,6 +34,9 @@ internal sealed class PlcWriter
     private PlcCounterSnapshot? _latestCounters;
     public PlcCounterSnapshot? LatestCounters => Enabled ? Volatile.Read(ref _latestCounters) : null;
     public bool CanResetCounters => Enabled && !_intake.IsSuspended && !string.IsNullOrWhiteSpace(Volatile.Read(ref _current).ResetCounterAddress);
+    public bool CanClearErrors => Enabled && !_intake.IsSuspended && !string.IsNullOrWhiteSpace(Volatile.Read(ref _current).ClearErrorAddress);
+    public string CounterDisplaySource => Volatile.Read(ref _current).CounterDisplaySource;
+    public AppCounterSnapshot AppCounters => _counters.SnapshotScans();
     public int RefreshIntervalMs => Volatile.Read(ref _current).RefreshIntervalMs;
 
     /// <summary>
@@ -113,7 +116,7 @@ internal sealed class PlcWriter
         return result.IsSuccess;
     }
 
-    /// <summary>Đọc cùng khối 5 Int32 như TApp, không suy ra từ số mã camera.</summary>
+    /// <summary>Đọc nguyên bộ số PLC; không trộn snapshot hoặc suy ra từ camera.</summary>
     public async Task<PlcCounterSnapshot?> ReadCountersAsync(CancellationToken ct)
     {
         await _gate.WaitAsync(ct).ConfigureAwait(false);
@@ -121,14 +124,12 @@ internal sealed class PlcWriter
         {
             var current = _current;
             if (!current.Enabled) return null;
-            var result = await Task.Run(() => _plc.ReadInt32Array(current.CounterAddress, 5), ct).ConfigureAwait(false);
-            PlcCounterSnapshot? snapshot = result.IsSuccess && result.Value is { Length: >= 5 } values
-                ? new(values[0], values[1], values[2], values[4]) : null;
+            var (snapshot, message) = await Task.Run(() => ReadCounterSnapshot(current), ct).ConfigureAwait(false);
             Volatile.Write(ref _latestCounters, snapshot);
             if (snapshot is null)
             {
                 AppStateManager.SetPlcStatus(PLCStatus.Reconnecting);
-                _logger.LogWarning("Không đọc được bộ đếm PLC {Address}: {Message}", current.CounterAddress, result.Message);
+                _logger.LogWarning("Không đọc được bộ đếm PLC {Address}: {Message}", current.CounterAddress, message);
             }
             return snapshot;
         }
@@ -140,25 +141,55 @@ internal sealed class PlcWriter
         finally { _gate.Release(); }
     }
 
+    private (PlcCounterSnapshot? Snapshot, string Message) ReadCounterSnapshot(PlcOptions current)
+    {
+        if (current.UsesLegacyCounterBlock)
+        {
+            var result = _plc.ReadInt32Array(current.CounterAddress, 5);
+            return result.IsSuccess && result.Value is { Length: >= 5 } values
+                ? (new PlcCounterSnapshot(values[0], values[1], values[2], values[4])
+                    { FailIncludesTimeout = current.FailIncludesTimeout }, "OK")
+                : (null, result.Message);
+        }
+
+        var addresses = new[] { current.EffectiveTotalCounterAddress, current.EffectiveFailCounterAddress,
+            current.EffectivePassCounterAddress, current.EffectiveTimeoutCounterAddress };
+        var counters = new int[4];
+        for (var index = 0; index < addresses.Length; index++)
+        {
+            var result = _plc.ReadInt32(addresses[index]);
+            if (!result.IsSuccess) return (null, addresses[index] + ": " + result.Message);
+            counters[index] = result.Value;
+        }
+        return (new PlcCounterSnapshot(counters[0], counters[1], counters[2], counters[3])
+            { FailIncludesTimeout = current.FailIncludesTimeout }, "OK");
+    }
+
     /// <summary>Chỉ gửi xung reset Int16=1; số hiển thị chờ lần đọc PLC tiếp theo.</summary>
     public Task<bool> ResetCountersAsync(CancellationToken ct) => ResetCountersCoreAsync(null, ct);
 
     public Task<bool> ResetCountersAuthorizedAsync(Func<bool> authorize, CancellationToken ct) =>
         ResetCountersCoreAsync(authorize, ct);
 
-    private async Task<bool> ResetCountersCoreAsync(Func<bool>? authorize, CancellationToken ct)
+    /// <summary>Chỉ được gọi từ thao tác Clear chủ động; heartbeat không gọi API này.</summary>
+    public Task<bool> ClearErrorsAuthorizedAsync(Func<bool> authorize, CancellationToken ct) =>
+        ResetCountersCoreAsync(authorize, ct, clearErrors: true);
+
+    private async Task<bool> ResetCountersCoreAsync(Func<bool>? authorize, CancellationToken ct, bool clearErrors = false)
     {
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             var current = _current;
-            if (!current.Enabled || _intake.IsSuspended || string.IsNullOrWhiteSpace(current.ResetCounterAddress)
+            var address = clearErrors ? current.ClearErrorAddress : current.ResetCounterAddress;
+            if (!current.Enabled || _intake.IsSuspended || string.IsNullOrWhiteSpace(address)
                 || authorize is not null && !authorize()) return false;
-            var result = await Task.Run(() => _plc.WriteInt16(current.ResetCounterAddress, 1), ct).ConfigureAwait(false);
+            var result = await Task.Run(() => _plc.WriteInt16(address, 1), ct).ConfigureAwait(false);
             if (!result.IsSuccess)
             {
                 Volatile.Write(ref _latestCounters, null);
-                _logger.LogWarning("Không gửi được lệnh xóa số PLC {Address}: {Message}", current.ResetCounterAddress, result.Message);
+                _logger.LogWarning("Không gửi được lệnh {Action} PLC {Address}: {Message}",
+                    clearErrors ? "Clear lỗi" : "reset counter", address, result.Message);
             }
             return result.IsSuccess;
         }
@@ -200,5 +231,6 @@ internal sealed class PlcWriter
 /// <summary>Giá trị PLC nguyên bản; Fail gồm lỗi đọc và quá thời gian như TApp.</summary>
 internal sealed record PlcCounterSnapshot(int Total, int ReadFail, int Pass, int Timeout)
 {
-    public long Fail => (long)ReadFail + Timeout;
+    public bool FailIncludesTimeout { get; init; }
+    public long Fail => FailIncludesTimeout ? ReadFail : (long)ReadFail + Timeout;
 }

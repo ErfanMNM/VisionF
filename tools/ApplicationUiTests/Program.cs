@@ -68,6 +68,35 @@ internal static class Program
             var original = Metrics(main);
             Check(original == (int.MaxValue, int.MaxValue, 4_294_967_294L), "Dashboard áp dụng đúng snapshot PLC Int32/Int64");
 
+            // Switching the dashboard source must use runtime processing counters,
+            // even while PLC polling is disabled, without sending a machine command.
+            var appCounters = Service(host.Services, "TanTienQR.Services.RuntimeCounters");
+            Invoke(appCounters, "AddScan", true);
+            Invoke(appCounters, "AddScan", false);
+            Complete((Task)Invoke(writer, "ApplyConfigurationAsync", new PlcConfig
+            {
+                Enabled = false, Ip = "127.0.0.1", Port = 1, CounterDisplaySource = "App",
+            }, CancellationToken.None)!);
+            Invoke(main, "RefreshAppState");
+            Check(Metrics(main) == (2L, 1L, 1L) && Read<double>(main, "PassRate") == 50,
+                "Nguồn App hiển thị số đã xử lý và tỷ lệ đúng kể cả khi tắt PLC");
+            Check(Read<string>(main, "CounterSourceText") == "APP"
+                && Read<string>(main, "TotalScansLabel") == "TỔNG SỐ · APP",
+                "Nhãn nguồn và số tổng chuyển đồng thời sang APP");
+            Invoke(main, "RefreshAppState");
+            Check(Metrics(main) == (2L, 1L, 1L), "Refresh không tự tăng số app");
+            Complete((Task)Invoke(writer, "ApplyConfigurationAsync", new PlcConfig
+            {
+                Enabled = true, Ip = "127.0.0.1", Port = 1, ResetCounterAddress = "D60",
+                ClearErrorAddress = "D62", CounterDisplaySource = "PLC",
+            }, CancellationToken.None)!);
+            writer.GetType().GetField("_latestCounters", All)!.SetValue(writer,
+                Activator.CreateInstance(snapshotType, [int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue]));
+            AppStateManager.SetPlcStatus(PLCStatus.Connected);
+            Invoke(main, "RefreshAppState");
+            Check(Metrics(main) == original && Read<string>(main, "CounterSourceText") == "PLC",
+                "Đổi lại PLC dùng snapshot thiết bị và không trộn số app");
+
             var longCode = "PO-CODE-CONTENT://full/" + string.Concat(Enumerable.Repeat("A9_ĐầyĐủ_%25/CaseSensitive?x=1&y=2-", 20));
             foreach (var outcome in new[] { ScanOutcome.Pass, ScanOutcome.Duplicate, ScanOutcome.InvalidForOrder, ScanOutcome.NoRead, ScanOutcome.InvalidStructure })
                 Invoke(main, "AddScan", new ScanRecord(longCode, outcome, DateTime.UtcNow, true, 0.333));
@@ -90,6 +119,28 @@ internal static class Program
                 "Sự kiện Sai cấu trúc chứa đầy đủ mã, không báo lỗi PLC khi Fail đã ghi thành công");
 
             var lookup = Read<object>(main, "CodeLookup");
+            var historyStore = host.Services.GetRequiredService<IScanSendStatusStore>();
+            var pendingAttempt = historyStore.BeginSendAttemptAsync([new ScanRecordEntity
+            {
+                Id = 1001, CodeContent = longCode, Raw = longCode, OrderNo = "PO-UI-001",
+            }], "04006381333931", "PO-UI-001", "DECLARE");
+            Complete(pendingAttempt);
+            Complete((Task)Invoke(lookup, "LoadSendHistoryAsync")!);
+            var liveAttemptRow = ((IList)Read<object>(lookup, "SendHistoryRows"))[0]!;
+            Complete((Task)Invoke(lookup, "ShowSendAttemptAsync", liveAttemptRow)!);
+            Check(Read<bool>(lookup, "IsSendDetailsOpen")
+                && Read<string>(liveAttemptRow, "StatusText") == "Chưa xác định",
+                "Nhấn lần gửi chưa có ACK mở chi tiết chưa xác định từ kho lịch sử thật");
+            Complete(historyStore.CompleteSendAttemptAsync(pendingAttempt.Result,
+                CheckeeSendAttemptStatuses.Sent, 200, "Checkee xác nhận batch."));
+            Complete((Task)Invoke(lookup, "LoadSendHistoryAsync")!);
+            var refreshedAttempt = Read<object>(lookup, "SelectedSendAttempt");
+            var refreshedDetails = ((IList)Read<object>(lookup, "SendDetailRows"));
+            Check(Read<string>(refreshedAttempt, "StatusText") == "OK" && refreshedDetails.Count == 1
+                && Read<string>(refreshedDetails[0]!, "StatusText") == "OK",
+                "Làm mới lịch sử cập nhật cả chi tiết đang mở sau ACK, không giữ kết quả cũ");
+            Read<ICommand>(lookup, "CloseSendDetailsCommand").Execute(null);
+            ((IList)Read<object>(lookup, "SendHistoryRows")).Clear();
             var row = new CodeLookupRowViewModel(new ScanRecordEntity
             {
                 CodeContent = longCode, Raw = longCode, OrderNo = "PO-UI-001",
@@ -100,12 +151,15 @@ internal static class Program
             Set(lookup, "Latest", row);
             Set(lookup, "Rows", new[] { row });
             Set(lookup, "TotalCount", 1L);
-            ((IList)Read<object>(lookup, "ErrorRows")).Add(new CodeSendErrorRowViewModel(new ScanRecordEntity
+            var historyRow = Activator.CreateInstance(AppAssembly.GetType(
+                "TanTienQR.ViewModels.CheckeeSendHistoryRowViewModel", true)!, [new CheckeeSendAttempt
             {
-                Id = 1, CodeContent = longCode, Raw = longCode, Status = ScanStatuses.Pass,
-                SendStatus = ScanSendStatuses.Failed, SendMessage = "Thông điệp phản hồi dùng cho kiểm thử hiển thị đầy đủ nội dung mã.",
-                SendStatusCode = 422, ReceivedUtc = DateTime.UtcNow,
-            }));
+                Id = 1, StartedUtc = DateTime.UtcNow, CompletedUtc = DateTime.UtcNow,
+                ProductGtin = "04006381333931", BatchCode = "PO-UI-001", SerialType = "DECLARE",
+                TotalCount = 2, OkCount = 1, FailCount = 1, Status = CheckeeSendAttemptStatuses.Failed,
+                StatusCode = 422, Message = "Kết quả lịch sử của lần gửi.",
+            }])!;
+            ((IList)Read<object>(lookup, "SendHistoryRows")).Add(historyRow);
             Check(row.CodeText == longCode, "Tra cứu giữ nguyên toàn bộ CodeContent");
             foreach (var (status, label) in new[]
             {
@@ -117,6 +171,7 @@ internal static class Program
                 Check(failure.StatusText == label && failure.IsFail, "Tra cứu hiển thị đúng kết quả " + status);
             }
             Check(Read<bool>(main, "CanResetPlcCounters"), "Phiên có EditConfig được bật lệnh reset đã cấu hình");
+            Check(Read<bool>(main, "CanClearPlcErrors"), "Phiên có EditConfig được bật lệnh Clear đã cấu hình");
 
             foreach (var (width, height) in new[] { (1280, 720), (1440, 900) })
             {
@@ -126,6 +181,20 @@ internal static class Program
             // A MainWindow also reserves 232px for its sidebar and a top header.
             Capture(new InfoView { DataContext = main }, "Info_content_1048x540", 1048, 540, longCode, info: true);
             Capture(new CodeLookupView { DataContext = main }, "CodeLookup_content_1048x540", 1048, 540, longCode, info: false);
+
+            Set(lookup, "SelectedSendAttempt", historyRow);
+            ((IList)Read<object>(lookup, "SendDetailRows")).Clear();
+            var detailRow = Activator.CreateInstance(AppAssembly.GetType(
+                "TanTienQR.ViewModels.CheckeeSendDetailRowViewModel", true)!, [new CheckeeSendAttemptItem
+            {
+                ScanRecordId = 1, CodeContent = longCode, OrderNo = "PO-UI-001",
+                Status = CheckeeSendAttemptStatuses.Failed, StatusCode = 422,
+                Message = "Thông điệp phản hồi dùng cho kiểm thử hiển thị đầy đủ nội dung mã.",
+            }])!;
+            ((IList)Read<object>(lookup, "SendDetailRows")).Add(detailRow);
+            Set(lookup, "IsSendDetailsOpen", true);
+            Capture(new CodeLookupView { DataContext = main }, "CodeLookup_send_details_1280x720", 1280, 720, longCode, info: false);
+            Capture(new CodeLookupView { DataContext = main }, "CodeLookup_send_details_1048x540", 1048, 540, longCode, info: false);
 
             var production = Read<object>(main, "ProductionInfo");
             var orders = Read<object>(production, "Orders");
@@ -138,10 +207,14 @@ internal static class Program
             session.SignOut();
             Pump(50);
             Check(!Read<bool>(main, "CanResetPlcCounters"), "Đăng xuất tắt quyền reset trong ViewModel");
+            Check(!Read<bool>(main, "CanClearPlcErrors"), "Đăng xuất tắt quyền Clear trong ViewModel");
             var resetCommand = Read<ICommand>(main, "ResetPlcCountersCommand");
             Check(!resetCommand.CanExecute(null), "Đăng xuất tắt CanExecute của lệnh reset");
             var denied = (Task)Invoke(main, "ResetPlcCountersAsync")!;
             Complete(denied);
+            var clearCommand = Read<ICommand>(main, "ClearPlcErrorsCommand");
+            Check(!clearCommand.CanExecute(null), "Đăng xuất tắt CanExecute của lệnh Clear");
+            Complete((Task)Invoke(main, "ClearPlcErrorsAsync")!);
             Check(Metrics(main) == original, "Gọi trực tiếp lệnh reset không quyền không xóa số hiển thị cục bộ");
             File.WriteAllText(Path.Combine(_output, "results.json"), JsonSerializer.Serialize(new
             {
@@ -254,8 +327,8 @@ internal static class Program
         return builder.Build();
     }
 
-    private static (int Total, int Pass, long Fail) Metrics(object main) =>
-        (Read<int>(main, "TotalScans"), Read<int>(main, "PassCount"), Read<long>(main, "FailCount"));
+    private static (long Total, long Pass, long Fail) Metrics(object main) =>
+        (Read<long>(main, "TotalScans"), Read<long>(main, "PassCount"), Read<long>(main, "FailCount"));
     private static object Service(IServiceProvider provider, string type) => provider.GetRequiredService(AppAssembly.GetType(type, true)!);
     private static T Read<T>(object target, string property) => (T)target.GetType().GetProperty(property, All)!.GetValue(target)!;
     private static void Set(object target, string property, object value) => target.GetType().GetProperty(property, All)!.SetValue(target, value);

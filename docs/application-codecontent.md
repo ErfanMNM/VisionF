@@ -14,11 +14,13 @@ Không có cửa sổ chống trùng theo giây. Cấu hình camera chỉ có IP
 
 ## Số liệu và xóa số PLC
 
-Các số lớn của màn Thông tin chỉ đọc PLC qua heartbeat nền hiện có. Ứng dụng không cộng số lớn khi nhận ScanFeed, không dùng số mã PO hoặc số bản ghi scan để thay thế PLC. Tỷ lệ Pass được tính từ Total/Pass đọc PLC. Không có snapshot hoặc đọc lỗi hiển thị dấu gạch ngang.
+Các số lớn của màn Thông tin chọn nguồn theo `Plc:CounterDisplaySource`: `PLC` đọc thiết bị qua heartbeat nền, `App` đọc snapshot bộ đếm kết quả xử lý camera từ lúc mở ứng dụng. Nhãn nguồn đổi cùng số; không dùng tiến độ PO hoặc truy vấn lịch sử để thay thế bộ đếm. Refresh và đổi nguồn không tự tăng số. Tỷ lệ Pass được tính từ Total/Pass của nguồn đang chọn. Ở nguồn PLC, không có snapshot hoặc đọc lỗi hiển thị dấu gạch ngang.
 
-`Plc:CounterAddress` mặc định D100 theo test rig TApp, đọc một khối năm Int32 (10 word): Total ở offset 0, ReadFail offset 2, Pass offset 4, word offset 6 dự phòng, Timeout offset 8. Fail = ReadFail + Timeout theo TApp. Cần xác nhận địa chỉ bắt đầu với mapping thực tế của từng máy.
+`Plc:CounterAddress` mặc định D100 theo test rig TApp, đọc một khối năm Int32 (10 word): Total ở offset 0, ReadFail offset 2, Pass offset 4, word offset 6 dự phòng, Timeout offset 8. Có thể cấu hình riêng `TotalCounterAddress`, `PassCounterAddress`, `FailCounterAddress`, `TimeoutCounterAddress`; trường trống kế thừa offset của khối cũ. Mặc định Fail = ReadFail + Timeout theo TApp; bật `FailIncludesTimeout` nếu thanh ghi Fail đã gồm Timeout để tránh cộng hai lần. Cần xác nhận mapping thực tế của từng máy. Xem [cấu hình bộ đếm](plc-counters.md).
 
 `Plc:ResetCounterAddress` là word reset thực tế của máy, mặc định trống vì reference không xác nhận địa chỉ production. Nút Xóa số PLC bị khóa khi chưa cấu hình địa chỉ, PLC tắt, đang gửi hoặc phiên không có quyền EditConfig. Khi thực thi, ghi Int16=1 tới word đó, ghi user action, và chờ lần polling PLC kế tiếp. ACK reset không tự đặt số local về 0.
+
+`Plc:ClearErrorAddress` là word xóa lỗi riêng, cũng mặc định trống. Nút Xóa lỗi PLC chỉ ghi Int16=1 khi người có quyền EditConfig chủ động bấm; heartbeat, refresh và đổi nguồn không phát lệnh Clear. Xóa số PLC không xóa bộ đếm App.
 
 Polling và reset dùng cùng gate/endpoint snapshot với PlcWriter và hotapply thiết bị. Đổi cấu hình đợi request cũ xong; request xếp hàng chọn cả endpoint và địa chỉ sau gate. Disable PLC ngăn phát UDP. Bộ đếm được poll trong hosted heartbeat như kiến trúc thiết bị hiện có; UI chỉ đọc snapshot ở timer 500ms khi phiên đang hiển thị.
 

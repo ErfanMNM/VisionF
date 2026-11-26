@@ -166,8 +166,15 @@ public static class ConfigValidation
 
             case "PlcWordAddress":
             case "PlcCounterAddress":
-                if (!IsValidPlcWordAddress(trimmed, field.Validation == "PlcCounterAddress" ? 10 : 1))
+            case "PlcInt32Address":
+                if (!IsValidPlcWordAddress(trimmed, field.Validation == "PlcCounterAddress" ? 10
+                    : field.Validation == "PlcInt32Address" ? 2 : 1))
                     return $"{field.Label} phải là word D hợp lệ đủ vùng dữ liệu.";
+                break;
+
+            case "CounterDisplaySource":
+                if (trimmed is not ("PLC" or "App"))
+                    return "Nguồn số đếm hiển thị phải là PLC hoặc App.";
                 break;
 
             case "Path":

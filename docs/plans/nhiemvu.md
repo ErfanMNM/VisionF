@@ -2,32 +2,35 @@
 
 ## Nhiệm vụ 1
 ### Trạng thái :
-Hoàn tất triển khai và nghiệm thu — task PO-01. Người dùng đã duyệt; kết quả đã gộp và push lên master.
+Hoàn thành triển khai và kiểm thử mô phỏng ngày 26/11/2026.
 ### Nội dung :
-Dây giờ nhận thông tin PO sẽ gồm có orderNo tức LOT name, orderQty và GTIN, một PO không được chứa nhiều GTIN, khi nhận file mã tự loại bỏ các mã sai cấu trúc và mã trùng trả về cho Client. Sửa cả luồn nhận và luồng down.
+Thêm vào cấu hình chọn các ô nhớ D cho hệ thống số đếm gồm Total, Pass, Fail, Timeout, vị trí D reset counter và D Clear (Xóa lỗi).
+Cho phép tùy chọn hiển thị giữa số của app và số của PLC
 
 ### Liên kết:
-`.session-org/visionf/TASKS.md`; `.session-org/visionf/departments/po-integrations/STATE.md`
+[Cấu hình bộ đếm và lệnh PLC](../plc-counters.md), [Báo cáo kiểm chứng](nhiemvu-ketqua-2026-11-26.md).
 ### Kết quả:
-Đã triển khai `orderNo`/LOT (giữ alias `poName`), planned `orderQty` và đúng một GTIN có checksum, chuẩn hóa riêng GTIN về 14 chữ số. Receive/download giữ nguyên raw `CodeContent`, loại mã sai cấu trúc, lệch GTIN và trùng ordinal; trả số nhận/kế hoạch cùng chi tiết mã loại. Planned đã lưu giữ giá trị lớn nhất, kể cả upload toàn mã trùng; actual và lịch sử quét được giữ độc lập. Receive yêu cầu số record gốc bằng planned; download chấp nhận snapshot accepted-only không vượt planned, phân biệt validation với lỗi vận chuyển.
-
-Kiểm tra cuối ngày 26/11/2026: PoTests **142**, PoFlowTests **63**, PoServerTests **121**, HTTP e2e **31**, MesSimulatorTests **31** (có DI/config thật), console **40** đều đạt. CEO kế nhiệm chạy lại `PoAcceptanceTests` cấu hình Release sau source B/C/UI cuối: **154 assertion, 0 nhóm lỗi, exit 0**. TanTienQR build đạt, còn một cảnh báo `AVLN3001` có sẵn ngoài phạm vi. Hướng dẫn: `docs/MES-PO-API.md`, `docs/MES-SIMULATOR.md`; chứng cứ và giới hạn trong `.session-org/visionf/TASKS.md` và các LOG được liên kết.
+Đã thêm địa chỉ riêng Total/Pass/Fail/Timeout, Reset counter và Clear lỗi; giữ tương thích CounterAddress cũ. Chọn nguồn App/PLC và nhãn nguồn tương ứng, không trộn số PO. Lệnh reset/Clear kiểm quyền trước khi ghi. ConfigTests 208/0, PlcHotApplyTests 142/0; kiểm chứng UI tích hợp đạt. Chưa xác nhận mapping/ladder PLC thật.
 
 ## Nhiệm vụ 2
 ### Trạng thái :
-Hoàn tất triển khai và nghiệm thu — task PO-02. Người dùng đã duyệt; kết quả đã gộp và push lên master.
+Hoàn thành triển khai và kiểm thử mô phỏng ngày 26/11/2026.
 ### Nội dung :
-Để trực quan hoá luồn nhận, làm cho tôi một trang html để tôi có thể tạo PO và gửi cho TanTienApp.
+Chỗ bảng tra thông tin mã bên dưới có bảng hiện danh sách lỗi gửi checkee => sửa thành bảng lịch sử gửi checkee (60 lần gần nhất gồm số mã ok/fail) => nhấn vào hiện bảng danh sách mã và kết quả
 
 ### Liên kết:
-`.session-org/visionf/TASKS.md`; `.session-org/visionf/departments/po-demo-ui/STATE.md`
+[Lịch sử gửi Checkee](../checkee-codecontent.md), [Báo cáo kiểm chứng](nhiemvu-ketqua-2026-11-26.md).
 ### Kết quả:
-Trang `docs/po-demo/` đã gửi FormData thật tới relative `POST /api/po`, chuyển nguyên File, hiển thị counts và raw mã loại bằng `textContent`. Host nhúng đúng hai asset qua `GET /po-demo/` và `GET /po-demo/validation.js`; chỉ listener thực sự bind loopback được bỏ key cho hai GET này, API vẫn giữ `x-api-key`. Key password chỉ dùng tạm trong header, không vào URL/body/summary/storage và được xóa sau thao tác.
+Đã thay bảng lỗi bằng 60 lần gửi batch Checkee gần nhất, lưu SQLite bền vững, có số OK/Fail/chưa xác định và mở chi tiết mã/PO/HTTP/thông điệp. Retry giữ lịch sử cũ, không gửi lặp mã vừa thành công khi thao tác xếp hàng. Chi tiết đang mở cập nhật khi có kết quả. CheckeeSendTests 74/0, UpdateSendTests 18/0; kiểm chứng UI tích hợp đạt. Chưa gọi Checkee production.
 
-Node **18/18** đạt, CEO chạy lại sau source cuối. Browser trên receiver thật đã đạt nhận đủ/partial/toàn trùng, 400/401/409/422, mất mạng, chặn gửi kép, key/storage/pagehide và bố cục desktop/mobile 390px. Sau rebuild backend delta cuối, browser kiểm planned **1→4→1**, SQLite giữ **planned4/actual1**, raw URL nguyên vẹn và GTIN chuẩn hóa; tài nguyên embedded khớp source theo SHA-256. Host thử nghiệm đã dừng, không còn listener 18085. Hướng dẫn mở trang: `docs/po-demo/README.md`; hồ sơ phòng: `.session-org/visionf/departments/po-demo-ui/STATE.md`.
+## Nhiệm vụ 3
+### Trạng thái :
+Hoàn thành bản V2 thử nghiệm và kiểm thử giao diện ngày 26/11/2026.
+### Nội dung :
+Bạn thêm thử cho tôi một trang cài đặt v2 với giao diện kiểu: C:\Users\TH\Downloads\Mẫu 1 · Sơ đồ luồng-html ,
+Cài PLC PLC thì là cục QRBox còn các cài đặt khác thì cho vào một chỗ khác.
 
-Phạm vi nghiệm thu là local/temp DB; chưa kiểm định gói publish single-file/Native AOT hoặc thiết bị PLC thật. Nhánh nguồn: `codex/po-gtin-demo`; đã được người dùng duyệt gộp vào `master`. Không deploy.
-
-Xác nhận bàn giao Git: source commit `f99a54be9c7cbcd191e7c5688357b84d121b100a` đã được đẩy thật lên `origin/codex/po-gtin-demo`; đối chiếu bằng `git ls-remote` cho SHA remote bằng local. Ngày 26/11/2026, người dùng đã duyệt và CEO đã gộp fast-forward/push origin/master, SHA đối chiếu khớp.
-
-Xác nhận nhánh chính: remote HEAD là `master`, đã nhận đầy đủ hai commit PO đến `b2aeabc271cce4d3689d1a0d88bea7821237f474`. Sau gộp, AcceptanceRelease **154 assertion/0 lỗi** và Node **18/18** chạy lại đạt. Không deploy; các deletion có sẵn và output thử nghiệm local giữ ngoài commit.
+### Liên kết:
+[Cài đặt V2](../settings-v2.md), [Báo cáo kiểm chứng](nhiemvu-ketqua-2026-11-26.md).
+### Kết quả:
+Mở Thêm → Cài đặt V2 với quyền chỉnh cấu hình. QRBox chỉnh PLC, các thiết bị/dịch vụ có khối chọn và nhóm còn lại nằm ở Cài đặt khác. Dùng chung field/validation/lưu/xác nhận/hotapply với trang cũ; giữ bản nháp khi chuyển trang. Tự cuộn tới khối đang chọn ở màn hình nhỏ. SettingsV2Tests 28/0; đã kiểm ảnh 1048×540 và 1280×720, giữ trang Cấu hình cũ.

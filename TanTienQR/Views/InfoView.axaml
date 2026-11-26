@@ -19,7 +19,7 @@
             <!-- Tiêu đề trang -->
             <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="12">
                 <StackPanel Spacing="3">
-                    <TextBlock Text="Bảng điều khiển quét mã"
+                    <TextBlock Text="Bảng điều khiển quét mã" TextWrapping="Wrap"
                                Classes="pageTitle" />
                     <TextBlock Text="Nhận tín hiệu camera và gửi kết quả xuống PLC Omron (D12 = kết quả, D16 = Ready)"
                                Classes="label"
@@ -30,6 +30,8 @@
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                     <Button Classes="chip" Content="Xóa số PLC" Command="{Binding ResetPlcCountersCommand}"
                             ToolTip.Tip="Ghi lệnh reset=1 đến địa chỉ PLC đã cấu hình; cần quyền chỉnh PLC." />
+                    <Button Classes="chip" Content="Xóa lỗi PLC" Command="{Binding ClearPlcErrorsCommand}"
+                            ToolTip.Tip="Chỉ gửi Clear=1 tới D đã cấu hình khi nhấn nút; cần quyền chỉnh PLC." />
                     <Border Classes="pill" Classes.ok="{Binding IsReady}" Classes.warn="{Binding !IsReady}">
                         <TextBlock Text="{Binding AppStateText}" />
                     </Border>
@@ -48,7 +50,8 @@
                 <Grid ColumnDefinitions="*,*,*,*">
                     <!-- Tổng số lần quét -->
                     <StackPanel Grid.Column="0" Margin="18,12" Spacing="8">
-                        <TextBlock Classes="overline" Text="TỔNG SỐ · PLC" />
+                        <TextBlock Classes="overline" Text="{Binding TotalScansLabel}"
+                                   ToolTip.Tip="{Binding CounterSourceDescription}" />
                         <Viewbox Height="44" Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Left">
                             <TextBlock Classes="mono" FontSize="34" FontWeight="Bold"
                                    Foreground="{StaticResource TextPrimary}" Text="{Binding TotalScansText}" />

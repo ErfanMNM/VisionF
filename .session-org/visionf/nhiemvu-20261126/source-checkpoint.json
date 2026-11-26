@@ -1,0 +1,170 @@
+[
+  {
+    "file": "ClassLibraryMT.Checkee/CheckeeClient.cs",
+    "sha256": "c0b51e4cb5b1584b56fa7710e124c5191a00ffbd6f6ed847301fecd352e36c5c"
+  },
+  {
+    "file": "ClassLibraryMT.Checkee/CheckeeModels.cs",
+    "sha256": "60818940bfb1f1f0e551a57a267f6998ed9b6bd3f973d3041b249f24886dcb8f"
+  },
+  {
+    "file": "ClassLibraryMT.Scans/CheckeeSendAttempt.cs",
+    "sha256": "85b7f3126e6429d878e778e5a5111100eef29bccac4d558b56519f80363e4449"
+  },
+  {
+    "file": "ClassLibraryMT.Scans/IScanSendStatusStore.cs",
+    "sha256": "94fc412a8ce5844c02df6334c9dca866bfff0b88a376f2fe04ec18be3cd37f30"
+  },
+  {
+    "file": "ClassLibraryMT.Scans/ScanSendStatusStore.cs",
+    "sha256": "533d18ac060d0c39ce3b858c0e4fe455260e4ca3bb01dcfb1f5cb9c90639f33c"
+  },
+  {
+    "file": "ClassLibraryMT.Scans/ScanSendStatusStore.History.cs",
+    "sha256": "ef5f33bd2b3e3d88720ff73552fe7b73aaf51d782ae35e96b3135f76127424e7"
+  },
+  {
+    "file": "ClassLibraryMT.Scans/ScanStore.cs",
+    "sha256": "ee5dd22d778c0110a561aab91fc4dd831f4ac5c5aac4f139e86e308a7558355c"
+  },
+  {
+    "file": "TanTienQR/appsettings.json",
+    "sha256": "5e5f3bb5d7428e6d2d8c43e47ff659f07e0f98d5c34bc68a1008f4cbe3783869"
+  },
+  {
+    "file": "TanTienQR/Models/AppSection.cs",
+    "sha256": "885fe6a99a24a173f72b08cd28354071198c7b7fcb573fc626242246154321f3"
+  },
+  {
+    "file": "TanTienQR/Services/AppConfigModels.cs",
+    "sha256": "0c568f0b5830289dead7348fafb2258c2b9fb0add8fec3959818ca34fb9f3de3"
+  },
+  {
+    "file": "TanTienQR/Services/CheckeeSendWorker.cs",
+    "sha256": "738664171a3b9741583e4cc598ec32facf5c83469bb94faedca5ffc7d074cee3"
+  },
+  {
+    "file": "TanTienQR/Services/ConfigValidation.cs",
+    "sha256": "d56792faf165c7deef629f4c9004fd6109fbf8306b91ba78840f62581f33774f"
+  },
+  {
+    "file": "TanTienQR/Services/PlcOptions.cs",
+    "sha256": "bea8634c3fc0a82515aaa1d32c470ff741a98169e8c742c0ecb37b03b5b88b38"
+  },
+  {
+    "file": "TanTienQR/Services/PlcWriter.cs",
+    "sha256": "f8786abcb1d4ba481b4495e75923c7e59a714f4586dedb2c170236d92d27548b"
+  },
+  {
+    "file": "TanTienQR/Services/RuntimeCounters.cs",
+    "sha256": "150e8152b828ce3c286e07911c41f2dcb447c5a62f4d4f5ed9e1faf78a358045"
+  },
+  {
+    "file": "TanTienQR/Services/TanTienAppServices.cs",
+    "sha256": "9638e9fe296a11fbe72aea5d669b0153a8eb7e7d99ee7f1aee8d016f38b02b0f"
+  },
+  {
+    "file": "TanTienQR/ViewModels/CodeLookupViewModel.cs",
+    "sha256": "9975c8fa94d72cef70d15558531d0c866a06f9a95fef078832335cdf6a8ab741"
+  },
+  {
+    "file": "TanTienQR/ViewModels/CodeLookupViewModel.SendHistory.cs",
+    "sha256": "dbe3a71075a398b25cb03f2a6eb282b4e09ec441b29f2a5c8b93d991113f6a6a"
+  },
+  {
+    "file": "TanTienQR/ViewModels/MainViewModel.cs",
+    "sha256": "4a01908ace26b668527aed5173981a226a50016bb960b189fde891b6acbe104e"
+  },
+  {
+    "file": "TanTienQR/ViewModels/MainViewModel.PlcCounters.cs",
+    "sha256": "c571e484a168fc48ae70373ca97d38fd98da1081582cec380478f85d95cc1b5b"
+  },
+  {
+    "file": "TanTienQR/ViewModels/MainViewModel.Scans.cs",
+    "sha256": "6550202a34d429af5c98a066b098c583dae489f336d7e3acfbef7c72981aee81"
+  },
+  {
+    "file": "TanTienQR/ViewModels/MainViewModel.SettingsV2.cs",
+    "sha256": "bd422073fe87d75f6ca202be387a4a0145add716b23f31f90e39a21f510fff76"
+  },
+  {
+    "file": "TanTienQR/ViewModels/MainViewModel.Tabs.cs",
+    "sha256": "99948b07a0d9fca054613a6d1b055ca0e96971afe464e14da562c61f14c643ed"
+  },
+  {
+    "file": "TanTienQR/ViewModels/SettingsV2ViewModel.cs",
+    "sha256": "f4c88356fbb9a45c7694431d92a48d6b488fc30e091e4610bcc7846daa593ea1"
+  },
+  {
+    "file": "TanTienQR/Views/CodeLookupView.axaml",
+    "sha256": "fbff0601ef15eeaec17fcd0c0e3d9c1d8cb8eeb8b9e0a2a67a50c37886645bb8"
+  },
+  {
+    "file": "TanTienQR/Views/InfoView.axaml",
+    "sha256": "b1aa39332ccf38d579caaf4519edf9c6c74f7b52296db3d280542eeaaeecc0e7"
+  },
+  {
+    "file": "TanTienQR/Views/LazyTabFactories.cs",
+    "sha256": "38565b7688fe90986d6ff627a631b824e2fc4f8f2826cc14f4a5a08483ff9449"
+  },
+  {
+    "file": "TanTienQR/Views/MainWindow.axaml",
+    "sha256": "ddd13028fc804debb7d46e53412ffc01222798dba90551cd3029b30d53d02cf0"
+  },
+  {
+    "file": "TanTienQR/Views/MainWindow.axaml.cs",
+    "sha256": "383065af4b7775b8bddd3659624740848dcc0870d156365b5d93d0155079af94"
+  },
+  {
+    "file": "TanTienQR/Views/SettingsV2SectionEditor.axaml",
+    "sha256": "7c4f01c97b0aa4daac0a303a9b11da44a3f1f92f55ca59bd3ddb24e7ad1a3cee"
+  },
+  {
+    "file": "TanTienQR/Views/SettingsV2SectionEditor.axaml.cs",
+    "sha256": "fd8e82a7e34fa63ede3bb5e1a8909b51ccfcc1689fe06ad4a3f989f5a7a2d1a7"
+  },
+  {
+    "file": "TanTienQR/Views/SettingsV2View.axaml",
+    "sha256": "4108247dd8c91d6df88b4484c2c8fa9ac463da4a3d57aa5d03294852a18e03f7"
+  },
+  {
+    "file": "TanTienQR/Views/SettingsV2View.axaml.cs",
+    "sha256": "58f0ccf1bad1f110077de7cc1f9d38d8ffc71cdffde3fc2ee579bf58752a4cef"
+  },
+  {
+    "file": "tools/ApplicationUiTests/Program.cs",
+    "sha256": "819d72b5e0dfcabdb0fde39fcb114571158234c858c458d1c62d2ccb834e91d7"
+  },
+  {
+    "file": "tools/CheckeeSendTests/Program.cs",
+    "sha256": "eedb1595a6cbdb0e6ab68b230fcaef064c4cb1118567977e37b676f7ea7c003e"
+  },
+  {
+    "file": "tools/ConfigTests/Program.cs",
+    "sha256": "1097d3c3610ab1a8cfc86fae338488dd8f2cb011b49beafc29f2b36bf125302d"
+  },
+  {
+    "file": "tools/LoginOverlayTests/Program.cs",
+    "sha256": "8a9d4ee2d906ba03af327d719b653d169d074ac9b34674e7c6b40cd53f841b2e"
+  },
+  {
+    "file": "tools/PlcHotApplyTests/Program.cs",
+    "sha256": "141c5a371de8c50f7130991f8677cb16494a5c723cb91bc9b8d1bbffc904da61"
+  },
+  {
+    "file": "tools/ScanTests/Program.cs",
+    "sha256": "c7b968f0887351145cf0e523f318d991f3e56ea20576a370f7a609dd38e53e52"
+  },
+  {
+    "file": "tools/SettingsV2Tests/Program.cs",
+    "sha256": "8eebfaadc9f262ba36a5e0c657f7473813bfd86a554092ccba6c7b0d0f03c4d7"
+  },
+  {
+    "file": "tools/SettingsV2Tests/SettingsV2Tests.csproj",
+    "sha256": "111275e8e6049b319a0b7a0aa6ae1a7171455ed3994f9b0daff0eb32dddd9a2e"
+  },
+  {
+    "file": "tools/UpdateSendTests/Program.cs",
+    "sha256": "81d2766814140169a43add6b76d3ae25468ab80a9764010d0486d8015202e8c5"
+  }
+]

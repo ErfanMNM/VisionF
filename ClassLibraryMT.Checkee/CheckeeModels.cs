@@ -109,6 +109,9 @@ public sealed class CheckeeActiveData
 /// <summary>Kết quả gửi mã lên Checkee (đã quy đổi sang thông điệp tiếng Việt).</summary>
 public sealed class CheckeeSendResult
 {
+    /// <summary>Phản hồi không xác nhận được kết quả batch; cần đối soát trước khi thử lại.</summary>
+    public bool IsUnknown { get; init; }
+
     /// <summary>True nếu server trả HTTP 200.</summary>
     public bool Ok { get; init; }
 

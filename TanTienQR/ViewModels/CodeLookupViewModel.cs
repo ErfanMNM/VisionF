@@ -26,8 +26,8 @@ namespace TanTienQR.ViewModels;
 ///
 /// <para>
 /// Mỗi mã hiển thị trạng thái gửi lên Checkee (Chưa gửi / Đã gửi / Lỗi) đọc
-/// từ cột <c>SendStatus</c> của cùng bảng. Bảng "Mã gửi lỗi" liệt kê các mã
-/// bị Checkee từ chối (HTTP != 200) kèm chi tiết lỗi và nút "Gửi lại".
+/// từ cột <c>SendStatus</c> của cùng bảng. Phía dưới là lịch sử 60 lần gửi
+/// Checkee mới nhất; nhấn một lần gửi để xem snapshot từng mã và kết quả.
 /// </para>
 /// </summary>
 internal sealed partial class CodeLookupViewModel : ViewModelBase, IDisposable
@@ -73,7 +73,7 @@ internal sealed partial class CodeLookupViewModel : ViewModelBase, IDisposable
         {
             Interval = TimeSpan.FromMilliseconds(1000),
         };
-        _scannerTimer.Tick += (_, _) => ScannerStatusText = _scanner.StatusText;
+        _scannerTimer.Tick += OnScannerTimerTick;
         _scannerTimer.Start();
 
         ScannerStatusText = _scanner.StatusText;
@@ -316,8 +316,7 @@ internal sealed partial class CodeLookupViewModel : ViewModelBase, IDisposable
         CheckeeStatusText = _sendWorker.State.Status;
         OnPropertyChanged(nameof(HasCheckeeError));
 
-        // Nạp bảng mã gửi lỗi (nếu có) để người dùng thấy ngay.
-        await LoadErrorRowsAsync().ConfigureAwait(true);
+        await LoadSendHistoryAsync().ConfigureAwait(true);
     }
 
     // ---------- Bảng "Mã gửi lỗi" ----------
@@ -366,13 +365,17 @@ internal sealed partial class CodeLookupViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     public async Task ResendFailedAsync()
     {
+        if (IsResending) return;
+        IsResending = true;
+        // Bảng hiện tại là lịch sử; lấy trạng thái lỗi hiện hành từ DB,
+        // không dùng snapshot của một lần gửi cũ để reset mã đã Sent.
+        await LoadErrorRowsAsync().ConfigureAwait(true);
         if (ErrorRows.Count == 0)
         {
             StatusMessage = "Không có mã lỗi nào để gửi lại.";
+            IsResending = false;
             return;
         }
-
-        IsResending = true;
 
         try
         {
@@ -394,7 +397,7 @@ internal sealed partial class CodeLookupViewModel : ViewModelBase, IDisposable
             CheckeeStatusText = _sendWorker.State.Status;
             OnPropertyChanged(nameof(HasCheckeeError));
 
-            await LoadErrorRowsAsync().ConfigureAwait(true);
+            await LoadSendHistoryAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -460,7 +463,7 @@ internal sealed partial class CodeLookupViewModel : ViewModelBase, IDisposable
         _scanner.CodeReceived -= OnHandheldCodeReceived;
 
         _scannerTimer.Stop();
-        _scannerTimer.Tick -= (_, _) => ScannerStatusText = _scanner.StatusText;
+        _scannerTimer.Tick -= OnScannerTimerTick;
 
         GC.SuppressFinalize(this);
     }

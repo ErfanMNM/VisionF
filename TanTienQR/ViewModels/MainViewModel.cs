@@ -259,11 +259,11 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
 
     /// <summary>Tổng số lần quét.</summary>
     [ObservableProperty]
-    public partial int TotalScans { get; set; } = -1;
+    public partial long TotalScans { get; set; } = -1;
 
     /// <summary>Số mã hợp lệ (Pass).</summary>
     [ObservableProperty]
-    public partial int PassCount { get; set; } = -1;
+    public partial long PassCount { get; set; } = -1;
 
     /// <summary>Số mã lỗi (Fail).</summary>
     [ObservableProperty]

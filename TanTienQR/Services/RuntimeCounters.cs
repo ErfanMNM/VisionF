@@ -27,6 +27,13 @@ internal sealed class RuntimeCounters
     private long _scansTotal;
     private long _scansPass;
     private long _scansFail;
+    private readonly object _scanGate = new();
+
+    /// <summary>Snapshot nhất quán của kết quả xử lý camera từ lúc mở app.</summary>
+    public AppCounterSnapshot SnapshotScans()
+    {
+        lock (_scanGate) return new(_scansTotal, _scansPass, _scansFail);
+    }
 
     // ---------- Mốc thời gian ----------
 
@@ -93,15 +100,11 @@ internal sealed class RuntimeCounters
     /// <param name="pass">True nếu mã hợp lệ (Pass).</param>
     public void AddScan(bool pass)
     {
-        Interlocked.Increment(ref _scansTotal);
-
-        if (pass)
+        lock (_scanGate)
         {
-            Interlocked.Increment(ref _scansPass);
-        }
-        else
-        {
-            Interlocked.Increment(ref _scansFail);
+            Interlocked.Increment(ref _scansTotal);
+            if (pass) Interlocked.Increment(ref _scansPass);
+            else Interlocked.Increment(ref _scansFail);
         }
     }
 
@@ -143,3 +146,5 @@ internal sealed class RuntimeCounters
         }
     }
 }
+
+internal sealed record AppCounterSnapshot(long Total, long Pass, long Fail);

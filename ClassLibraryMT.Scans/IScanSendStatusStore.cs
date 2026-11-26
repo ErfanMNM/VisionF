@@ -9,6 +9,22 @@ namespace ClassLibraryMT.Scans;
 /// </summary>
 public interface IScanSendStatusStore
 {
+    /// <summary>Lưu snapshot bền vững trước khi gọi Checkee, mỗi HTTP batch là một lần gửi.</summary>
+    Task<long> BeginSendAttemptAsync(IReadOnlyList<ScanRecordEntity> records,
+        string productGtin, string batchCode, string serialType,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Ghi kết quả và cập nhật trạng thái gửi của mã trong cùng transaction.</summary>
+    Task CompleteSendAttemptAsync(long attemptId, string status, int statusCode, string message,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Tối đa 60 lần gửi mới nhất, gồm cả lần chưa có kết quả.</summary>
+    Task<IReadOnlyList<CheckeeSendAttempt>> GetRecentSendAttemptsAsync(int limit = 60,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<CheckeeSendAttemptItem>> GetSendAttemptItemsAsync(long attemptId,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Lấy danh sách mã CHƯA gửi lên Checkee (trạng thái <c>Pending</c> hoặc
     /// rỗng — tức là bản ghi tạo trước khi có tính năng gửi Checkee).

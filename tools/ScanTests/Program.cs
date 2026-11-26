@@ -123,6 +123,8 @@ var resetRows = await exactSend.GetBySendStatusAsync(new ScanSendFilter { SendSt
 Check(reset == 2 && resetRows.Where(row => row.Id == literalId || row.Id == spacesId)
         .All(row => row.SendStatusCode == 0 && row.SendMessage == "" && row.SendAttempts == 1),
     "ResetToPending parameter hóa danh sách Id, không lỗi SQL và không đếm trùng");
+// Only failed records are eligible for retry; a previous reset is already Pending.
+await exactSend.MarkFailedAsync(literalId, 503, "retry the batch case", token);
 var manyIds = Enumerable.Range(10000, 1200).Select(value => (long)value).Append(literalId).ToArray();
 Check(await exactSend.ResetToPendingAsync(manyIds, token) == 1
         && await exactSend.ResetToPendingAsync([], token) == 0,
