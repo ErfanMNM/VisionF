@@ -18,7 +18,7 @@ const string valid = "https://id.example.invalid/01/00012345678905/21/AbC-raw_01
 const string invalid = "  không-phải-GS1,\"quoted\"  ";
 const string mismatch = "https://id.example.invalid/01/09506000134352/21/OTHER";
 string[] mixed = [valid, valid, invalid, mismatch];
-var root = Path.Combine(Path.GetTempPath(), "visionf-po-acceptance-" + Guid.NewGuid().ToString("N"));
+var root = Path.Combine(Path.GetTempPath(), "TEST-ASYNC-PO-20261127-Acceptance-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(root);
 var assertions = 0;
 var failures = new List<string>();
@@ -87,7 +87,7 @@ try
         await RunAsync("Nhận và lưu " + format, async () =>
         {
             var path = Path.Combine(root, format);
-            var orderNo = "PO-MIXED-" + format.ToUpperInvariant();
+            var orderNo = "TEST-ASYNC-PO-20261127-MIXED-" + format.ToUpperInvariant();
             using (var server = new Fixture(path))
             {
                 var response = await server.UploadAsync(orderNo, 4, gtinA, mixed, format);
@@ -113,46 +113,46 @@ try
     await RunAsync("Metadata và kiểm tra nguyên tử", async () =>
     {
         using var server = new Fixture(Path.Combine(root, "metadata"));
-        var missing = await server.UploadAsync("PO-NO-GTIN", 1, null, [valid]);
+        var missing = await server.UploadAsync("TEST-ASYNC-PO-20261127-NO-GTIN", 1, null, [valid]);
         Check("Thiếu GTIN bị từ chối và không tạo DB", (int)missing.Status is >= 400 and < 500
-            && server.Store.FindExistingDbPath("PO-NO-GTIN") is null, missing.Body);
+            && server.Store.FindExistingDbPath("TEST-ASYNC-PO-20261127-NO-GTIN") is null, missing.Body);
         foreach (var (value, suffix) in new[] { ("00012345678904", "CHECKSUM"), (gtinA + "," + gtinB, "MULTI") })
         {
-            var bad = await server.UploadAsync("PO-BAD-" + suffix, 1, value, [valid]);
+            var bad = await server.UploadAsync("TEST-ASYNC-PO-20261127-BAD-" + suffix, 1, value, [valid]);
             Check("GTIN " + suffix + " bị từ chối và không tạo DB", (int)bad.Status is >= 400 and < 500
-                && server.Store.FindExistingDbPath("PO-BAD-" + suffix) is null, bad.Body);
+                && server.Store.FindExistingDbPath("TEST-ASYNC-PO-20261127-BAD-" + suffix) is null, bad.Body);
         }
         foreach (var planned in new[] { 1, 3 })
         {
-            var bad = await server.UploadAsync("PO-QTY-" + planned, planned, gtinA, [valid, valid]);
+            var bad = await server.UploadAsync("TEST-ASYNC-PO-20261127-QTY-" + planned, planned, gtinA, [valid, valid]);
             Check("Planned " + planned + " khác record count bị từ chối nguyên tử", bad.Status == HttpStatusCode.BadRequest
-                && server.Store.FindExistingDbPath("PO-QTY-" + planned) is null, bad.Body);
+                && server.Store.FindExistingDbPath("TEST-ASYNC-PO-20261127-QTY-" + planned) is null, bad.Body);
         }
-        var seed = await server.UploadAsync("PO-ATOMIC", 4, gtinA, mixed);
-        AssertMixed("PO-ATOMIC", seed);
-        var append = await server.UploadAsync("PO-ATOMIC", 3, gtinA,
+        var seed = await server.UploadAsync("TEST-ASYNC-PO-20261127-ATOMIC", 4, gtinA, mixed);
+        AssertMixed("TEST-ASYNC-PO-20261127-ATOMIC", seed);
+        var append = await server.UploadAsync("TEST-ASYNC-PO-20261127-ATOMIC", 3, gtinA,
             ["https://id.example.invalid/01/00012345678905/21/MUST-NOT-BE-SAVED", valid]);
         Check("Planned mismatch không sửa PO đã tồn tại", append.Status == HttpStatusCode.BadRequest, append.Body);
-        await AssertStoredAsync(new PoStore(server.Store.DbRoot), "PO-ATOMIC", 4, gtinA, valid);
+        await AssertStoredAsync(new PoStore(server.Store.DbRoot), "TEST-ASYNC-PO-20261127-ATOMIC", 4, gtinA, valid);
 
-        var alias = await server.UploadAsync("PO-LEGACY-ALIAS", 1, gtinA, [valid], orderField: "poName");
+        var alias = await server.UploadAsync("TEST-ASYNC-PO-20261127-LEGACY-ALIAS", 1, gtinA, [valid], orderField: "poName");
         Check("Alias poName còn được nhận", alias.Status == HttpStatusCode.OK, alias.Body);
-        await AssertStoredAsync(new PoStore(server.Store.DbRoot), "PO-LEGACY-ALIAS", 1, gtinA, valid);
-        using (var duplicateAlias = Fixture.Form("PO-BOTH-NAMES", 1, gtinA, [valid], "csv", "orderNo"))
+        await AssertStoredAsync(new PoStore(server.Store.DbRoot), "TEST-ASYNC-PO-20261127-LEGACY-ALIAS", 1, gtinA, valid);
+        using (var duplicateAlias = Fixture.Form("TEST-ASYNC-PO-20261127-BOTH-NAMES", 1, gtinA, [valid], "csv", "orderNo"))
         {
-            duplicateAlias.Add(new StringContent("PO-BOTH-NAMES"), "poName");
+            duplicateAlias.Add(new StringContent("TEST-ASYNC-PO-20261127-BOTH-NAMES"), "poName");
             var bad = await server.SendAsync(duplicateAlias);
             Check("Gửi cả orderNo và poName bị từ chối nguyên tử", bad.Status == HttpStatusCode.BadRequest
-                && server.Store.FindExistingDbPath("PO-BOTH-NAMES") is null, bad.Body);
+                && server.Store.FindExistingDbPath("TEST-ASYNC-PO-20261127-BOTH-NAMES") is null, bad.Body);
         }
-        var invalidOnly = await server.UploadAsync("PO-INVALID-ONLY", 1, gtinA, [invalid]);
+        var invalidOnly = await server.UploadAsync("TEST-ASYNC-PO-20261127-INVALID-ONLY", 1, gtinA, [invalid]);
         Check("Toàn mã sai trả 422 và không tạo DB", invalidOnly.Status == HttpStatusCode.UnprocessableEntity
-            && server.Store.FindExistingDbPath("PO-INVALID-ONLY") is null, invalidOnly.Body);
+            && server.Store.FindExistingDbPath("TEST-ASYNC-PO-20261127-INVALID-ONLY") is null, invalidOnly.Body);
         using (var json = JsonDocument.Parse(invalidOnly.Body))
             Check("Toàn mã sai vẫn trả lý do trên wire", json.RootElement.GetProperty("acceptedCount").GetInt32() == 0
                 && json.RootElement.GetProperty("plannedCount").GetInt32() == 1
                 && json.RootElement.GetProperty("invalidCodes")[0].GetProperty("reason").GetString() == "invalidStructure", invalidOnly.Body);
-        var duplicateOnly = await server.UploadAsync("PO-LEGACY-ALIAS", 1, gtinA, [valid]);
+        var duplicateOnly = await server.UploadAsync("TEST-ASYNC-PO-20261127-LEGACY-ALIAS", 1, gtinA, [valid]);
         Check("Toàn mã trùng trả 200", duplicateOnly.Status == HttpStatusCode.OK, duplicateOnly.Body);
         using (var json = JsonDocument.Parse(duplicateOnly.Body))
             Check("Toàn mã trùng có acceptedCount=0 và raw duplicate", json.RootElement.GetProperty("acceptedCount").GetInt32() == 0
@@ -172,7 +172,7 @@ try
         })
         {
             var code = "https://id.example.invalid/01/" + normalized + "/21/GTIN" + metadata.Length;
-            var orderNo = "PO-GTIN-" + metadata.Length;
+            var orderNo = "TEST-ASYNC-PO-20261127-GTIN-" + metadata.Length;
             var response = await server.UploadAsync(orderNo, 1, metadata, [code]);
             Check("Metadata GTIN-" + metadata.Length + " khớp mã GTIN-14", response.Status == HttpStatusCode.OK, response.Body);
             await AssertStoredAsync(new PoStore(server.Store.DbRoot), orderNo, 1, normalized, code);
@@ -183,13 +183,13 @@ try
             "https://id.example.invalid/01/00012345678905/21/case",
             "https://other.example.invalid/01/00012345678905/21/Case",
         ];
-        var distinct = await server.UploadAsync("PO-ORDINAL", 3, gtinA, ordinal);
+        var distinct = await server.UploadAsync("TEST-ASYNC-PO-20261127-ORDINAL", 3, gtinA, ordinal);
         Check("Khác case hoặc URL là các CodeContent riêng", distinct.Status == HttpStatusCode.OK, distinct.Body);
-        await AssertStoredAsync(new PoStore(server.Store.DbRoot), "PO-ORDINAL", 3, gtinA, ordinal);
+        await AssertStoredAsync(new PoStore(server.Store.DbRoot), "TEST-ASYNC-PO-20261127-ORDINAL", 3, gtinA, ordinal);
         const string repeatedAi = "https://id.example.invalid/01/00012345678905/21/A/01/09506000134352/21/B";
-        var ambiguous = await server.UploadAsync("PO-REPEATED-AI", 1, gtinB, [repeatedAi]);
+        var ambiguous = await server.UploadAsync("TEST-ASYNC-PO-20261127-REPEATED-AI", 1, gtinB, [repeatedAi]);
         Check("Chuỗi chứa hai GTIN AI (01) bị loại", ambiguous.Status == HttpStatusCode.UnprocessableEntity
-            && server.Store.FindExistingDbPath("PO-REPEATED-AI") is null, ambiguous.Body);
+            && server.Store.FindExistingDbPath("TEST-ASYNC-PO-20261127-REPEATED-AI") is null, ambiguous.Body);
         using (var json = JsonDocument.Parse(ambiguous.Body))
             Check("Hai GTIN AI (01) được báo invalidStructure và giữ raw", json.RootElement.GetProperty("invalidCodes")[0]
                 .GetProperty("reason").GetString() == "invalidStructure" && json.RootElement.GetProperty("invalidCodes")[0]
@@ -231,12 +231,12 @@ try
             {
                 using var request = new HttpRequestMessage(HttpMethod.Post, "api/po");
                 if (key is not null) request.Headers.Add("x-api-key", key);
-                request.Content = Fixture.Form("PO-NO-AUTH", 1, gtinA, [valid], "csv", "orderNo");
+                request.Content = Fixture.Form("TEST-ASYNC-PO-20261127-NO-AUTH", 1, gtinA, [valid], "csv", "orderNo");
                 using var denied = await noAuth.SendAsync(request);
                 Check(key is null ? "API thiếu key trả 401" : "API sai key trả 401", denied.StatusCode == HttpStatusCode.Unauthorized);
             }
-            Check("Request không có quyền không tạo DB", server.Store.FindExistingDbPath("PO-NO-AUTH") is null);
-            var accepted = await server.UploadAsync("PO-AUTH", 1, gtinA, [valid]);
+            Check("Request không có quyền không tạo DB", server.Store.FindExistingDbPath("TEST-ASYNC-PO-20261127-NO-AUTH") is null);
+            var accepted = await server.UploadAsync("TEST-ASYNC-PO-20261127-AUTH", 1, gtinA, [valid]);
             Check("API đúng key tiếp tục hoạt động cùng origin", accepted.Status == HttpStatusCode.OK, accepted.Body);
 
             foreach (var resource in new[] { "po-demo/", "po-demo/validation.js" })

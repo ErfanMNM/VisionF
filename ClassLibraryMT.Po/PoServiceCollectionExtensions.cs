@@ -34,15 +34,10 @@ public static class PoServiceCollectionExtensions
                     cfg, $"{PoOptions.SectionName}:BaseUrl", o.BaseUrl);
                 o.DbRoot = PoConfigReader.GetString(
                     cfg, $"{PoOptions.SectionName}:DbRoot", o.DbRoot);
-                o.ActivationIntervalMs = PoConfigReader.GetInt(
-                    cfg, $"{PoOptions.SectionName}:ActivationIntervalMs", o.ActivationIntervalMs);
-                o.AutoActivate = PoConfigReader.GetBool(
-                    cfg, $"{PoOptions.SectionName}:AutoActivate", o.AutoActivate);
                 o.CodeSampleSize = PoConfigReader.GetInt(
                     cfg, $"{PoOptions.SectionName}:CodeSampleSize", o.CodeSampleSize);
             })
             .Validate(o => !string.IsNullOrWhiteSpace(o.BaseUrl), "Po:BaseUrl khong duoc de trong.")
-            .Validate(o => o.ActivationIntervalMs > 2000, "Po:ActivationIntervalMs phai lon hon 2000.")
             .Validate(o => o.CodeSampleSize > 0, "Po:CodeSampleSize phai lon hon 0.")
             .ValidateOnStart();
 

@@ -281,7 +281,6 @@ sealed class LocalOnlyPoClient : IPoClient
     public Task<IReadOnlyList<ProductionOrder>> GetOrdersAsync(bool includeCompleted = false, CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<ProductionOrder>>([]);
     public Task<IReadOnlyList<PoCode>> GetCodesAsync(string orderNo, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<PoCode>>([]);
-    public Task<PoActivateResult> ActivateAsync(string orderNo, IReadOnlyList<string> codes, CancellationToken ct = default) =>
-        Task.FromResult(new PoActivateResult { Ok = true, Activated = codes.Count });
+
     public Task<ProductionOrder?> CreateOrderAsync(string orderNo, int orderQty, CancellationToken ct = default) => Task.FromResult<ProductionOrder?>(null);
 }

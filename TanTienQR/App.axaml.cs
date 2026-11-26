@@ -353,21 +353,33 @@ public partial class App : Application
 
     private void OnShutdownRequested(object? sender, ShutdownRequestedEventArgs e)
     {
-        // Tắt worker/heartbeat trước khi đóng cửa sổ.
+        if (_host is not { } host) return;
+        var intake = host.Services.GetRequiredService<ScanIntakeGate>();
+        intake.SetSuspended(true);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         try
         {
-            _host?.Services.GetRequiredService<PrinterRemoteViewModel>().ShutdownAsync()
-                .WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
-            _host?.StopAsync(TimeSpan.FromSeconds(3)).GetAwaiter().GetResult();
-        }
-        catch
-        {
-            // Bỏ qua lỗi khi shutdown.
-        }
-
-        if (_host is { } host)
+            // Producers stop admitting first; the common barrier includes pending
+            // PO mutations and history, including PLC callbacks not published yet.
+            host.Services.GetRequiredService<CameraSignalWorker>().DrainAsync(timeout.Token).GetAwaiter().GetResult();
+            host.Services.GetRequiredService<CheckeeSendWorker>().DrainAsync(timeout.Token).GetAwaiter().GetResult();
+            host.Services.GetRequiredService<IScanRecordWriter>().VerifyHealthyAsync(timeout.Token).GetAwaiter().GetResult();
+            host.Services.GetRequiredService<SqliteLogWriter>().VerifyHealthyAsync(timeout.Token).GetAwaiter().GetResult();
+            host.Services.GetRequiredService<PrinterRemoteViewModel>().ShutdownAsync()
+                .WaitAsync(timeout.Token).GetAwaiter().GetResult();
+            host.StopAsync(timeout.Token).GetAwaiter().GetResult();
             DisposeHostAsync(host).GetAwaiter().GetResult();
-        _host = null;
+            _host = null;
+        }
+        catch (Exception ex)
+        {
+            // A failed/timed-out drain is not a successful shutdown. Keep intake
+            // stopped and expose the error so the operator can reconcile/retry.
+            e.Cancel = true;
+            Console.Error.WriteLine("Không thể dừng an toàn; PO/lịch sử chưa được xác nhận: " + ex);
+            host.Services.GetRequiredService<ILogger<App>>().LogCritical(ex,
+                "Không thể dừng an toàn; giữ chặn intake vì persistence chưa xác nhận.");
+        }
     }
 
     private static async Task DisposeHostAsync(IHost host)

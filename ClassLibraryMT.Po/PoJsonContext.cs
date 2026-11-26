@@ -11,8 +11,6 @@ namespace ClassLibraryMT.Po;
 [JsonSerializable(typeof(List<ProductionOrder>))]
 [JsonSerializable(typeof(List<PoCode>))]
 [JsonSerializable(typeof(PoCreateRequest))]
-[JsonSerializable(typeof(PoActivateRequest))]
-[JsonSerializable(typeof(PoActivateResult))]
 [JsonSerializable(typeof(ProductionOrder))]
 [JsonSerializable(typeof(PoCode))]
 [JsonSerializable(typeof(Dictionary<string, string>))]

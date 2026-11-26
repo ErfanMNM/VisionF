@@ -17,7 +17,7 @@ namespace ClassLibraryMT.Scans;
 internal sealed class ScanStore
 {
     /// <summary>Phiên bản schema hiện tại.</summary>
-    public const int CurrentSchemaVersion = 5;
+    public const int CurrentSchemaVersion = 6;
 
     private readonly string _dbPath;
 
@@ -97,10 +97,6 @@ internal sealed class ScanStore
                 SendAttemptUtc   TEXT    NULL
             );
 
-            CREATE INDEX IF NOT EXISTS IX_ScanRecords_ReceivedUtc ON ScanRecords (ReceivedUtc DESC);
-            CREATE INDEX IF NOT EXISTS IX_ScanRecords_Status      ON ScanRecords (Status);
-            CREATE INDEX IF NOT EXISTS IX_ScanRecords_BatchNo     ON ScanRecords (BatchNo);
-
             CREATE TABLE IF NOT EXISTS CheckeeSendAttempts (
                 Id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
                 StartedUtc TEXT NOT NULL,
@@ -168,14 +164,45 @@ internal sealed class ScanStore
         // liệu cũ vẫn đọc được, nhưng khai báo kiểu trong schema cho đúng.
         await MigrateProcessingTimeToRealAsync(connection, ct).ConfigureAwait(false);
 
+        // Add v6 only AFTER the legacy table rebuild, so upgrading an INTEGER
+        // ProcessingTimeMs database cannot discard persistence metadata.
+        await EnsureColumnAsync(connection, "ScanRecords", "EventId", "TEXT NULL", ct)
+            .ConfigureAwait(false);
+        await EnsureColumnAsync(connection, "ScanRecords", "OrderCreatedUtc", "TEXT NULL", ct)
+            .ConfigureAwait(false);
+        await EnsureColumnAsync(connection, "ScanRecords", "PersistenceReady", "INTEGER NOT NULL DEFAULT 1", ct)
+            .ConfigureAwait(false);
+        await EnsureColumnAsync(connection, "ScanRecords", "PoAccepted", "INTEGER NOT NULL DEFAULT 0", ct)
+            .ConfigureAwait(false);
+        await EnsureColumnAsync(connection, "ScanRecords", "PlcAckTimeMs", "REAL NOT NULL DEFAULT 0", ct)
+            .ConfigureAwait(false);
+
         // Tạo index SAU khi migration xong — index IX_ScanRecords_OrderNo tham
         // chiếu cột OrderNo, tạo trước khi cột tồn tại sẽ báo lỗi SQLite
         // ("no such column") với các DB đã tồn tại từ phiên bản cũ.
         await using (var indexCmd = connection.CreateCommand())
         {
             indexCmd.CommandText = """
+                CREATE INDEX IF NOT EXISTS IX_ScanRecords_ReceivedUtc ON ScanRecords (ReceivedUtc DESC);
+                CREATE INDEX IF NOT EXISTS IX_ScanRecords_Status ON ScanRecords (Status);
+                CREATE INDEX IF NOT EXISTS IX_ScanRecords_BatchNo ON ScanRecords (BatchNo);
                 CREATE INDEX IF NOT EXISTS IX_ScanRecords_OrderNo ON ScanRecords (OrderNo);
                 CREATE INDEX IF NOT EXISTS IX_ScanRecords_SendStatus ON ScanRecords (SendStatus);
+                CREATE UNIQUE INDEX IF NOT EXISTS IX_ScanRecords_EventId ON ScanRecords (EventId);
+                -- Small idempotency receipts intentionally outlive detailed history.
+                CREATE TABLE IF NOT EXISTS ScanPersistenceReceipts (
+                    EventId TEXT NOT NULL PRIMARY KEY,
+                    IdentityHash BLOB NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS ScanPoOutbox (
+                    EventId TEXT NOT NULL PRIMARY KEY,
+                    OrderNo TEXT NOT NULL,
+                    OrderCreatedUtc TEXT NOT NULL,
+                    CodeContent TEXT NOT NULL,
+                    ScannedUtc TEXT NOT NULL,
+                    AppliedUtc TEXT NULL
+                );
+                CREATE INDEX IF NOT EXISTS IX_ScanPoOutbox_Pending ON ScanPoOutbox (AppliedUtc);
                 """;
             await indexCmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
@@ -385,9 +412,9 @@ internal sealed class ScanStore
         cmd.Transaction = transaction;
         cmd.CommandText = """
             INSERT INTO ScanRecords
-                (ReceivedUtc, Code, Gtin, Serial, Status, ProcessingTimeMs, PlcResult, BatchNo, Raw, OrderNo)
+                (ReceivedUtc, Code, Gtin, Serial, Status, ProcessingTimeMs, PlcAckTimeMs, PlcResult, BatchNo, Raw, OrderNo)
             VALUES
-                ($receivedUtc, $code, $gtin, $serial, $status, $processingTimeMs, $plcResult, $batchNo, $raw, $orderNo);
+                ($receivedUtc, $code, $gtin, $serial, $status, $processingTimeMs, $plcAckTimeMs, $plcResult, $batchNo, $raw, $orderNo);
             """;
 
         var pReceived = cmd.Parameters.Add("$receivedUtc", SqliteType.Text);
@@ -396,6 +423,7 @@ internal sealed class ScanStore
         var pSerial = cmd.Parameters.Add("$serial", SqliteType.Text);
         var pStatus = cmd.Parameters.Add("$status", SqliteType.Text);
         var pProcessing = cmd.Parameters.Add("$processingTimeMs", SqliteType.Real);
+        var pPlcAck = cmd.Parameters.Add("$plcAckTimeMs", SqliteType.Real);
         var pPlc = cmd.Parameters.Add("$plcResult", SqliteType.Text);
         var pBatch = cmd.Parameters.Add("$batchNo", SqliteType.Text);
         var pRaw = cmd.Parameters.Add("$raw", SqliteType.Text);
@@ -409,6 +437,7 @@ internal sealed class ScanStore
             pSerial.Value = r.Serial;
             pStatus.Value = r.Status;
             pProcessing.Value = r.ProcessingTimeMs;
+            pPlcAck.Value = r.PlcAckTimeMs;
             pPlc.Value = r.PlcResult;
             pBatch.Value = string.IsNullOrWhiteSpace(r.BatchNo)
                 ? ScanBatchDefaults.NoBatch
@@ -431,12 +460,61 @@ internal sealed class ScanStore
     public async Task<int> PruneAsync(DateTime cutoff, CancellationToken ct)
     {
         await using var connection = await OpenAsync(ct).ConfigureAwait(false);
-
+        await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(ct).ConfigureAwait(false);
+        // Preserve an EventId receipt before deleting detail. This also upgrades
+        // rows/outbox from the first v6 implementation without resurrecting them
+        // when an old batch retries after retention.
+        var receipts = new List<(string EventId, byte[] Hash)>();
+        await using (var candidates = connection.CreateCommand())
+        {
+            candidates.Transaction = transaction;
+            candidates.CommandText = """
+                SELECT EventId, OrderNo, OrderCreatedUtc, Code, ReceivedUtc, PoAccepted
+                FROM ScanRecords WHERE ReceivedUtc < $cutoff AND PersistenceReady = 1 AND EventId IS NOT NULL
+                UNION ALL
+                SELECT o.EventId, o.OrderNo, o.OrderCreatedUtc, o.CodeContent, o.ScannedUtc, 1
+                FROM ScanPoOutbox o WHERE o.AppliedUtc IS NOT NULL
+                    AND NOT EXISTS (SELECT 1 FROM ScanRecords r WHERE r.EventId = o.EventId);
+                """;
+            candidates.Parameters.AddWithValue("$cutoff", FormatUtc(cutoff));
+            await using var reader = await candidates.ExecuteReaderAsync(ct).ConfigureAwait(false);
+            while (await reader.ReadAsync(ct).ConfigureAwait(false))
+                receipts.Add((reader.GetString(0), ScanPersistenceIdentity.Hash(reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetInt32(5) != 0)));
+        }
+        await using (var receipt = connection.CreateCommand())
+        {
+            receipt.Transaction = transaction;
+            receipt.CommandText = "INSERT INTO ScanPersistenceReceipts (EventId, IdentityHash) VALUES ($event, $hash) ON CONFLICT(EventId) DO NOTHING;";
+            var eventParameter = receipt.Parameters.Add("$event", SqliteType.Text);
+            var hashParameter = receipt.Parameters.Add("$hash", SqliteType.Blob);
+            foreach (var item in receipts)
+            {
+                eventParameter.Value = item.EventId; hashParameter.Value = item.Hash;
+                await receipt.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+            }
+        }
+        await using (var pruneOutbox = connection.CreateCommand())
+        {
+            pruneOutbox.Transaction = transaction;
+            pruneOutbox.CommandText = """
+                DELETE FROM ScanPoOutbox WHERE AppliedUtc IS NOT NULL AND
+                    (NOT EXISTS (SELECT 1 FROM ScanRecords r WHERE r.EventId = ScanPoOutbox.EventId)
+                     OR EventId IN (SELECT EventId FROM ScanRecords WHERE ReceivedUtc < $cutoff AND PersistenceReady = 1));
+                """;
+            pruneOutbox.Parameters.AddWithValue("$cutoff", FormatUtc(cutoff));
+            await pruneOutbox.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
         await using var cmd = connection.CreateCommand();
-        cmd.CommandText = "DELETE FROM ScanRecords WHERE ReceivedUtc < $cutoff;";
+        cmd.Transaction = transaction;
+        // An unapplied PO intent must retain its history even if retention is
+        // reached while the PO database is unavailable.
+        cmd.CommandText = "DELETE FROM ScanRecords WHERE ReceivedUtc < $cutoff AND PersistenceReady = 1;";
         cmd.Parameters.AddWithValue("$cutoff", FormatUtc(cutoff));
 
-        return await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        var removed = await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        await transaction.CommitAsync(ct).ConfigureAwait(false);
+        return removed;
     }
 
     /// <summary>
@@ -532,7 +610,7 @@ internal sealed class ScanStore
                 SELECT Id, ReceivedUtc, Code, Gtin, Serial, Status,
                        ProcessingTimeMs, PlcResult, BatchNo, Raw, OrderNo,
                        SendStatus, SendStatusCode, SendMessage, SendAttempts,
-                       SendTimeUtc, SendAttemptUtc
+                       SendTimeUtc, SendAttemptUtc, PlcAckTimeMs
                 FROM ScanRecords
                 {where}
                 ORDER BY ReceivedUtc DESC, Id DESC
@@ -652,6 +730,7 @@ internal sealed class ScanStore
         SendAttempts = record.IsDBNull(14) ? 0 : record.GetInt32(14),
         SendTimeUtc = record.IsDBNull(15) ? null : ParseUtc(record.GetString(15)),
         SendAttemptUtc = record.IsDBNull(16) ? null : ParseUtc(record.GetString(16)),
+        PlcAckTimeMs = record.GetDouble(17),
     };
 
     /// <summary>

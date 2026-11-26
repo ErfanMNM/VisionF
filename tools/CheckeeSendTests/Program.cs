@@ -18,7 +18,7 @@ void Check(bool condition, string description)
     Console.WriteLine("[OK] " + description);
 }
 
-static ScanRecordEntity Pass(string code, string order = "PO-01") => new()
+static ScanRecordEntity Pass(string code, string order = "TEST-ASYNC-PO-20261127-CHECKEE-DEFAULT") => new()
 {
     CodeContent = code, Raw = code, Status = ScanStatuses.Pass,
     OrderNo = order, ReceivedUtc = DateTime.UtcNow,
@@ -45,7 +45,7 @@ await using (var test = new SendTestSession(" 08934567890123 "))
     Check(codes.SequenceEqual(new[] { fullCode, second.CodeContent, caseVariant.CodeContent }),
         "Nội dung legacy không phải HTTP/HTTPS URL giữ nguyên Unicode, GS, khoảng trắng và hoa thường; không lấy Serial cũ");
     Check(payload.GetProperty("GTIN").GetString() == "08934567890123"
-        && payload.GetProperty("batchCode").GetString() == "PO-01"
+        && payload.GetProperty("batchCode").GetString() == "TEST-ASYNC-PO-20261127-CHECKEE-DEFAULT"
         && payload.GetProperty("type").GetString() == "DECLARE", "Giao thức Checkee giữ GTIN/batchCode/type; GTIN ưu tiên cấu hình sản phẩm");
     Check(payload.TryGetProperty("fromIndex", out var fromIndex)
         && fromIndex.ValueKind == JsonValueKind.Number && fromIndex.GetInt32() == 0
@@ -64,10 +64,10 @@ const string sampleUrl1 = "https://beta-elink.checkee.vn/01/8935348800215/21/Uht
 const string sampleUrl2 = "https://beta-elink.checkee.vn/01/8935348800215/21/UlZLEdojrQ";
 await using (var test = new SendTestSession("8935348800215"))
 {
-    test.Options.BatchCode = "A001";
+    test.Options.BatchCode = "TEST-ASYNC-PO-20261127-CHECKEE";
     test.Options.SerialType = "RANDOM";
-    var first = Pass(sampleUrl1, "A001");
-    var second = Pass(sampleUrl2, "A001");
+    var first = Pass(sampleUrl1, "TEST-ASYNC-PO-20261127-CHECKEE");
+    var second = Pass(sampleUrl2, "TEST-ASYNC-PO-20261127-CHECKEE");
     first.Serial = "LEGACY-SERIAL-MUST-NOT-OVERRIDE-URL";
     second.Serial = "ANOTHER-LEGACY-SERIAL";
     test.Writer.Enqueue(first);
@@ -77,15 +77,15 @@ await using (var test = new SendTestSession("8935348800215"))
     var payload = test.Http.Payloads.Single();
     Check(payload.GetProperty("serialNumbers").EnumerateArray().Select(value => value.GetString())
         .SequenceEqual(new[] { "UhtX8gAftf", "UlZLEdojrQ" }),
-        "Payload chỉ chứa hai serial sau /21/ theo mẫu A001, không dùng URL hoặc Serial legacy");
+        "Payload chỉ chứa hai serial sau /21/ theo mẫu TEST-ASYNC-PO-20261127-CHECKEE, không dùng URL hoặc Serial legacy");
     Check(payload.GetProperty("GTIN").GetString() == "8935348800215"
-        && payload.GetProperty("batchCode").GetString() == "A001"
+        && payload.GetProperty("batchCode").GetString() == "TEST-ASYNC-PO-20261127-CHECKEE"
         && payload.GetProperty("type").GetString() == "RANDOM"
         && payload.GetProperty("fromIndex").ValueKind == JsonValueKind.Number
         && payload.GetProperty("fromIndex").GetInt32() == 0
         && payload.GetProperty("toIndex").ValueKind == JsonValueKind.Number
         && payload.GetProperty("toIndex").GetInt32() == 0,
-        "Payload mẫu A001 giữ đúng GTIN, batchCode, RANDOM và hai chỉ số số 0");
+        "Payload mẫu TEST-ASYNC-PO-20261127-CHECKEE giữ đúng GTIN, batchCode, RANDOM và hai chỉ số số 0");
     var rows = await test.RowsAsync();
     Check(rows.Count == 2 && rows.All(row => row.Status == ScanStatuses.Pass
         && row.SendStatus == ScanSendStatuses.Sent)
@@ -115,7 +115,7 @@ using (var client = new CheckeeClient(http, new CheckeeOptions
         "ftp://resolver.invalid/01/8935348800215/21/Legacy",
     };
     var original = inputs.ToArray();
-    var result = await client.ActivateAsync("8935348800215", "A001", "RANDOM", inputs);
+    var result = await client.ActivateAsync("8935348800215", "TEST-ASYNC-PO-20261127-CHECKEE", "RANDOM", inputs);
     Check(result.Ok && handler.Payloads.Count == 1, "Client tạo được payload từ URL và serial legacy qua HTTP giả");
     var serials = handler.Payloads.Single().GetProperty("serialNumbers").EnumerateArray()
         .Select(value => value.GetString()).ToArray();
@@ -446,7 +446,7 @@ Console.WriteLine($"Đã qua {checks} kiểm thử Checkee CodeContent, lịch s
 
 sealed class SendTestSession : IAsyncDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "VisionF-CheckeeSend-" + Guid.NewGuid().ToString("N"));
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "TEST-ASYNC-PO-20261127-Checkee-" + Guid.NewGuid().ToString("N"));
     private readonly ServiceProvider _services;
     private readonly HttpClient _httpClient;
     private readonly CheckeeClient _client;
@@ -506,6 +506,10 @@ sealed class SendTestSession : IAsyncDisposable
         _client.Dispose();
         _httpClient.Dispose();
         await _services.DisposeAsync();
+        var expectedParent = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.GetTempPath()));
+        if (!string.Equals(Path.GetDirectoryName(Path.GetFullPath(_root)), expectedParent, StringComparison.OrdinalIgnoreCase)
+            || !Path.GetFileName(_root).StartsWith("TEST-ASYNC-PO-20261127-Checkee-", StringComparison.Ordinal))
+            throw new InvalidOperationException("Refusing cleanup outside the uniquely created Checkee sandbox.");
         for (var attempt = 0; ; attempt++)
         {
             try

@@ -198,8 +198,6 @@ internal static class Sandbox
           "Po": {
             "BaseUrl": "http://127.0.0.1:1",
             "DbRoot": {{Quote(Path.Combine(logs, "po"))}},
-            "ActivationIntervalMs": 2500,
-            "AutoActivate": false,
             "CodeSampleSize": 100
           }
         }

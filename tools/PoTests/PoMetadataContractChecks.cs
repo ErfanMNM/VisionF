@@ -38,7 +38,7 @@ internal static class PoMetadataContractChecks
         var store = new PoStore(root);
         var order = new ProductionOrder
         {
-            OrderNo = "PLANNED", OrderQty = 4, Gtin = "4006381333931", CreatedUtc = DateTime.UtcNow,
+            OrderNo = "TEST-ASYNC-PO-20261127-PLANNED", OrderQty = 4, Gtin = "4006381333931", CreatedUtc = DateTime.UtcNow,
             Additional = new() { ["product"] = "Sản phẩm thử" },
         };
         await store.EnsurePoDbAsync(order, [new() { CodeContent = raw }]);
@@ -70,17 +70,17 @@ internal static class PoMetadataContractChecks
 
         var legacyAdditional = new ProductionOrder
         {
-            OrderNo = "LEGACY-ADDITIONAL", OrderQty = 9, CreatedUtc = order.CreatedUtc,
+            OrderNo = "TEST-ASYNC-PO-20261127-LEGACY-ADDITIONAL", OrderQty = 9, CreatedUtc = order.CreatedUtc,
             Additional = new() { ["GTIN"] = "4006381333931", ["product"] = "Cũ" },
         };
         await store.EnsurePoDbAsync(legacyAdditional, [new() { CodeContent = raw }]);
         await RemoveMetaAsync(store, legacyAdditional, PoStore.MetaGtin);
-        var legacyCodes = new ProductionOrder { OrderNo = "LEGACY-CODES", OrderQty = 7, CreatedUtc = order.CreatedUtc };
+        var legacyCodes = new ProductionOrder { OrderNo = "TEST-ASYNC-PO-20261127-LEGACY-CODES", OrderQty = 7, CreatedUtc = order.CreatedUtc };
         await store.EnsurePoDbAsync(legacyCodes, [new() { CodeContent = raw }]);
         await RemoveMetaAsync(store, legacyCodes, PoStore.MetaOrderQty);
-        var mixed = new ProductionOrder { OrderNo = "LEGACY-MIXED", OrderQty = 2, CreatedUtc = order.CreatedUtc };
+        var mixed = new ProductionOrder { OrderNo = "TEST-ASYNC-PO-20261127-LEGACY-MIXED", OrderQty = 2, CreatedUtc = order.CreatedUtc };
         await store.EnsurePoDbAsync(mixed, [new() { CodeContent = raw }, new() { CodeContent = "/01/09506000134352/21/B" }]);
-        var opaque = new ProductionOrder { OrderNo = "LEGACY-OPAQUE", OrderQty = 1, CreatedUtc = order.CreatedUtc };
+        var opaque = new ProductionOrder { OrderNo = "TEST-ASYNC-PO-20261127-LEGACY-OPAQUE", OrderQty = 1, CreatedUtc = order.CreatedUtc };
         await store.EnsurePoDbAsync(opaque, [new() { CodeContent = "opaque legacy identity" }]);
         var legacyRows = await store.ListLocalOrdersAsync();
         check("Legacy additional.gtin được đọc với planned cũ", legacyRows.Single(o => o.OrderNo == legacyAdditional.OrderNo)

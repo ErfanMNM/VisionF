@@ -21,14 +21,6 @@ public sealed class PoOptions
     public string DbRoot { get; set; } = "logs/po";
 
     /// <summary>
-    /// Chu kỳ (ms) worker gửi mã kích hoạt. Phải lớn hơn 2000 (2 giây).
-    /// </summary>
-    public int ActivationIntervalMs { get; set; } = 2500;
-
-    /// <summary>True nếu worker tự động gửi mã kích hoạt định kỳ.</summary>
-    public bool AutoActivate { get; set; } = true;
-
-    /// <summary>
     /// Số mã mẫu sinh cho mỗi PO khi tạo PO mới trên server (seed).
     /// </summary>
     public int CodeSampleSize { get; set; } = 100;

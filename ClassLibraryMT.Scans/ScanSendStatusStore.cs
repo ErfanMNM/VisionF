@@ -36,7 +36,7 @@ internal sealed partial class ScanSendStatusStore : IScanSendStatusStore
 
         // SendStatus rỗng = bản ghi tạo trước khi có tính năng Checkee ->
         // coi như chưa gửi (Pending).
-        var where = "WHERE (SendStatus = '' OR SendStatus IS NULL OR SendStatus = $pending)";
+        var where = "WHERE PersistenceReady = 1 AND (SendStatus = '' OR SendStatus IS NULL OR SendStatus = $pending)";
         var parameters = new List<(string Name, object Value)>
         {
             ("$pending", ScanSendStatuses.Pending),
@@ -53,7 +53,7 @@ internal sealed partial class ScanSendStatusStore : IScanSendStatusStore
             SELECT Id, ReceivedUtc, Code, Gtin, Serial, Status,
                    ProcessingTimeMs, PlcResult, BatchNo, Raw, OrderNo,
                    SendStatus, SendStatusCode, SendMessage, SendAttempts,
-                   SendTimeUtc, SendAttemptUtc
+                   SendTimeUtc, SendAttemptUtc, PlcAckTimeMs
             FROM ScanRecords
             {where}
             -- Retry the least recently attempted rows first. Rows retained as Pending
@@ -82,7 +82,7 @@ internal sealed partial class ScanSendStatusStore : IScanSendStatusStore
         ScanSendFilter? filter = null,
         CancellationToken cancellationToken = default)
     {
-        var where = "WHERE 1=1";
+        var where = "WHERE PersistenceReady = 1";
         var parameters = new List<(string Name, object Value)>();
 
         if (filter is not null)
@@ -123,7 +123,7 @@ internal sealed partial class ScanSendStatusStore : IScanSendStatusStore
             SELECT Id, ReceivedUtc, Code, Gtin, Serial, Status,
                    ProcessingTimeMs, PlcResult, BatchNo, Raw, OrderNo,
                    SendStatus, SendStatusCode, SendMessage, SendAttempts,
-                   SendTimeUtc, SendAttemptUtc
+                   SendTimeUtc, SendAttemptUtc, PlcAckTimeMs
             FROM ScanRecords
             {where}
             ORDER BY ReceivedUtc DESC, Id DESC
@@ -207,7 +207,7 @@ internal sealed partial class ScanSendStatusStore : IScanSendStatusStore
                 SendAttempts = SendAttempts + 1,
                 SendAttemptUtc = $attemptUtc,
                 SendTimeUtc = CASE WHEN $setSendTime = 1 THEN $attemptUtc ELSE SendTimeUtc END
-            WHERE Id = $id;
+            WHERE Id = $id AND PersistenceReady = 1;
             """;
 
         cmd.Parameters.AddWithValue("$status", status);
@@ -251,7 +251,7 @@ internal sealed partial class ScanSendStatusStore : IScanSendStatusStore
                 SET SendStatus = $pending,
                     SendStatusCode = 0,
                     SendMessage = ''
-                WHERE SendStatus = $failed AND Id IN ({string.Join(",", names)});
+                WHERE PersistenceReady = 1 AND SendStatus = $failed AND Id IN ({string.Join(",", names)});
                 """;
             cmd.Parameters.AddWithValue("$pending", ScanSendStatuses.Pending);
             cmd.Parameters.AddWithValue("$failed", ScanSendStatuses.Failed);
@@ -280,7 +280,7 @@ internal sealed partial class ScanSendStatusStore : IScanSendStatusStore
 
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-            SELECT SendStatus, COUNT(*) FROM ScanRecords GROUP BY SendStatus;
+            SELECT SendStatus, COUNT(*) FROM ScanRecords WHERE PersistenceReady = 1 GROUP BY SendStatus;
             """;
 
         await using var reader = await cmd
@@ -343,6 +343,7 @@ internal sealed partial class ScanSendStatusStore : IScanSendStatusStore
         SendAttempts = record.IsDBNull(14) ? 0 : record.GetInt32(14),
         SendTimeUtc = record.IsDBNull(15) ? null : ParseUtc(record.GetString(15)),
         SendAttemptUtc = record.IsDBNull(16) ? null : ParseUtc(record.GetString(16)),
+        PlcAckTimeMs = record.GetDouble(17),
     };
 
     /// <summary>

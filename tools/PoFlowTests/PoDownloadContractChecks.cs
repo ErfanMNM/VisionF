@@ -129,8 +129,7 @@ internal static class PoDownloadContractChecks
             Failure is null ? Task.FromResult<IReadOnlyList<ProductionOrder>>([Order]) : Task.FromException<IReadOnlyList<ProductionOrder>>(Failure);
         public Task<IReadOnlyList<PoCode>> GetCodesAsync(string orderNo, CancellationToken ct = default) =>
             CodeFailure is null ? Task.FromResult(Codes) : Task.FromException<IReadOnlyList<PoCode>>(CodeFailure);
-        public Task<PoActivateResult> ActivateAsync(string orderNo, IReadOnlyList<string> codes, CancellationToken ct = default) =>
-            Task.FromResult(new PoActivateResult { Ok = true, Activated = codes.Count });
+
         public Task<ProductionOrder?> CreateOrderAsync(string orderNo, int orderQty, CancellationToken ct = default) =>
             Task.FromResult<ProductionOrder?>(null);
     }

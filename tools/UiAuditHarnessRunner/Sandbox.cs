@@ -229,8 +229,6 @@ internal static class Sandbox
             {
                 BaseUrl = "http://127.0.0.1:55080",   // cổng PO server thật (5080) KHÔNG dùng
                 DbRoot = "logs/po",
-                ActivationIntervalMs = 2500,
-                AutoActivate = false,                  // không gửi mã kích hoạt ra ngoài
                 CodeSampleSize = 100,
             },
         };

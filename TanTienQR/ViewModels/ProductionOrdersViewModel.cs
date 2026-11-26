@@ -14,8 +14,7 @@ namespace TanTienQR.ViewModels;
 ///
 /// <para>
 /// Quản lý các PO đã tải về từ server:
-/// cào PO mới từ server, xem danh sách, bắt đầu / huỷ sản xuất và gửi mã
-/// kích hoạt thủ công.
+/// cào PO mới từ server, xem danh sách, bắt đầu / huỷ sản xuất.
 /// </para>
 ///
 /// <para>
@@ -139,7 +138,6 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
     public partial bool IsHalted { get; set; }
 
     /// <summary>True khi có thể gửi kích hoạt thủ công (đang có PO chạy).</summary>
-    public bool CanActivate => !IsBusy && HasRunningOrder && !IsHalted;
 
     /// <summary>
     /// True khi có thể bắt đầu sản xuất (có PO hợp lệ được chọn và chưa có PO chạy).
@@ -383,47 +381,6 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
     }
 
     /// <summary>
-    /// Gửi thủ công các mã chưa kích hoạt lên server.
-    /// </summary>
-    [RelayCommand]
-    private async Task ActivatePendingAsync()
-    {
-        if (IsBusy) return;
-
-        IsBusy = true;
-        StatusMessage = "Đang gửi mã kích hoạt...";
-
-        try
-        {
-            var count = await _po.ActivatePendingAsync().ConfigureAwait(true);
-            StatusMessage = count > 0
-                ? $"Đã gửi kích hoạt {count} mã."
-                : "Không có mã nào chờ kích hoạt.";
-
-            _actionLog.Log(
-                "Po.Activate",
-                "ProductionOrder",
-                $"Gui kich hoat {count} ma",
-                UserActionResults.Success);
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = "Không gửi được mã kích hoạt: " + ex.Message;
-
-            _actionLog.Log(
-                "Po.Activate",
-                "ProductionOrder",
-                $"Loi khi gui kich hoat: {ex.Message}",
-                UserActionResults.Failed);
-        }
-        finally
-        {
-            IsBusy = false;
-            RefreshRunningState();
-        }
-    }
-
-    /// <summary>
     /// Nạp lại danh sách PO từ DB local (không gọi mạng).
     /// </summary>
     public async Task LoadLocalAsync()
@@ -539,7 +496,6 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
 
         OnPropertyChanged(nameof(CanStart));
         OnPropertyChanged(nameof(CanCancel));
-        OnPropertyChanged(nameof(CanActivate));
         OnPropertyChanged(nameof(IsComplete));
     }
 

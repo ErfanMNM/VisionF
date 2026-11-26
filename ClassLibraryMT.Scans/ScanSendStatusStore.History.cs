@@ -11,6 +11,22 @@ internal sealed partial class ScanSendStatusStore
         if (records.Count == 0) throw new ArgumentException("Lần gửi phải có ít nhất một mã.", nameof(records));
         await using var connection = await _store.OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        // Recheck readiness inside the same write transaction as the HTTP
+        // intent. A stale/manual selection must not bypass the PO outbox gate.
+        foreach (var record in records)
+        {
+            await using var ready = connection.CreateCommand();
+            ready.Transaction = transaction;
+            ready.CommandText = """
+                SELECT COUNT(*) FROM ScanRecords
+                WHERE Id = $id AND PersistenceReady = 1
+                    AND (CASE WHEN Raw <> '' THEN Raw ELSE Code END) = $code COLLATE BINARY;
+                """;
+            ready.Parameters.AddWithValue("$id", record.Id);
+            ready.Parameters.AddWithValue("$code", record.CodeContent);
+            if (Convert.ToInt64(await ready.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false)) != 1)
+                throw new InvalidOperationException("Bản ghi chưa đồng bộ PO hoặc không còn khớp; không được gửi Checkee.");
+        }
         await using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = """
@@ -47,7 +63,7 @@ internal sealed partial class ScanSendStatusStore
         hold.CommandText = """
             UPDATE ScanRecords SET SendStatus='Failed',
                 SendMessage='Lượt gửi chưa xác nhận kết quả; cần đối soát nếu ứng dụng bị gián đoạn.'
-            WHERE Id IN (SELECT ScanRecordId FROM CheckeeSendAttemptItems WHERE AttemptId=$id);
+            WHERE PersistenceReady = 1 AND Id IN (SELECT ScanRecordId FROM CheckeeSendAttemptItems WHERE AttemptId=$id);
             """;
         hold.Parameters.AddWithValue("$id", id);
         await hold.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -98,7 +114,7 @@ internal sealed partial class ScanSendStatusStore
             UPDATE ScanRecords SET SendStatus=$status, SendStatusCode=$http, SendMessage=$message,
                 SendAttempts=SendAttempts+1, SendAttemptUtc=$utc,
                 SendTimeUtc=CASE WHEN $status='Sent' THEN $utc ELSE SendTimeUtc END
-            WHERE Id IN (SELECT ScanRecordId FROM CheckeeSendAttemptItems WHERE AttemptId=$id);
+            WHERE PersistenceReady = 1 AND Id IN (SELECT ScanRecordId FROM CheckeeSendAttemptItems WHERE AttemptId=$id);
             """;
         state.Parameters.AddWithValue("$status", status switch
         {

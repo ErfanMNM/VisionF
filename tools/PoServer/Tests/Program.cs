@@ -173,15 +173,19 @@ try
             Check(result.StatusCode == HttpStatusCode.BadRequest
                 && server.Store.GetCodes("PO-ONE").All(code => code.ActivatedUtc is null),
                 "Unknown code rejects the whole activation batch without partial ACK state");
-        var activation = await client.ActivateAsync("PO-ONE", [Gs1("Case"), codes[0]]);
-        Check(activation.Ok && activation.Activated == 2, "Production PoClient activates exact whole CodeContents");
+        using var activationResponse = await http.PostAsync("api/activate", new StringContent(
+            JsonSerializer.Serialize(new { orderNo = "PO-ONE", codeContents = new[] { Gs1("Case"), codes[0] } }), Encoding.UTF8, "application/json"));
+        var activation = JsonSerializer.Deserialize<PoActivateResult>(await activationResponse.Content.ReadAsStringAsync(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+        Check(activation.Ok && activation.Activated == 2, "Standalone demo server activates exact whole CodeContents");
         Check(server.Store.GetCodes("PO-ONE").Where(code => code.ActivatedUtc is not null)
             .Select(code => code.CodeContent).ToHashSet(StringComparer.Ordinal).SetEquals([Gs1("Case"), codes[0]]),
             "Activation leaves case-only and shared-suffix variants unchanged");
         Check(server.Store.GetCodes("PO-TWO").All(code => code.ActivatedUtc is null),
             "Activation does not affect another PO's identical content");
-        Check((await client.ActivateAsync("PO-ONE", [Gs1("Case")])).Activated == 0,
-            "Repeated activation is idempotent");
+        using var repeatedActivation = await http.PostAsync("api/activate", new StringContent(
+            JsonSerializer.Serialize(new { orderNo = "PO-ONE", codeContents = new[] { Gs1("Case") } }), Encoding.UTF8, "application/json"));
+        var repeated = JsonSerializer.Deserialize<PoActivateResult>(await repeatedActivation.Content.ReadAsStringAsync(), new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+        Check(repeated.Activated == 0, "Standalone demo server activation is idempotent");
 
         // Transaction rollback cả mã mới và metadata/planned của PO.
         using (var db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path }.ToString()))

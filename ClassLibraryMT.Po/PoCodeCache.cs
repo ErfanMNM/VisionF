@@ -53,6 +53,8 @@ public sealed class PoCodeCache
 
     /// <summary>Mã PO mà cache đang phục vụ (để kiểm tra nhầm lẫn).</summary>
     private string _orderNo = string.Empty;
+    private int _scannedCount;
+    private int _pendingPassCount;
 
     /// <summary>
     /// Nạp tập mã của PO đang chạy vào cache (ghi đè nội dung cũ).
@@ -80,6 +82,8 @@ public sealed class PoCodeCache
             }
 
             _orderNo = orderNo ?? string.Empty;
+            _scannedCount = map.Values.Count(flags => (flags & (Flags.Scanned | Flags.Activated)) != 0);
+            _pendingPassCount = map.Values.Count(flags => (flags & Flags.PendingPass) != 0);
         }
     }
 
@@ -109,18 +113,7 @@ public sealed class PoCodeCache
         get
         {
             lock (_gate)
-            {
-                var count = 0;
-                foreach (var flags in _codes.Values)
-                {
-                    if ((flags & Flags.Scanned) != 0)
-                    {
-                        count++;
-                    }
-                }
-
-                return count;
-            }
+                return _scannedCount;
         }
     }
 
@@ -162,7 +155,7 @@ public sealed class PoCodeCache
         get
         {
             lock (_gate)
-                return _codes.Values.Any(flags => (flags & Flags.PendingPass) != 0);
+                return _pendingPassCount != 0;
         }
     }
 
@@ -175,6 +168,7 @@ public sealed class PoCodeCache
                 return false;
 
             _codes[code] = flags | Flags.PendingPass;
+            _pendingPassCount++;
             return true;
         }
     }
@@ -183,8 +177,11 @@ public sealed class PoCodeCache
     {
         lock (_gate)
         {
-            if (_codes.TryGetValue(code, out var flags))
+            if (_codes.TryGetValue(code, out var flags) && (flags & Flags.PendingPass) != 0)
+            {
                 _codes[code] = flags & ~Flags.PendingPass;
+                _pendingPassCount--;
+            }
         }
     }
 
@@ -206,6 +203,10 @@ public sealed class PoCodeCache
             }
 
             _codes[code] = (flags | Flags.Scanned) & ~Flags.PendingPass;
+            if ((flags & Flags.Activated) == 0)
+                _scannedCount++;
+            if ((flags & Flags.PendingPass) != 0)
+                _pendingPassCount--;
             return true;
         }
     }
@@ -220,6 +221,8 @@ public sealed class PoCodeCache
             if (_codes.TryGetValue(code, out var flags))
             {
                 _codes[code] = flags | Flags.Activated;
+                if ((flags & (Flags.Scanned | Flags.Activated)) == 0)
+                    _scannedCount++;
             }
         }
     }
@@ -233,6 +236,30 @@ public sealed class PoCodeCache
         {
             _codes.Clear();
             _orderNo = string.Empty;
+            _scannedCount = 0;
+            _pendingPassCount = 0;
+        }
+    }
+
+    /// <summary>Validate and consume a complete code under one short RAM lock.</summary>
+    public PoCodeValidation ValidateAndAccept(string orderNo, string codeContent, bool accept)
+    {
+        lock (_gate)
+        {
+            if (!string.Equals(_orderNo, orderNo, StringComparison.Ordinal))
+                return PoCodeValidation.NoProductionOrder;
+            if (!_codes.TryGetValue(codeContent, out var flags))
+                return PoCodeValidation.InvalidForOrder;
+            if ((flags & (Flags.Scanned | Flags.Activated)) != 0)
+                return PoCodeValidation.Duplicate;
+            if ((flags & Flags.PendingPass) != 0)
+                return PoCodeValidation.Halted;
+            if (accept)
+            {
+                _codes[codeContent] = flags | Flags.Scanned;
+                _scannedCount++;
+            }
+            return PoCodeValidation.Valid;
         }
     }
 }

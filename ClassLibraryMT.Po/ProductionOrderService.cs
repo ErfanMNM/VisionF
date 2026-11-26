@@ -70,7 +70,7 @@ public sealed record PoSyncOrderResult(
 /// <item>Đọc danh sách PO từ DB local.</item>
 /// <item>Bắt đầu / hoàn tất / huỷ sản xuất.</item>
 /// <item>Kiểm tra mã quét so với tập mã của PO đang chạy.</item>
-/// <item>Gửi các mã đã quét lên server, độc lập theo từng PO.</item>
+/// <item>Chấp nhận mã nguyên tử trong RAM; coordinator lưu batch độc lập.</item>
 /// </list>
 /// </para>
 /// </summary>
@@ -88,13 +88,26 @@ public sealed class ProductionOrderService
 
     /// <summary>Cờ chống gọi hoàn tất lồng nhau (auto-complete 100%).</summary>
     private int _completing;
-    private readonly SemaphoreSlim _activationGate = new(1, 1);
+    private bool _lifecycleTransition;
+    private bool _completionPending;
+
+    /// <summary>
+    /// App-level barrier covering reserved scans, history, and PO outbox writes.
+    /// It must not require the PO lifecycle mutex to apply a batch.
+    /// </summary>
+    public Func<CancellationToken, Task>? PersistenceBarrier { get; set; }
+
+    /// <summary>The final accepted code is awaiting durable batch completion.</summary>
+    public bool IsCompletionPending { get { lock (_gate) return _completionPending; } }
 
     /// <summary>Cờ dừng máy do kết quả PLC hoặc trạng thái PO chưa được xác nhận.</summary>
     private volatile bool _halted;
     private volatile bool _updateMaintenance;
 
     private ProductionOrder? _current;
+    // Legacy run history may preserve caller casing; PO mutations always use
+    // canonical identity from PoMeta, while run completion addresses its source.
+    private string _currentRunOrderNo = string.Empty;
     private ProductionOrderStatus _currentStatus = ProductionOrderStatus.Available;
 
     /// <summary>
@@ -411,6 +424,9 @@ public sealed class ProductionOrderService
             return false;
         }
 
+        // The immutable mutation must capture the persisted identity, including
+        // its canonical casing, even when a UI lookup supplied another casing.
+        orderNo = local.OrderNo;
         var meta = await _store.GetMetaAsync(orderNo, local.CreatedUtc, ct).ConfigureAwait(false);
         if (meta.ContainsKey(PoStore.MetaHalted))
         {
@@ -470,7 +486,9 @@ public sealed class ProductionOrderService
         lock (_gate)
         {
             _current = order;
+            _currentRunOrderNo = order.OrderNo;
             _currentStatus = ProductionOrderStatus.Running;
+            _completionPending = false;
         }
 
         _logger?.LogInformation(
@@ -496,7 +514,65 @@ public sealed class ProductionOrderService
         CancellationToken ct)
     {
         using var mutationLock = await _store.AcquireMutationLockAsync(ct).ConfigureAwait(false);
-        return await CompleteProductionUnderLockAsync(expectedOrderNo, ct).ConfigureAwait(false);
+        lock (_gate) _lifecycleTransition = true;
+        try
+        {
+            if (PersistenceBarrier is { } barrier)
+                await barrier(ct).ConfigureAwait(false);
+            return await CompleteProductionUnderLockAsync(expectedOrderNo, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            lock (_gate) _lifecycleTransition = false;
+        }
+    }
+
+    /// <summary>
+    /// Called only after the coordinator has committed its PO batch and outbox.
+    /// Never wait for the lifecycle mutex: a manual action may own it while
+    /// waiting for a later persistence barrier on this same worker.
+    /// </summary>
+    public async Task<bool> CompletePendingAsync(CancellationToken ct = default)
+    {
+        lock (_gate)
+            if (!_completionPending || _lifecycleTransition || _halted)
+                return false;
+        if (!_store.TryAcquireMutationLock(out var mutationLock))
+            return false;
+        using (mutationLock)
+        {
+            ProductionOrder? order;
+            lock (_gate)
+            {
+                if (!_completionPending || _lifecycleTransition || _halted)
+                    return false;
+                order = _current;
+                _lifecycleTransition = true;
+            }
+            try
+            {
+                // A final scan may have reached RAM while this worker was
+                // flushing an earlier batch. Its reserved envelope can still
+                // be waiting for PLC ACK; defer until its own batch is durable.
+                if (order is not null && await _store.CountScannedAsync(order.OrderNo, order.CreatedUtc, ct)
+                    .ConfigureAwait(false) < _cache.ScannedCount)
+                    return false;
+                return order is not null && await CompleteProductionUnderLockAsync(order.OrderNo, ct)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _halted = true;
+                if (order is not null)
+                    await PersistHaltBestEffortAsync(order, ex).ConfigureAwait(false);
+                RaiseChanged();
+                throw;
+            }
+            finally
+            {
+                lock (_gate) _lifecycleTransition = false;
+            }
+        }
     }
 
     // Caller holds the shared lifecycle mutation lock.
@@ -505,24 +581,29 @@ public sealed class ProductionOrderService
         CancellationToken ct)
     {
         ProductionOrder? order;
+        string runOrderNo;
         lock (_gate)
         {
             order = _current;
             if (order is null || (expectedOrderNo is not null
                 && !string.Equals(order.OrderNo, expectedOrderNo, StringComparison.OrdinalIgnoreCase)))
                 return false;
+            runOrderNo = _currentRunOrderNo;
         }
 
         var scannedCount = await _store
             .CountScannedAsync(order.OrderNo, order.CreatedUtc, ct).ConfigureAwait(false);
         var totalCount = await _store
             .CountCodesAsync(order.OrderNo, order.CreatedUtc, ct).ConfigureAwait(false);
+        // A caller cannot clear accepted RAM state before the final PO batch.
+        if (scannedCount < _cache.ScannedCount)
+            throw new IOException("PO completion is waiting for accepted scans to be persisted.");
         var poMarkedCompleted = false;
         try
         {
             await _store.MarkCompletedAsync(order.OrderNo, order.CreatedUtc, ct).ConfigureAwait(false);
             poMarkedCompleted = true;
-            await _history.CompleteRunAsync(order.OrderNo, ct).ConfigureAwait(false);
+            await _history.CompleteRunAsync(runOrderNo, ct).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -546,7 +627,9 @@ public sealed class ProductionOrderService
         {
             _currentStatus = ProductionOrderStatus.Completed;
             _current = null;
+            _currentRunOrderNo = string.Empty;
             _currentStatus = ProductionOrderStatus.Available;
+            _completionPending = false;
         }
 
         // Giải phóng RAM: chỉ giữ cache của PO đang chạy.
@@ -570,83 +653,101 @@ public sealed class ProductionOrderService
         CancellationToken ct = default)
     {
         using var mutationLock = await _store.AcquireMutationLockAsync(ct).ConfigureAwait(false);
-        ProductionOrder? order;
-        lock (_gate)
+        lock (_gate) _lifecycleTransition = true;
+        try
         {
-            order = _current;
+            if (PersistenceBarrier is { } barrier)
+                await barrier(ct).ConfigureAwait(false);
+            ProductionOrder? order;
+            lock (_gate)
+            {
+                order = _current;
 
-            if (string.IsNullOrWhiteSpace(orderNo))
-            {
-                // Huỷ PO đang chạy.
-                if (order is null)
-                    return false;
-            }
-            else
-            {
-                // Huỷ một PO cụ thể (kể cả khi không đang chạy).
-                if (order is not null
-                    && string.Equals(
-                        order.OrderNo, orderNo, StringComparison.OrdinalIgnoreCase))
+                if (string.IsNullOrWhiteSpace(orderNo))
                 {
-                    // Dùng PO đang chạy.
+                    // Huỷ PO đang chạy.
+                    if (order is null)
+                        return false;
                 }
                 else
                 {
-                    order = null;
+                    // Huỷ một PO cụ thể (kể cả khi không đang chạy).
+                    if (order is not null
+                        && string.Equals(
+                            order.OrderNo, orderNo, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Dùng PO đang chạy.
+                    }
+                    else
+                    {
+                        order = null;
+                    }
                 }
             }
-        }
 
-        // Xác định PO cần huỷ (kể cả khi không đang chạy).
-        var target = order;
-        if (target is null)
-        {
-            var local = await FindLocalOrderAsync(orderNo!, ct).ConfigureAwait(false);
-            if (local is null)
-                return false;
-
-            target = new ProductionOrder
+            // Xác định PO cần huỷ (kể cả khi không đang chạy).
+            var target = order;
+            if (target is null)
             {
-                OrderNo = local.OrderNo,
-                OrderQty = local.OrderQty,
-                Gtin = local.Gtin,
-                CreatedUtc = local.CreatedUtc,
-                Additional = local.Additional,
-            };
-        }
+                var local = await FindLocalOrderAsync(orderNo!, ct).ConfigureAwait(false);
+                if (local is null)
+                    return false;
 
-        await _store.MarkCancelledAsync(target.OrderNo, target.CreatedUtc, ct)
-            .ConfigureAwait(false);
-        await _history.CancelRunAsync(target.OrderNo, ct).ConfigureAwait(false);
-
-        // Ghi nhớ PO vừa huỷ để UI vẫn hiện thông tin lần chạy cuối.
-        LastFinishedOrder = target;
-        LastFinishedStatus = ProductionOrderStatus.Cancelled;
-        LastFinishedScannedCount = await _store
-            .CountScannedAsync(target.OrderNo, target.CreatedUtc, ct).ConfigureAwait(false);
-        LastFinishedTotalCount = await _store
-            .CountCodesAsync(target.OrderNo, target.CreatedUtc, ct).ConfigureAwait(false);
-
-        var clearActiveCache = false;
-        lock (_gate)
-        {
-            if (_current is not null
-                && string.Equals(
-                    _current.OrderNo, target.OrderNo, StringComparison.OrdinalIgnoreCase))
-            {
-                _current = null;
-                _currentStatus = ProductionOrderStatus.Available;
-                clearActiveCache = true;
+                target = new ProductionOrder
+                {
+                    OrderNo = local.OrderNo,
+                    OrderQty = local.OrderQty,
+                    Gtin = local.Gtin,
+                    CreatedUtc = local.CreatedUtc,
+                    Additional = local.Additional,
+                };
             }
+
+            if (order is not null && await _store.CountScannedAsync(target.OrderNo, target.CreatedUtc, ct)
+                .ConfigureAwait(false) < _cache.ScannedCount)
+                throw new IOException("PO cancellation is waiting for accepted scans to be persisted.");
+
+            await _store.MarkCancelledAsync(target.OrderNo, target.CreatedUtc, ct)
+                .ConfigureAwait(false);
+            string runOrderNo;
+            lock (_gate) runOrderNo = order is not null ? _currentRunOrderNo : target.OrderNo;
+            await _history.CancelRunAsync(runOrderNo, ct).ConfigureAwait(false);
+
+            // Ghi nhớ PO vừa huỷ để UI vẫn hiện thông tin lần chạy cuối.
+            LastFinishedOrder = target;
+            LastFinishedStatus = ProductionOrderStatus.Cancelled;
+            LastFinishedScannedCount = await _store
+                .CountScannedAsync(target.OrderNo, target.CreatedUtc, ct).ConfigureAwait(false);
+            LastFinishedTotalCount = await _store
+                .CountCodesAsync(target.OrderNo, target.CreatedUtc, ct).ConfigureAwait(false);
+
+            var clearActiveCache = false;
+            lock (_gate)
+            {
+                if (_current is not null
+                    && string.Equals(
+                        _current.OrderNo, target.OrderNo, StringComparison.OrdinalIgnoreCase))
+                {
+                    _current = null;
+                    _currentRunOrderNo = string.Empty;
+                    _currentStatus = ProductionOrderStatus.Available;
+                    _completionPending = false;
+                    clearActiveCache = true;
+                }
+            }
+
+            if (clearActiveCache)
+                _cache.Clear();
+
+            _logger?.LogInformation("Đã huỷ PO {OrderNo}.", target.OrderNo);
+
+            RaiseChanged();
+            return true;
         }
-
-        if (clearActiveCache)
-            _cache.Clear();
-
-        _logger?.LogInformation("Đã huỷ PO {OrderNo}.", target.OrderNo);
-
-        RaiseChanged();
-        return true;
+        finally
+        {
+            lock (_gate) _lifecycleTransition = false;
+        }
     }
 
     /// <summary>
@@ -680,7 +781,7 @@ public sealed class ProductionOrderService
             return false;
         }
 
-        var meta = await _store.GetMetaAsync(run.OrderNo, local.CreatedUtc, ct).ConfigureAwait(false);
+        var meta = await _store.GetMetaAsync(local.OrderNo, local.CreatedUtc, ct).ConfigureAwait(false);
         if (meta.ContainsKey(PoStore.MetaHalted))
         {
             _halted = true;
@@ -695,7 +796,7 @@ public sealed class ProductionOrderService
         }
 
         var codes = await _store
-            .GetCodesWithFlagsAsync(run.OrderNo, local.CreatedUtc, ct)
+            .GetCodesWithFlagsAsync(local.OrderNo, local.CreatedUtc, ct)
             .ConfigureAwait(false);
 
         if (codes.Count == 0)
@@ -705,7 +806,7 @@ public sealed class ProductionOrderService
             return false;
         }
 
-        _cache.LoadOrder(run.OrderNo, codes);
+        _cache.LoadOrder(local.OrderNo, codes);
         if (_cache.HasPendingPass || meta.ContainsKey(PoStore.MetaHalted))
         {
             _halted = true;
@@ -716,13 +817,15 @@ public sealed class ProductionOrderService
         {
             _current = new ProductionOrder
             {
-                OrderNo = run.OrderNo,
+                OrderNo = local.OrderNo,
                 OrderQty = local.OrderQty,
                 Gtin = local.Gtin,
                 CreatedUtc = local.CreatedUtc,
                 Additional = local.Additional,
             };
+            _currentRunOrderNo = run.OrderNo;
             _currentStatus = ProductionOrderStatus.Running;
+            _completionPending = false;
         }
 
         _logger?.LogInformation(
@@ -767,26 +870,16 @@ public sealed class ProductionOrderService
     /// </summary>
     public PoCodeValidation ValidateCode(string codeContent)
     {
-        if (_halted || _cache.HasPendingPass)
-        {
-            return PoCodeValidation.Halted;
-        }
-
-        ProductionOrder? order;
         lock (_gate)
         {
-            order = _current;
-            if (order is null || _currentStatus != ProductionOrderStatus.Running)
+            if (_halted || _updateMaintenance || _lifecycleTransition || _cache.HasPendingPass)
+                return PoCodeValidation.Halted;
+            if (_current is null || _currentStatus != ProductionOrderStatus.Running)
                 return PoCodeValidation.NoProductionOrder;
+            var validation = _cache.ValidateAndAccept(_current.OrderNo, codeContent, accept: false);
+            return validation == PoCodeValidation.Valid && _completionPending
+                ? PoCodeValidation.Halted : validation;
         }
-
-        if (_cache.IsScanned(codeContent) || _cache.IsActivated(codeContent))
-            return PoCodeValidation.Duplicate;
-
-        if (!_cache.Contains(codeContent))
-            return PoCodeValidation.InvalidForOrder;
-
-        return PoCodeValidation.Valid;
     }
 
     /// <summary>Legacy compatibility overload for the old GTIN/serial caller.</summary>
@@ -795,103 +888,56 @@ public sealed class ProductionOrderService
         ValidateCode(PoStore.BuildCodeKey(gtin, serial));
 
     /// <summary>
-    /// Commit mã hợp lệ vào DB PO và cache RAM trước khi gửi Pass xuống PLC.
-    ///
-    /// <para>
-    /// Khi PO đã quét đủ 100% thì <b>tự động hoàn tất</b> — UI về trạng thái
-    /// "chưa chọn PO". Kết quả gửi PLC không hoàn tác mã đã commit.
-    /// </para>
+    /// Consume an eligible code atomically in RAM before sending PLC Pass.
+    /// The caller must reserve persistence capacity first, then publish Mutation
+    /// even when PLC fails. No SQLite or network operation precedes sendPass.
     /// </summary>
     public async Task<PoScanResult> ProcessCodeAsync(
         string codeContent,
         Func<CancellationToken, Task<bool>> sendPass,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        DateTime? receivedUtc = null,
+        string? eventId = null)
     {
         ArgumentNullException.ThrowIfNull(codeContent);
         ArgumentNullException.ThrowIfNull(sendPass);
+        if (eventId is not null && string.IsNullOrWhiteSpace(eventId))
+            throw new ArgumentException("A scan event identity cannot be empty.", nameof(eventId));
 
-        var mutationLock = await _store.AcquireMutationLockAsync(ct).ConfigureAwait(false);
-        ProductionOrder? order = null;
-        int total;
-        int scanned;
-        PoScanResult outcome;
-        try
+        ct.ThrowIfCancellationRequested();
+        PoScanMutation mutation;
+        lock (_gate)
         {
-            lock (_gate)
-            {
-                order = _current;
-            }
-
+            var order = _current;
             var validation = ValidateCode(codeContent);
             if (validation != PoCodeValidation.Valid || order is null)
                 return new PoScanResult(validation, false, false, order?.OrderNo ?? string.Empty);
-
-            ct.ThrowIfCancellationRequested();
-            var committed = await _store
-                .MarkScannedAsync(order.OrderNo, order.CreatedUtc, codeContent, ct)
-                .ConfigureAwait(false);
-            if (!committed)
-            {
-                var latestValidation = _cache.IsScanned(codeContent) || _cache.IsActivated(codeContent)
-                    ? PoCodeValidation.Duplicate
-                    : _cache.Contains(codeContent)
-                        ? PoCodeValidation.Halted
-                        : PoCodeValidation.InvalidForOrder;
-                if (latestValidation == PoCodeValidation.Halted)
-                    _halted = true;
-                return new PoScanResult(latestValidation, false, false, order.OrderNo);
-            }
-
-            // The durable PO row is authoritative. Publish it to the live cache
-            // before physical PLC I/O so a failed write never reopens this code.
-            _cache.MarkScanned(codeContent);
-            total = _cache.ValidCount;
-            scanned = _cache.ScannedCount;
-
-            bool? plcWritten;
-            string? plcMessage = null;
-            try
-            {
-                plcWritten = await sendPass(ct).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                plcWritten = null;
-                plcMessage = ex.Message;
-            }
-
-            outcome = new PoScanResult(PoCodeValidation.Valid, plcWritten, true, order.OrderNo,
-                Message: plcMessage);
-        }
-        finally
-        {
-            mutationLock.Dispose();
+            validation = _cache.ValidateAndAccept(order.OrderNo, codeContent, accept: true);
+            if (validation != PoCodeValidation.Valid)
+                return new PoScanResult(validation, false, false, order.OrderNo);
+            mutation = new PoScanMutation(eventId ?? Guid.NewGuid().ToString("N"),
+                order.OrderNo, order.CreatedUtc, codeContent, receivedUtc ?? DateTime.UtcNow);
+            _completionPending = _cache.ValidCount > 0 && _cache.ScannedCount >= _cache.ValidCount;
         }
 
-        if (total > 0 && scanned >= total)
+        bool? plcWritten;
+        string? plcMessage = null;
+        try
         {
-            try
-            {
-                await TryAutoCompleteAsync(order, total, CancellationToken.None).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _halted = true;
-                await PersistHaltBestEffortAsync(order, ex).ConfigureAwait(false);
-                outcome = outcome with
-                {
-                    ProductionHalted = true,
-                    Message = "Pass was committed, but PO completion failed; production was halted.",
-                };
-                RaiseChanged();
-            }
+            plcWritten = await sendPass(ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            plcWritten = null;
+            plcMessage = ex.Message;
         }
 
         RaiseChanged();
-        return outcome;
+        return new PoScanResult(PoCodeValidation.Valid, plcWritten, true, mutation.OrderNo,
+            Message: plcMessage) { Mutation = mutation };
     }
 
-    [Obsolete("Use ProcessCodeAsync so PO state commits before sending PLC Pass.")]
+    [Obsolete("Use ProcessCodeAsync with reserved app persistence capacity.")]
     public async Task MarkCodeScannedAsync(string codeContent, CancellationToken ct = default)
     {
         using var mutationLock = await _store.AcquireMutationLockAsync(ct).ConfigureAwait(false);
@@ -945,169 +991,6 @@ public sealed class ProductionOrderService
         MarkCodeScannedAsync(PoStore.BuildCodeKey(gtin, serial), ct);
 
     /// <summary>
-    /// Gửi các mã đã quét nhưng chưa kích hoạt từ mọi PO local lên server.
-    /// </summary>
-    /// <returns>Số mã đã kích hoạt thành công.</returns>
-    public async Task<int> ActivatePendingAsync(CancellationToken ct = default)
-    {
-        await _activationGate.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            var activatedCount = 0;
-            var localOrders = await _store.ListLocalOrdersAsync(ct).ConfigureAwait(false);
-            foreach (var local in localOrders)
-            {
-                ct.ThrowIfCancellationRequested();
-                var pending = await _store
-                    .GetPendingActivationCodesAsync(local.OrderNo, local.CreatedUtc, ct)
-                    .ConfigureAwait(false);
-                if (pending.Count == 0)
-                    continue;
-
-                PoActivateResult result;
-                try
-                {
-                    result = await _client
-                        .ActivateAsync(local.OrderNo, pending, ct)
-                        .ConfigureAwait(false);
-                }
-                catch (OperationCanceledException) when (ct.IsCancellationRequested)
-                {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    _logger?.LogWarning(ex,
-                        "Kích hoạt PO {OrderNo} thất bại; mã sẽ được thử lại ở chu kỳ sau.", local.OrderNo);
-                    continue;
-                }
-
-                if (!result.Ok)
-                {
-                    _logger?.LogWarning(
-                        "Gửi kích hoạt PO {OrderNo} thất bại: {Message}", local.OrderNo, result.Message);
-                    continue;
-                }
-
-                // Persist the acknowledgement against its source PO. A network await
-                // may have switched the active cache to another order.
-                var mutationLock = await _store.AcquireMutationLockAsync(CancellationToken.None)
-                    .ConfigureAwait(false);
-                try
-                {
-                    await _store
-                        .MarkActivatedAsync(local.OrderNo, local.CreatedUtc, pending, CancellationToken.None)
-                        .ConfigureAwait(false);
-
-                    var cacheStillMatches = false;
-                    lock (_gate)
-                    {
-                        cacheStillMatches = _current is not null
-                            && string.Equals(_current.OrderNo, local.OrderNo, StringComparison.OrdinalIgnoreCase)
-                            && string.Equals(_cache.OrderNo, local.OrderNo, StringComparison.OrdinalIgnoreCase);
-                    }
-
-                    if (cacheStillMatches)
-                    {
-                        foreach (var code in pending)
-                            _cache.MarkActivated(code);
-                    }
-                }
-                finally
-                {
-                    mutationLock.Dispose();
-                }
-
-                var count = result.Activated > 0 ? result.Activated : pending.Count;
-                activatedCount += count;
-                _logger?.LogInformation(
-                    "Đã kích hoạt {Count} mã của PO {OrderNo}.", count, local.OrderNo);
-                RaiseChanged();
-            }
-
-            return activatedCount;
-        }
-        finally
-        {
-            _activationGate.Release();
-        }
-    }
-
-    /// <summary>
-    /// Tìm các mã trong batch đã từng xuất hiện trong lịch sử quét của hệ thống.
-    ///
-    /// <para>
-    /// Đọc tập serial đã thấy từ DB log quét rồi đối chiếu với batch mã chờ
-    /// kích hoạt — tập serial đã thấy nhỏ hơn nhiều so với toàn bộ mã PO.
-    /// </para>
-    /// </summary>
-    private async Task<IReadOnlyList<string>> FindHistoryConflictsAsync(
-        string orderNo,
-        IReadOnlyList<string> pending,
-        CancellationToken ct)
-    {
-        var seen = await GetSeenCodeContentsAsync(orderNo, ct).ConfigureAwait(false);
-
-        var conflicts = new List<string>();
-        foreach (var serial in pending)
-        {
-            if (seen.Contains(serial))
-            {
-                conflicts.Add(serial);
-            }
-        }
-
-        return conflicts;
-    }
-
-    /// <summary>
-    /// Lấy tập serial đã từng xuất hiện trong lịch sử quét (trừ PO hiện tại).
-    /// </summary>
-    private async Task<HashSet<string>> GetSeenCodeContentsAsync(
-        string orderNo,
-        CancellationToken ct)
-    {
-        if (_scanLog is null)
-        {
-            return new HashSet<string>(StringComparer.Ordinal);
-        }
-
-        var codeContents = await _scanLog.GetSeenCodeContentsAsync(orderNo, ct).ConfigureAwait(false);
-        return new HashSet<string>(codeContents, StringComparer.Ordinal);
-    }
-
-    /// <summary>
-    /// Dừng máy: đặt cờ halt, huỷ PO và phát sự kiện cảnh báo.
-    /// </summary>
-    private async Task HaltAsync(
-        ProductionOrder order,
-        IReadOnlyList<string> conflicts,
-        CancellationToken ct)
-    {
-        using var mutationLock = await _store.AcquireMutationLockAsync(ct).ConfigureAwait(false);
-        _halted = true;
-
-        _logger?.LogError(
-            "Phát hiện {Count} mã đã từng quét trong lịch sử hệ thống: {Serials}. Đã dừng máy.",
-            conflicts.Count, string.Join(", ", conflicts));
-
-        await _store.MarkCancelledAsync(order.OrderNo, order.CreatedUtc, ct)
-            .ConfigureAwait(false);
-        await _history.CancelRunAsync(order.OrderNo, ct).ConfigureAwait(false);
-
-        lock (_gate)
-        {
-            _current = null;
-            _currentStatus = ProductionOrderStatus.Available;
-        }
-
-        _cache.Clear();
-
-        HistoryConflict?.Invoke(this, conflicts);
-        RaiseChanged();
-    }
-
-    /// <summary>
     /// Tự động hoàn tất PO khi đã quét đủ 100%.
     /// </summary>
     private async Task TryAutoCompleteAsync(
@@ -1158,7 +1041,21 @@ public sealed class ProductionOrderService
     }
 
     /// <summary>Báo cho UI biết PO đã thay đổi.</summary>
-    private void RaiseChanged() => Changed?.Invoke(this, EventArgs.Empty);
+    private void RaiseChanged()
+    {
+        // UI observers must never prevent the caller from publishing an already
+        // accepted scan mutation after physical PLC I/O.
+        if (Changed is not { } changed)
+            return;
+        foreach (EventHandler observer in changed.GetInvocationList())
+        {
+            try { observer(this, EventArgs.Empty); }
+            catch (Exception error)
+            {
+                _logger?.LogError(error, "PO Changed observer failed.");
+            }
+        }
+    }
 }
 
 /// <summary>

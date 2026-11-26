@@ -174,8 +174,7 @@ public sealed class MultiConnectConfig
 /// <summary>
 /// Cấu hình server quản lý Production Order (mục "Po").
 ///
-/// Khớp với <c>PoOptions</c>: địa chỉ server, thư mục DB, chu kỳ gửi mã
-/// kích hoạt và số mã mẫu sinh cho mỗi PO.
+/// Khớp với <c>PoOptions</c>: địa chỉ server, thư mục DB và số mã mẫu mỗi PO.
 /// </summary>
 [ConfigSection(
     Key = "Po",
@@ -190,12 +189,6 @@ public sealed class PoConfig
 
     [ConfigField("Thư mục lưu PO", Order = 2, Placeholder = "VD: logs/po", RequiresRestart = true)]
     [JsonPropertyName("DbRoot")] public string DbRoot { get; set; } = "logs/po";
-
-    [ConfigField("Chu kỳ kích hoạt (ms)", Order = 3, Min = 200, Max = 600000, Increment = 100, RequiresRestart = true)]
-    [JsonPropertyName("ActivationIntervalMs")] public int ActivationIntervalMs { get; set; } = 2500;
-
-    [ConfigField("Tự động kích hoạt", Order = 4, RequiresRestart = true, HelpText = "Gửi mã kích hoạt định kỳ.")]
-    [JsonPropertyName("AutoActivate")] public bool AutoActivate { get; set; } = true;
 
     [ConfigField("Số mã mẫu / PO", Order = 5, Min = 0, Max = 10000, RequiresRestart = true)]
     [JsonPropertyName("CodeSampleSize")] public int CodeSampleSize { get; set; } = 100;

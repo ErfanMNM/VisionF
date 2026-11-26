@@ -67,8 +67,6 @@ AppConfigSnapshot NewSnapshot() => new()
     {
         BaseUrl = "http://127.0.0.1:5080",
         DbRoot = "logs/po",
-        ActivationIntervalMs = 2500,
-        AutoActivate = true,
         CodeSampleSize = 100,
     },
     Web = new WebConfig { Url = "https://estrace.checkee.vn", Enabled = true },
@@ -262,10 +260,6 @@ Check("PO BaseUrl sai scheme -> bao loi", !ConfigValidation.Validate(s, out var 
 s = NewSnapshot();
 s.Po.DbRoot = "";
 Check("PO DbRoot rong -> bao loi", !ConfigValidation.Validate(s, out var e22), e22 ?? "");
-
-s = NewSnapshot();
-s.Po.ActivationIntervalMs = 0;
-Check("PO Activation <= 0 -> bao loi", !ConfigValidation.Validate(s, out var e23), e23 ?? "");
 
 s = NewSnapshot();
 s.Po.CodeSampleSize = -1;
@@ -580,7 +574,7 @@ File.WriteAllText(testConfig, """
   "Plc": { "Ip": "2.2.2.2", "Port": 9600, "RemoteNode": 0, "LocalNode": 1, "TimeoutMs": 1000, "Retries": 0, "ResultAddress": "D12", "ReadyAddress": "D16", "RefreshIntervalMs": 1000 },
   "Web": { "Url": "https://estrace.checkee.vn", "Enabled": true },
   "Scanner": { "Enabled": true, "Mode": "TcpServer", "TcpHost": "127.0.0.1", "TcpPort": 6999, "ComPort": "COM3", "BaudRate": 9600 },
-  "Po": { "BaseUrl": "http://127.0.0.1:5080", "DbRoot": "logs/po", "ActivationIntervalMs": 2500, "AutoActivate": true, "CodeSampleSize": 100 },
+  "Po": { "BaseUrl": "http://127.0.0.1:5080", "DbRoot": "logs/po", "CodeSampleSize": 100 },
   "Auth": { "DbPath": "logs/users.db", "MaxFailedAttempts": 5, "LockoutMinutes": 5, "Pbkdf2Iterations": 210000, "SeedAdminUser": "admin", "SeedAdminPassword": "secret" },
   "Logging": { "Sqlite": { "Path": "logs/app.db", "MinLevel": "Information", "RetentionDays": 30, "EnableUserActions": true, "BatchSize": 100, "FlushIntervalMs": 1000, "PruneIntervalMs": 3600000 }, "History": { "Enabled": true, "PageSize": 200 } },
   "PlcSettings": { "DbPath": "logs/plc.db" },

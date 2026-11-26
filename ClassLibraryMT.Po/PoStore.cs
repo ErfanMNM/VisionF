@@ -80,6 +80,13 @@ public sealed class PoStore
         return new MutationGateLease(_mutationGate);
     }
 
+    /// <summary>Try lifecycle work without blocking a persistence barrier.</summary>
+    public bool TryAcquireMutationLock(out IDisposable? lease)
+    {
+        lease = _mutationGate.Wait(0) ? new MutationGateLease(_mutationGate) : null;
+        return lease is not null;
+    }
+
     private sealed class MutationGateLease(SemaphoreSlim gate) : IDisposable
     {
         private SemaphoreSlim? _gate = gate;
@@ -961,6 +968,72 @@ public sealed class PoStore
         ct.ThrowIfCancellationRequested();
         await tx.CommitAsync(CancellationToken.None).ConfigureAwait(false);
         return changed;
+    }
+
+    /// <summary>
+    /// Apply accepted scans in one transaction per captured PO identity. Retries
+    /// retain the first persisted scan time and all legacy activation metadata.
+    /// This method deliberately does not take the lifecycle mutation mutex.
+    /// </summary>
+    public async Task MarkScannedBatchAsync(
+        IReadOnlyList<PoScanMutation> mutations,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(mutations);
+        foreach (var group in mutations.GroupBy(item => (item.OrderNo, item.OrderCreatedUtc)))
+        {
+            var path = GetDbPath(group.Key.OrderNo, group.Key.OrderCreatedUtc);
+            if (!File.Exists(path))
+                throw new IOException($"Captured PO database '{group.Key.OrderNo}' was not found.");
+
+            // ReadWrite prevents a deletion race from silently creating an empty PO.
+            await using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+            {
+                DataSource = path,
+                Mode = SqliteOpenMode.ReadWrite,
+            }.ToString());
+            await connection.OpenAsync(ct).ConfigureAwait(false);
+            await using var transaction = (SqliteTransaction)await connection.BeginTransactionAsync(ct)
+                .ConfigureAwait(false);
+            await using (var identity = connection.CreateCommand())
+            {
+                identity.Transaction = transaction;
+                identity.CommandText = "SELECT Key, Value FROM PoMeta WHERE Key IN ('orderNo', 'createdUtc');";
+                var metadata = new Dictionary<string, string>(StringComparer.Ordinal);
+                await using var reader = await identity.ExecuteReaderAsync(ct).ConfigureAwait(false);
+                while (await reader.ReadAsync(ct).ConfigureAwait(false))
+                    metadata[reader.GetString(0)] = reader.GetString(1);
+                if (!metadata.TryGetValue(MetaOrderNo, out var orderNo)
+                    || !string.Equals(orderNo, group.Key.OrderNo, StringComparison.Ordinal)
+                    || !metadata.TryGetValue(MetaCreatedUtc, out var createdText)
+                    || !DateTime.TryParse(createdText, System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.RoundtripKind, out var created)
+                    || created.ToUniversalTime() != group.Key.OrderCreatedUtc.ToUniversalTime())
+                    throw new IOException($"Captured PO identity '{group.Key.OrderNo}' does not match its database.");
+            }
+
+            await using var update = connection.CreateCommand();
+            update.Transaction = transaction;
+            update.CommandText = """
+                UPDATE PoCodes
+                SET ScannedUtc = COALESCE(ScannedUtc, $scannedUtc),
+                    Status = CASE WHEN ActivatedUtc IS NULL THEN 'Scanned' ELSE Status END
+                WHERE Code = $code COLLATE BINARY;
+                """;
+            var code = update.Parameters.Add("$code", SqliteType.Text);
+            var scanned = update.Parameters.Add("$scannedUtc", SqliteType.Text);
+            foreach (var mutation in group)
+            {
+                if (string.IsNullOrWhiteSpace(mutation.EventId))
+                    throw new ArgumentException("Every accepted scan requires an event identity.", nameof(mutations));
+                code.Value = mutation.CodeContent;
+                scanned.Value = mutation.ScannedUtc.ToUniversalTime().ToString("O", System.Globalization.CultureInfo.InvariantCulture);
+                if (await update.ExecuteNonQueryAsync(ct).ConfigureAwait(false) != 1)
+                    throw new IOException($"Accepted scan was not found in captured PO '{mutation.OrderNo}'.");
+            }
+            ct.ThrowIfCancellationRequested();
+            await transaction.CommitAsync(CancellationToken.None).ConfigureAwait(false);
+        }
     }
 
     /// <summary>Atomically mark a PO complete in its local database.</summary>

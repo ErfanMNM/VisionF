@@ -47,46 +47,18 @@ public sealed class PoCreateRequest
     public string Gtin { get; set; } = "";
 }
 
-/// <summary>
-/// Yêu cầu kích hoạt một tập mã của một PO.
-/// </summary>
-public sealed class PoActivateRequest
-{
-    /// <summary>Mã lệnh sản xuất.</summary>
-    public string OrderNo { get; set; } = "";
-
-    /// <summary>Complete CodeContent values to activate.</summary>
-    public List<string> CodeContents { get; set; } = [];
-
-    /// <summary>Legacy API compatibility alias.</summary>
-    [System.Text.Json.Serialization.JsonIgnore]
-    [Obsolete("Use CodeContents.")]
-    public List<string> Serials { get => CodeContents; set => CodeContents = value ?? []; }
-}
-
-/// <summary>
-/// Kết quả trả về của API kích hoạt mã.
-/// </summary>
-public sealed class PoActivateResult
-{
-    /// <summary>True nếu server nhận thành công.</summary>
-    public bool Ok { get; set; }
-
-    /// <summary>Số mã đã được kích hoạt (mới).</summary>
-    public int Activated { get; set; }
-
-    /// <summary>Thông báo (tuỳ chọn).</summary>
-    public string Message { get; set; } = "";
-}
-
-/// <summary>Validation, durable PO commit, and separate PLC write outcome.</summary>
+/// <summary>Atomic RAM acceptance and separate PLC outcome; persistence is completed by the app coordinator.</summary>
 public sealed record PoScanResult(
     PoCodeValidation Validation,
     bool? PlcWritten,
     bool Committed,
     string OrderNo,
     bool ProductionHalted = false,
-    string? Message = null);
+    string? Message = null)
+{
+    /// <summary>Captured accepted mutation for the persistence queue. Committed means RAM acceptance, not a durable SQLite commit.</summary>
+    public PoScanMutation? Mutation { get; init; }
+}
 
 /// <summary>
 /// Legacy compatibility exception for callers that cannot confirm durable PO state.

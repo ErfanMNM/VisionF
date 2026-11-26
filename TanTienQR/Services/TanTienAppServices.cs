@@ -14,6 +14,7 @@ using ClassLibraryMT.MultiConnect;
 using ClassLibraryMT.Scans;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TanTienQR.ViewModels;
@@ -231,15 +232,19 @@ public static class TanTienAppServices
         services.AddSingleton<ConfigEditorViewModel>();
         services.AddSingleton<IDeviceConfigurationApplier, DeviceConfigurationApplier>();
 
+        // One application persistence worker owns scan batching and PO outbox replay.
+        // Replace the library's lazy legacy writer before any consumer resolves it.
+        services.RemoveAll<IScanRecordWriter>();
+        services.AddSingleton<ScanPersistenceWorker>();
+        services.AddSingleton<IScanRecordWriter>(sp => sp.GetRequiredService<ScanPersistenceWorker>());
+        services.AddHostedService(sp => sp.GetRequiredService<ScanPersistenceWorker>());
+
         // ---- Worker chạy nền ----
         services.AddSingleton<CameraSignalWorker>();
         services.AddHostedService(sp => sp.GetRequiredService<CameraSignalWorker>());
 
         // Heartbeat PLC: ghi trạng thái Ready xuống D16 mỗi chu kỳ.
         services.AddHostedService<PlcHeartbeatService>();
-
-        // Worker gửi mã kích hoạt PO định kỳ (>2s/lần).
-        services.AddHostedService<PoActivationWorker>();
 
         // Worker gửi mã đã quét lên Checkee định kỳ (Checkee:SendIntervalMs).
         // Đăng ký singleton + hosted service để UI đọc được trạng thái worker.

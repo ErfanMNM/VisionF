@@ -29,17 +29,6 @@ public interface IPoClient
         CancellationToken ct = default);
 
     /// <summary>
-    /// Gửi danh sách serial cần kích hoạt lên server.
-    /// </summary>
-    /// <param name="orderNo">Mã PO.</param>
-    /// <param name="serials">Danh sách serial (hoặc mã đầy đủ).</param>
-    /// <param name="ct">Token hủy.</param>
-    Task<PoActivateResult> ActivateAsync(
-        string orderNo,
-        IReadOnlyList<string> serials,
-        CancellationToken ct = default);
-
-    /// <summary>
     /// Tạo PO mới trên server.
     /// </summary>
     /// <param name="orderNo">Mã PO.</param>

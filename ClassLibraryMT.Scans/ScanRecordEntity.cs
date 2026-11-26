@@ -36,6 +36,9 @@ public sealed class ScanRecordEntity
     /// </summary>
     public double ProcessingTimeMs { get; set; }
 
+    /// <summary>Milliseconds from camera receipt until the PLC operation completes (ACK or failure).</summary>
+    public double PlcAckTimeMs { get; set; }
+
     /// <summary>Kết quả gửi xuống PLC: Ok / Failed / Skipped.</summary>
     public string PlcResult { get; set; } = ScanPlcResults.Skipped;
 

@@ -4,3 +4,4 @@ using System.Runtime.CompilerServices;
 // (ScanStore, ScanRecordWriter, ScanRecordQuery).
 [assembly: InternalsVisibleTo("ClassLibraryMT.Scans.Tests")]
 [assembly: InternalsVisibleTo("PoTests")]
+[assembly: InternalsVisibleTo("ScanOutboxTests")]

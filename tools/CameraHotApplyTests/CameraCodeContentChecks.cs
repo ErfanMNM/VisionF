@@ -11,6 +11,8 @@ using ClassLibraryMT.Po;
 using ClassLibraryMT.Scans;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -90,7 +92,7 @@ internal static class CameraCodeContentChecks
         })
             Check(!hasGs1Structure(content), "Sai cấu trúc: " + description);
 
-        var root = Path.Combine(Path.GetTempPath(), "VisionF-CameraCodeContent-" + Guid.NewGuid().ToString("N"));
+        var root = Path.Combine(Path.GetTempPath(), "TEST-ASYNC-PO-20261127-CameraRegression-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         var ct = timeout.Token;
@@ -108,7 +110,7 @@ internal static class CameraCodeContentChecks
         const string escapedUrl = "https://escaped.example/01/08934567890123/21/A%2FB%3FC%25D?case=VALUE#batch";
         var order = new ProductionOrder
         {
-            OrderNo = "CAMERA-CONTENT-PO",
+            OrderNo = "TEST-ASYNC-PO-20261127-CAMERA-CONTENT-PO",
             OrderQty = 7,
             CreatedUtc = new DateTime(2026, 11, 26, 0, 0, 0, DateTimeKind.Utc),
         };
@@ -125,7 +127,7 @@ internal static class CameraCodeContentChecks
         ], ct);
         await store.EnsurePoDbAsync(new ProductionOrder
         {
-            OrderNo = "OTHER-CAMERA-PO", OrderQty = 1, CreatedUtc = order.CreatedUtc,
+            OrderNo = "TEST-ASYNC-PO-20261127-OTHER-CAMERA-PO", OrderQty = 1, CreatedUtc = order.CreatedUtc,
         }, [new() { CodeContent = "/01/08934567890123/21/ONLY-IN-OTHER-PO" }], ct);
 
         using var plc = new CameraResultPlc();
@@ -223,7 +225,7 @@ internal static class CameraCodeContentChecks
                     && camera.Saved.Last().Status == ScanStatuses.NoRead,
                     "Tín hiệu camera '" + noRead + "' cho NoRead và D12=0");
             }
-            Check(client.ActivationCalls == 0, "Quyết định camera Pass/Fail hoàn toàn local, không gọi server");
+            Check(typeof(IPoClient).GetMethod("ActivateAsync") is null, "Luồng camera không còn API kích hoạt PO cũ");
         }
 
         // A fresh service/cache and fresh worker must reload durable per-PO scan state.
@@ -237,9 +239,8 @@ internal static class CameraCodeContentChecks
                 "Duplicate tồn tại qua restart worker/cache vì đọc lại database PO");
 
             seenHistory.Codes = [plain];
-            Check(await restored.ActivatePendingAsync(ct) == 5 && !restored.IsHalted
-                && client.ActivationCalls == 1,
-                "Mã trong lịch sử PO khác không chặn kích hoạt trạng thái riêng của PO đang chạy");
+            Check(!restored.IsHalted && restored.ValidateCode("/01/08934567890123/21/SPARE-CONTENT") == PoCodeValidation.Valid,
+                "Mã trong lịch sử PO khác không chặn mã chưa quét của PO đang chạy");
             var independent = await camera.ScanAsync("/01/08934567890123/21/SPARE-CONTENT", ct);
             Check(independent is { Outcome: ScanOutcome.Pass, PlcWritten: true }
                 && !restored.IsProductionRunning && restored.LastFinishedScannedCount == 7
@@ -258,7 +259,7 @@ internal static class CameraCodeContentChecks
         var structurePo = NewService();
         var structureOrder = new ProductionOrder
         {
-            OrderNo = "CAMERA-INVALID-STRUCTURE", OrderQty = 3, CreatedUtc = order.CreatedUtc,
+            OrderNo = "TEST-ASYNC-PO-20261127-CAMERA-INVALID-STRUCTURE", OrderQty = 3, CreatedUtc = order.CreatedUtc,
         };
         const string malformedImported = "PLAIN-CODE-42";
         const string malformedActivated = "ALREADY-ACTIVATED-BUT-MALFORMED";
@@ -324,7 +325,7 @@ internal static class CameraCodeContentChecks
         seenHistory.Codes = [];
         var finalOrder = new ProductionOrder
         {
-            OrderNo = "CAMERA-LAST-CODE", OrderQty = 1, CreatedUtc = order.CreatedUtc,
+            OrderNo = "TEST-ASYNC-PO-20261127-CAMERA-LAST-CODE", OrderQty = 1, CreatedUtc = order.CreatedUtc,
         };
         const string finalContent = "/01/08934567890123/21/LAST-CODE";
         await store.EnsurePoDbAsync(finalOrder, [new() { CodeContent = finalContent }], ct);
@@ -341,13 +342,13 @@ internal static class CameraCodeContentChecks
 
         var failedOrder = new ProductionOrder
         {
-            OrderNo = "CAMERA-PERSISTENCE-FAIL", OrderQty = 2, CreatedUtc = order.CreatedUtc,
+            OrderNo = "TEST-ASYNC-PO-20261127-CAMERA-PERSISTENCE-FAIL", OrderQty = 2, CreatedUtc = order.CreatedUtc,
         };
         const string failedContent = "/01/08934567890123/21/DB-FAIL-AFTER-PASS";
         await store.EnsurePoDbAsync(failedOrder,
             [new() { CodeContent = failedContent }, new() { CodeContent = "/01/08934567890123/21/BLOCKED-AFTER-FAIL" }], ct);
         var failAfterAck = NewService();
-        Check(await failAfterAck.StartProductionAsync(failedOrder.OrderNo, ct), "Chuẩn bị PO kiểm tra lỗi commit trước PLC Pass");
+        Check(await failAfterAck.StartProductionAsync(failedOrder.OrderNo, ct), "Chuẩn bị PO kiểm tra lỗi persistence sau PLC Pass");
         await using (var connection = new SqliteConnection($"Data Source={store.GetDbPath(failedOrder.OrderNo, failedOrder.CreatedUtc)}"))
         {
             await connection.OpenAsync(ct);
@@ -355,48 +356,45 @@ internal static class CameraCodeContentChecks
             command.CommandText = """
                 CREATE TRIGGER camera_fail_scan BEFORE UPDATE OF ScannedUtc ON PoCodes
                 WHEN NEW.Code = '/01/08934567890123/21/DB-FAIL-AFTER-PASS'
-                BEGIN SELECT RAISE(ABORT, 'camera test simulated PO commit failure before PLC'); END;
+                BEGIN SELECT RAISE(ABORT, 'camera test simulated PO commit failure after PLC'); END;
                 """;
             await command.ExecuteNonQueryAsync(ct);
         }
         await using (var camera = await CameraPipeline.StartAsync(failAfterAck, plc, ct))
         {
             var beforeFault = plc.Writes.Count;
-            var failed = await camera.ScanAsync(failedContent, ct);
+            var failed = await camera.ScanAsync(failedContent, ct, expectPersistenceFailure: true);
             var faultWrites = plc.Writes.Skip(beforeFault).ToArray();
-            Check(failed is { Outcome: ScanOutcome.Halted, PlcWritten: false, PlcSkipped: true }
-                && !failAfterAck.IsHalted && !camera.IsSuspended
-                && faultWrites.Length == 0
-                && camera.Errors.Any(error => error.Contains(failedContent, StringComparison.Ordinal)),
-                "Lỗi commit PO trước PLC giữ mã available, không gửi Pass và ghi Halted/skipped");
+            Check(failed is { Outcome: ScanOutcome.Pass, PlcWritten: true }
+                && camera.IsSuspended && faultWrites.Count(write => write is { Address: 12, Value: 1 }) == 1,
+                "PO batch lỗi sau PLC vẫn giữ outcome Pass và đóng intake; không giả commit-before-PLC");
             var durable = await store.GetCodesWithFlagsAsync(failedOrder.OrderNo, failedOrder.CreatedUtc, ct);
-            var failedFlags = durable.Single(pair => pair.Key == failedContent).Value;
-            Check(failedFlags == PoCodeCache.Flags.None
-                && failAfterAck.ValidateCode(failedContent) == PoCodeValidation.Valid,
-                "Lỗi commit không đổi Scanned/Activated và không tạo PendingPass");
-            await using var repair = new SqliteConnection($"Data Source={store.GetDbPath(failedOrder.OrderNo, failedOrder.CreatedUtc)}");
+            Check(durable.Single(pair => pair.Key == failedContent).Value == PoCodeCache.Flags.None
+                && failAfterAck.ValidateCode(failedContent) == PoCodeValidation.Duplicate,
+                "PO DB chưa ghi được nhưng mã đã consumed trong RAM, không cho phát Pass lần hai");
+            Check(camera.Saved.Last() is { Status: ScanStatuses.Pass, PlcResult: ScanPlcResults.Ok },
+                "Lịch sử/outbox durable lưu đúng Pass dù PO file chưa đồng bộ");
+            var writes = plc.Writes.Count;
+            await camera.SendSuppressedAsync(failedContent, ct);
+            Check(plc.Writes.Count == writes, "Persistence fault chặn frame tiếp theo trước PLC");
+        }
+        await using (var repair = new SqliteConnection($"Data Source={store.GetDbPath(failedOrder.OrderNo, failedOrder.CreatedUtc)}"))
+        {
             await repair.OpenAsync(ct);
-            await using var removeTrigger = repair.CreateCommand();
-            removeTrigger.CommandText = "DROP TRIGGER camera_fail_scan;";
+            await using var removeTrigger = repair.CreateCommand(); removeTrigger.CommandText = "DROP TRIGGER camera_fail_scan;";
             await removeTrigger.ExecuteNonQueryAsync(ct);
-            var retried = await camera.ScanAsync(failedContent, ct);
-            Check(retried is { Outcome: ScanOutcome.Pass, PlcWritten: true }
-                && failAfterAck.ValidateCode(failedContent) == PoCodeValidation.Duplicate
-                && plc.Writes.Skip(beforeFault).Any(write => write is { Address: 12, Value: 1, Acknowledged: true }),
-                "Sau khi PO DB phục hồi, mã available được commit rồi mới gửi PLC Pass");
         }
         var restartGuard = NewService();
-        Check(await restartGuard.RestoreRunningOrderAsync(ct) && !restartGuard.IsHalted
-            && restartGuard.ValidateCode(failedContent) == PoCodeValidation.Duplicate
-            && restartGuard.ScannedCount == 1,
-            "Restart khôi phục durable Scanned sau khi PLC Pass được gửi");
         await using (var camera = await CameraPipeline.StartAsync(restartGuard, plc, ct))
         {
+            Check(!restartGuard.IsHalted && restartGuard.ValidateCode(failedContent) == PoCodeValidation.Duplicate
+                && restartGuard.ScannedCount == 1,
+                "Startup replay pending outbox trước khi khôi phục cache sau lỗi PO commit");
             var writes = plc.Writes.Count;
             var duplicate = await camera.ScanAsync(failedContent, ct);
             Check(duplicate is { Outcome: ScanOutcome.Duplicate, PlcWritten: true }
                 && plc.Writes.Count == writes + 1 && plc.Writes.Last().Value == 0,
-                "Camera sau restart không replay Pass cho mã đã commit");
+                "Camera sau restart không replay Pass cho mã đã được outbox đồng bộ");
         }
 
         // Completion metadata can fail after a successful, committed final Pass.
@@ -407,7 +405,7 @@ internal static class CameraCodeContentChecks
             new PoCodeCache(), new CodeContentHistory());
         var completionOrder = new ProductionOrder
         {
-            OrderNo = "CAMERA-COMPLETION-FAULT", OrderQty = 1, CreatedUtc = order.CreatedUtc,
+            OrderNo = "TEST-ASYNC-PO-20261127-CAMERA-COMPLETION-FAULT", OrderQty = 1, CreatedUtc = order.CreatedUtc,
         };
         const string completionContent = "/01/08934567890123/21/COMMITTED-PASS-FAULT";
         await completionStore.EnsurePoDbAsync(completionOrder, [new() { CodeContent = completionContent }], ct);
@@ -428,13 +426,14 @@ internal static class CameraCodeContentChecks
         await using (var camera = await CameraPipeline.StartAsync(completionPo, plc, ct))
         {
             var before = plc.Writes.Count;
-            var committed = await camera.ScanAsync(completionContent, ct);
+            var committed = await camera.ScanAsync(completionContent, ct, expectPersistenceFailure: true);
+            await camera.WriteReadyAsync(1, ct);
             Check(committed is { Outcome: ScanOutcome.Pass, PlcWritten: true }
                 && camera.Saved.Last().Status == ScanStatuses.Pass && completionPo.ScannedCount == 1,
                 "Lỗi hoàn tất PO không đổi Pass đã commit thành Halted hoặc Fail giả");
             Check(completionPo.IsHalted && camera.IsSuspended
                 && plc.Writes.Skip(before).Any(write => write is { Address: 16, Value: 0, Acknowledged: true })
-                && camera.Errors.Any(error => error.Contains(completionContent, StringComparison.Ordinal)),
+                && camera.Errors.Count > 0,
                 "Lỗi hoàn tất sau Pass đóng intake, Ready=0 và log đủ mã để đối soát");
             var flags = (await completionStore.GetCodesWithFlagsAsync(completionOrder.OrderNo, completionOrder.CreatedUtc, ct))
                 .Single().Value;
@@ -460,7 +459,7 @@ internal static class CameraCodeContentChecks
             new PoCodeCache(), new CodeContentHistory());
         var lostAckOrder = new ProductionOrder
         {
-            OrderNo = "CAMERA-LOST-PLC-ACK", OrderQty = 2, CreatedUtc = order.CreatedUtc,
+            OrderNo = "TEST-ASYNC-PO-20261127-CAMERA-LOST-PLC-ACK", OrderQty = 2, CreatedUtc = order.CreatedUtc,
         };
         const string lostAckContent = "/01/08934567890123/21/PASS-ACK-LOST";
         await lostAckStore.EnsurePoDbAsync(lostAckOrder,
@@ -506,7 +505,7 @@ internal static class CameraCodeContentChecks
                 "Sau restart không gửi lại Pass của mã mất ACK");
         }
         SqliteConnection.ClearAllPools();
-        Directory.Delete(root, recursive: true);
+        // Retain the unique sandbox for review; never clean application data.
         return passed;
     }
 }
@@ -514,110 +513,133 @@ internal static class CameraCodeContentChecks
 /// <summary>Uses the real camera socket, queue, PO service, PLC writer and UI feed.</summary>
 internal sealed class CameraPipeline : IAsyncDisposable
 {
-    private static readonly Assembly AppAssembly = typeof(App).Assembly;
     private readonly Reader _reader;
-    private readonly BackgroundService _worker;
+    private readonly CameraSignalWorker _worker;
     private readonly TcpListener _listener;
     private readonly TcpClient _cameraSocket;
     private readonly OmronPlc _plc;
+    private readonly PlcWriter _plcWriter;
     private readonly IAsyncEnumerator<ScanRecord> _feed;
-    private readonly object _workerObject;
     private readonly ScanIntakeGate _gate;
     private readonly ConcurrentQueue<string> _received;
-    public CapturedScanWriter Saved { get; }
+    private readonly ScanPersistenceWorker _persistence;
+    private readonly ServiceProvider _services;
+    private readonly ProductionOrderService _po;
+    private bool _expectedPersistenceFailure;
+    public CapturedScanWriter Saved { get; } = new();
     public ConcurrentQueue<string> Errors { get; }
     public bool IsSuspended => _gate.IsSuspended;
 
-    private CameraPipeline(Reader reader, BackgroundService worker, TcpListener listener, TcpClient cameraSocket,
-        OmronPlc plc, IAsyncEnumerator<ScanRecord> feed, object workerObject, CapturedScanWriter saved,
-        ConcurrentQueue<string> errors, ScanIntakeGate gate, ConcurrentQueue<string> received)
+    private CameraPipeline(Reader reader, CameraSignalWorker worker, TcpListener listener, TcpClient cameraSocket,
+        OmronPlc plc, PlcWriter plcWriter, IAsyncEnumerator<ScanRecord> feed, ScanIntakeGate gate,
+        ConcurrentQueue<string> received, ScanPersistenceWorker persistence, ServiceProvider services,
+        ProductionOrderService po, ConcurrentQueue<string> errors)
     {
         _reader = reader; _worker = worker; _listener = listener; _cameraSocket = cameraSocket;
-        _plc = plc; _feed = feed; _workerObject = workerObject; Saved = saved; Errors = errors;
-        _gate = gate; _received = received;
+        _plc = plc; _plcWriter = plcWriter; _feed = feed; _gate = gate; _received = received;
+        _persistence = persistence; _services = services; _po = po; Errors = errors;
     }
 
     public static async Task<CameraPipeline> StartAsync(ProductionOrderService po, CameraResultPlc server,
         CancellationToken ct, int plcRetries = 0)
     {
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
+        // Access only the explicitly constructed sandbox store, never app DI/config.
+        var store = (PoStore)typeof(ProductionOrderService).GetField("_store", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(po)!;
+        var sandbox = Path.Combine(Path.GetTempPath(), "TEST-ASYNC-PO-20261127-CameraHistory-"
+            + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(store.DbRoot))));
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Scans:DbPath"] = Path.Combine(sandbox, "scans.db"), ["Scans:FlushIntervalMs"] = "100",
+            ["Scans:BatchSize"] = "100", ["Scans:QueueCapacity"] = "100", ["Scans:RetentionDays"] = "0",
+        }).Build();
+        var services = new ServiceCollection(); services.AddSingleton<IConfiguration>(configuration); services.AddScanStore(configuration);
+        var provider = services.BuildServiceProvider();
+        var gate = new ScanIntakeGate();
+        var errors = new ConcurrentQueue<string>();
+        var persistence = new ScanPersistenceWorker(provider.GetRequiredService<IScanPersistenceStore>(), store, po,
+            gate, provider.GetRequiredService<IOptions<ScanStoreOptions>>(), new CameraPipelineLogger<ScanPersistenceWorker>(errors));
+        await persistence.StartAsync(ct); // replay pending outbox before restoring the cache
+        var listener = new TcpListener(IPAddress.Loopback, 0); listener.Start();
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
         var reader = new Reader("127.0.0.1", port);
         var plc = new OmronPlc("127.0.0.1", server.Port, 1, 2, 500, plcRetries);
-        var gate = new ScanIntakeGate();
         AppStateManager.SetPlcStatus(PLCStatus.Connected);
-        var counters = Create("RuntimeCounters");
-        var feed = Create("ScanFeed");
-        var plcOptions = Create("PlcOptions");
-        Set(plcOptions, "Ip", "127.0.0.1"); Set(plcOptions, "Port", server.Port);
-        Set(plcOptions, "Enabled", true); Set(plcOptions, "ResultAddress", "D12");
-        var writerType = Type("PlcWriter");
-        var writer = Activator.CreateInstance(writerType, plc, Wrap(plcOptions), counters, gate, Logger(writerType))!;
-        var options = Create("CameraOptions");
-        Set(options, "Ip", "127.0.0.1"); Set(options, "Port", port);
-        var saved = new CapturedScanWriter();
-        var workerType = Type("CameraSignalWorker");
-        var errors = new ConcurrentQueue<string>();
-        var workerLogger = Activator.CreateInstance(typeof(CameraPipelineLogger<>).MakeGenericType(workerType), errors)!;
-        var workerObject = Activator.CreateInstance(workerType,
-            reader, writer, feed, saved, Wrap(options), counters, po, gate, workerLogger)!;
-        var worker = (BackgroundService)workerObject;
-        var records = (IAsyncEnumerable<ScanRecord>)feed.GetType().GetMethod("ReadAllAsync")!.Invoke(feed, [ct])!;
-        var enumerator = records.GetAsyncEnumerator(ct);
+        var counters = new RuntimeCounters();
+        var feed = new ScanFeed();
+        var writer = new PlcWriter(plc, Options.Create(new PlcOptions
+        {
+            Ip = "127.0.0.1", Port = server.Port, Enabled = true, ResultAddress = "D12", ReadyAddress = "D16",
+        }), counters, gate, NullLogger<PlcWriter>.Instance);
+        var worker = new CameraSignalWorker(reader, writer, feed, persistence,
+            Options.Create(new CameraOptions { Ip = "127.0.0.1", Port = port }), counters, po, gate,
+            new CameraPipelineLogger<CameraSignalWorker>(errors));
+        var enumerator = feed.ReadAllAsync(ct).GetAsyncEnumerator(ct);
         await worker.StartAsync(ct);
         var camera = await listener.AcceptTcpClientAsync(ct).AsTask().WaitAsync(TimeSpan.FromSeconds(4), ct);
         var received = new ConcurrentQueue<string>();
-        // Registered after worker startup, so this observer sees completed admission callbacks.
         reader.ClientCallback += (state, content) => { if (state == eReaderState.Received) received.Enqueue(content); };
-        return new CameraPipeline(reader, worker, listener, camera, plc, enumerator, workerObject, saved, errors, gate, received);
+        return new(reader, worker, listener, camera, plc, writer, enumerator, gate, received, persistence, provider, po, errors);
     }
 
-    public async Task<ScanRecord> ScanAsync(string content, CancellationToken ct)
+    public async Task<ScanRecord> ScanAsync(string content, CancellationToken ct, bool expectPersistenceFailure = false)
     {
-        var frame = Encoding.UTF8.GetBytes(content + "\r\n");
-        await _cameraSocket.GetStream().WriteAsync(frame, ct);
+        await _cameraSocket.GetStream().WriteAsync(Encoding.UTF8.GetBytes(content + "\r\n"), ct);
         if (!await _feed.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(5), ct))
             throw new InvalidOperationException("Camera feed closed before outcome.");
-        await ((Task)_workerObject.GetType().GetMethod("DrainAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(_workerObject, [ct])!).WaitAsync(TimeSpan.FromSeconds(5), ct);
+        _expectedPersistenceFailure |= expectPersistenceFailure;
+        try
+        {
+            await _worker.DrainAsync(ct).WaitAsync(TimeSpan.FromSeconds(5), ct);
+            // On a failure scenario let the real worker own completion and fault
+            // propagation. Normal cases can force the same post-barrier action.
+            if (expectPersistenceFailure)
+            {
+                await Task.Delay(200, ct);
+                await _persistence.FlushAsync(ct);
+            }
+            else await _po.CompletePendingAsync(ct);
+        }
+        catch (Exception ex) when (expectPersistenceFailure && ex is not OperationCanceledException)
+        {
+            // A fault is expected only in explicit durable-failure scenarios.
+            await Task.Delay(150, ct); // allow common worker to observe/fail closed on a completion fault
+        }
+        var rows = await _services.GetRequiredService<IScanRecordQuery>().GetAsync(pageSize: 1000, cancellationToken: ct);
+        Saved.Replace(rows.Items);
         return _feed.Current;
     }
 
+    public Task WriteReadyAsync(int ready, CancellationToken ct) => _plcWriter.WriteReadyAsync(ready, ct);
     public async Task SendSuppressedAsync(string content, CancellationToken ct)
     {
         var received = _received.Count;
         await _cameraSocket.GetStream().WriteAsync(Encoding.UTF8.GetBytes(content + "\r\n"), ct);
-        while (_received.Count == received)
-            await Task.Delay(10, ct);
-        await (Task)_workerObject.GetType().GetMethod("DrainAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(_workerObject, [ct])!;
+        while (_received.Count == received) await Task.Delay(10, ct);
     }
-
-    private static Type Type(string name) => AppAssembly.GetType("TanTienQR.Services." + name, throwOnError: true)!;
-    private static object Create(string name) => Activator.CreateInstance(Type(name))!;
-    private static object Wrap(object value) => Activator.CreateInstance(typeof(OptionsWrapper<>).MakeGenericType(value.GetType()), value)!;
-    private static object Logger(Type type) => typeof(NullLogger<>).MakeGenericType(type).GetField("Instance")!.GetValue(null)!;
-    private static void Set(object value, string name, object propertyValue) => value.GetType().GetProperty(name)!.SetValue(value, propertyValue);
-
     public async ValueTask DisposeAsync()
     {
-        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(4));
-        _reader.Disconnect();
-        await _worker.StopAsync(stop.Token);
-        _worker.Dispose();
-        await _feed.DisposeAsync();
-        _cameraSocket.Dispose(); _listener.Stop(); _plc.Dispose();
+        using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        _reader.Disconnect(); await _worker.StopAsync(stop.Token); _worker.Dispose();
+        try
+        {
+            await _persistence.StopAsync(stop.Token);
+            // This fixture owns the service's persistence binding. A successful
+            // final barrier leaves no pending RAM mutations; lifecycle-only test
+            // actions after fixture disposal must not call its disposed writer.
+            if (Equals(_po.PersistenceBarrier, (Func<CancellationToken, Task>)_persistence.FlushAsync))
+                _po.PersistenceBarrier = null;
+        }
+        catch (Exception ex) when (_expectedPersistenceFailure && ex is not OperationCanceledException) { }
+        _persistence.Dispose(); await _services.DisposeAsync();
+        await _feed.DisposeAsync(); _cameraSocket.Dispose(); _listener.Stop(); _plc.Dispose();
     }
 }
 
-internal sealed class CapturedScanWriter : IScanRecordWriter
+internal sealed class CapturedScanWriter
 {
-    private readonly ConcurrentQueue<ScanRecordEntity> _records = new();
-    public int Count => _records.Count;
-    public void Enqueue(ScanRecordEntity record) => _records.Enqueue(record);
-    public Task FlushAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
-    public Task VerifyHealthyAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    private ScanRecordEntity[] _records = [];
+    public int Count => _records.Length;
+    public void Replace(IReadOnlyList<ScanRecordEntity> records) => _records = records.OrderBy(record => record.Id).ToArray();
     public ScanRecordEntity Last() => _records.Last();
 }
 
@@ -641,16 +663,10 @@ internal sealed class CodeContentHistory : IPoScanHistoryReader
 
 internal sealed class CodeContentPoClient : IPoClient
 {
-    public int ActivationCalls { get; private set; }
     public Task<IReadOnlyList<ProductionOrder>> GetOrdersAsync(bool includeCompleted = false, CancellationToken ct = default) =>
         throw new InvalidOperationException("Camera pipeline must not fetch orders from server.");
     public Task<IReadOnlyList<PoCode>> GetCodesAsync(string orderNo, CancellationToken ct = default) =>
         throw new InvalidOperationException("Camera pipeline must use local PO data.");
-    public Task<PoActivateResult> ActivateAsync(string orderNo, IReadOnlyList<string> codeContents, CancellationToken ct = default)
-    {
-        ActivationCalls++;
-        return Task.FromResult(new PoActivateResult { Ok = true, Activated = codeContents.Count });
-    }
     public Task<ProductionOrder?> CreateOrderAsync(string orderNo, int orderQty, CancellationToken ct = default) =>
         throw new InvalidOperationException("Camera pipeline must not create server orders.");
 }

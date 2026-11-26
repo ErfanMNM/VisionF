@@ -11,6 +11,7 @@ internal sealed class PlcHeartbeatService : BackgroundService
 {
     private readonly PlcWriter _writer;
     private readonly ProductionOrderService? _po;
+    private readonly ScanIntakeGate? _intake;
     private readonly ILogger<PlcHeartbeatService> _logger;
 
     public PlcHeartbeatService(PlcWriter writer, IOptions<PlcOptions> options,
@@ -21,9 +22,10 @@ internal sealed class PlcHeartbeatService : BackgroundService
     }
 
     public PlcHeartbeatService(PlcWriter writer, IOptions<PlcOptions> options,
-        ILogger<PlcHeartbeatService> logger, ProductionOrderService po) : this(writer, options, logger)
+        ILogger<PlcHeartbeatService> logger, ProductionOrderService po, ScanIntakeGate? intake = null) : this(writer, options, logger)
     {
         _po = po;
+        _intake = intake;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -75,7 +77,7 @@ internal sealed class PlcHeartbeatService : BackgroundService
     private async Task TickAsync(CancellationToken ct)
     {
         var before = GlobalVariables.PLCStatus;
-        await _writer.WriteReadyAsync(_po?.IsHalted == true ? 0 : GlobalVariables.Ready, ct).ConfigureAwait(false);
+        await _writer.WriteReadyAsync(_po?.IsHalted == true || _po?.IsCompletionPending == true || _intake?.IsSuspended == true ? 0 : GlobalVariables.Ready, ct).ConfigureAwait(false);
         await _writer.ReadCountersAsync(ct).ConfigureAwait(false);
         var after = GlobalVariables.PLCStatus;
         if (after == PLCStatus.Connected)

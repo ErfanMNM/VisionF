@@ -127,42 +127,6 @@ public sealed class PoClient : IPoClient, IDisposable
     }
 
     /// <summary>
-    /// Gửi yêu cầu kích hoạt một tập mã của PO.
-    /// </summary>
-    public async Task<PoActivateResult> ActivateAsync(
-        string orderNo,
-        IReadOnlyList<string> serials,
-        CancellationToken ct = default)
-    {
-        var request = new PoActivateRequest
-        {
-            OrderNo = orderNo,
-            CodeContents = [.. serials],
-        };
-
-        using var content = JsonContent.Create(
-            request, PoJsonContext.Default.PoActivateRequest);
-        using var response = await _http
-            .PostAsync("api/activate", content, ct)
-            .ConfigureAwait(false);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            return new PoActivateResult
-            {
-                Ok = false,
-                Message = $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}",
-            };
-        }
-
-        var result = await response.Content
-            .ReadFromJsonAsync(PoJsonContext.Default.PoActivateResult, ct)
-            .ConfigureAwait(false);
-
-        return result ?? new PoActivateResult { Ok = false, Message = "Phản hồi rỗng." };
-    }
-
-    /// <summary>
     /// Tạo một PO mới trên server (tuỳ chọn — thường chỉ dùng khi test).
     /// </summary>
     public async Task<ProductionOrder?> CreateOrderAsync(
