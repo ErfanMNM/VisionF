@@ -43,16 +43,111 @@ await using (var test = new SendTestSession(" 08934567890123 "))
     var payload = test.Http.Payloads.Single();
     var codes = payload.GetProperty("serialNumbers").EnumerateArray().Select(value => value.GetString()).ToArray();
     Check(codes.SequenceEqual(new[] { fullCode, second.CodeContent, caseVariant.CodeContent }),
-        "serialNumbers giữ nguyên CodeContent dài, Unicode, GS, khoảng trắng và hoa thường; không lấy Serial");
+        "Nội dung legacy không phải HTTP/HTTPS URL giữ nguyên Unicode, GS, khoảng trắng và hoa thường; không lấy Serial cũ");
     Check(payload.GetProperty("GTIN").GetString() == "08934567890123"
         && payload.GetProperty("batchCode").GetString() == "PO-01"
         && payload.GetProperty("type").GetString() == "DECLARE", "Giao thức Checkee giữ GTIN/batchCode/type; GTIN ưu tiên cấu hình sản phẩm");
+    Check(payload.TryGetProperty("fromIndex", out var fromIndex)
+        && fromIndex.ValueKind == JsonValueKind.Number && fromIndex.GetInt32() == 0
+        && payload.TryGetProperty("toIndex", out var toIndex)
+        && toIndex.ValueKind == JsonValueKind.Number && toIndex.GetInt32() == 0,
+        "Payload kích hoạt luôn gửi fromIndex và toIndex dưới dạng số 0 cùng serialNumbers");
     var rows = await test.RowsAsync();
     Check(rows.Count(row => row.SendStatus == ScanSendStatuses.Sent) == 3
         && rows.All(row => row.CodeContent == failure.CodeContent || row.Status == ScanStatuses.Pass),
         "Thành công chỉ đổi trạng thái gửi, giữ outcome quét Pass");
     Check(await test.Worker.SendPendingAsync() == 0 && test.Http.Payloads.Count == 1,
         "Không gửi lại mã đã Sent trong chu kỳ sau");
+}
+
+const string sampleUrl1 = "https://beta-elink.checkee.vn/01/8935348800215/21/UhtX8gAftf";
+const string sampleUrl2 = "https://beta-elink.checkee.vn/01/8935348800215/21/UlZLEdojrQ";
+await using (var test = new SendTestSession("8935348800215"))
+{
+    test.Options.BatchCode = "A001";
+    test.Options.SerialType = "RANDOM";
+    var first = Pass(sampleUrl1, "A001");
+    var second = Pass(sampleUrl2, "A001");
+    first.Serial = "LEGACY-SERIAL-MUST-NOT-OVERRIDE-URL";
+    second.Serial = "ANOTHER-LEGACY-SERIAL";
+    test.Writer.Enqueue(first);
+    test.Writer.Enqueue(second);
+
+    Check(await test.Worker.SendPendingAsync() == 2, "Hai URL mẫu được gửi qua worker Checkee");
+    var payload = test.Http.Payloads.Single();
+    Check(payload.GetProperty("serialNumbers").EnumerateArray().Select(value => value.GetString())
+        .SequenceEqual(new[] { "UhtX8gAftf", "UlZLEdojrQ" }),
+        "Payload chỉ chứa hai serial sau /21/ theo mẫu A001, không dùng URL hoặc Serial legacy");
+    Check(payload.GetProperty("GTIN").GetString() == "8935348800215"
+        && payload.GetProperty("batchCode").GetString() == "A001"
+        && payload.GetProperty("type").GetString() == "RANDOM"
+        && payload.GetProperty("fromIndex").ValueKind == JsonValueKind.Number
+        && payload.GetProperty("fromIndex").GetInt32() == 0
+        && payload.GetProperty("toIndex").ValueKind == JsonValueKind.Number
+        && payload.GetProperty("toIndex").GetInt32() == 0,
+        "Payload mẫu A001 giữ đúng GTIN, batchCode, RANDOM và hai chỉ số số 0");
+    var rows = await test.RowsAsync();
+    Check(rows.Count == 2 && rows.All(row => row.Status == ScanStatuses.Pass
+        && row.SendStatus == ScanSendStatuses.Sent)
+        && rows.Select(row => row.CodeContent).ToHashSet(StringComparer.Ordinal)
+            .SetEquals(new[] { sampleUrl1, sampleUrl2 })
+        && rows.All(row => row.Raw == row.CodeContent),
+        "Sau gửi, DB vẫn giữ nguyên hai URL trong CodeContent/Raw và kết quả Pass");
+}
+
+using (var handler = new RecordingHttpHandler())
+using (var http = new HttpClient(handler) { BaseAddress = new Uri("https://checkee.invalid/") })
+using (var client = new CheckeeClient(http, new CheckeeOptions
+{
+    BaseUrl = "https://checkee.invalid", ApiKey = "test-only-key", ClientId = "test-only-client",
+}))
+{
+    var inputs = new List<string>
+    {
+        "https://resolver.invalid/prefix/21/ignored/01/8935348800215/21/CaseAb?next=/21/QUERY#x/21/FRAGMENT",
+        "http://resolver.invalid/01/8935348800215/21/AbC%2FDef%3FQ%23Z",
+        "https://resolver.invalid/01/8935348800215/21/Once%252FOnly",
+        "https://resolver.invalid/lookup?next=/21/KEEP#x/21/KEEP",
+        "PlainSerialAbC",
+        "plainserialabc",
+        "https://resolver.invalid/01/8935348800215/21/",
+        "https://resolver.invalid/01/8935348800215/21/AbC/extra",
+        "ftp://resolver.invalid/01/8935348800215/21/Legacy",
+    };
+    var original = inputs.ToArray();
+    var result = await client.ActivateAsync("8935348800215", "A001", "RANDOM", inputs);
+    Check(result.Ok && handler.Payloads.Count == 1, "Client tạo được payload từ URL và serial legacy qua HTTP giả");
+    var serials = handler.Payloads.Single().GetProperty("serialNumbers").EnumerateArray()
+        .Select(value => value.GetString()).ToArray();
+    Check(serials.Length == inputs.Count, "Các serial khác nhau không bị loại nhầm khi chuyển đổi payload");
+    Check(serials[0] == "CaseAb", "Chỉ lấy serial cuối của path, bỏ query/fragment kể cả khi chứa /21/");
+    Check(serials[1] == "AbC/Def?Q#Z" && serials[2] == "Once%2FOnly",
+        "Percent escape trong segment serial được giải mã đúng một lần sau khi tách");
+    Check(serials[3] == original[3], "Không lấy /21/ chỉ xuất hiện trong query hoặc fragment làm serial");
+    Check(serials[4] == "PlainSerialAbC" && serials[5] == "plainserialabc",
+        "Serial thuần legacy giữ nguyên nội dung và phân biệt chữ hoa thường");
+    Check(serials.Skip(6).SequenceEqual(original.Skip(6)),
+        "Path thiếu serial, có segment thừa hoặc scheme không phải HTTP/HTTPS giữ nguyên tương thích");
+    Check(inputs.SequenceEqual(original), "Chuyển đổi payload không sửa danh sách nội dung đầu vào của caller");
+}
+
+await using (var test = new SendTestSession("8935348800215"))
+{
+    var alternateUrl = "https://other-resolver.invalid/01/8935348800215/21/UhtX8gAftf";
+    test.Writer.Enqueue(Pass(sampleUrl1));
+    test.Writer.Enqueue(Pass(alternateUrl));
+    Check(await test.Worker.SendPendingAsync() == 2, "Hai bản ghi khác URL cùng serial đều được cập nhật gửi thành công");
+    var serials = test.Http.Payloads.Single().GetProperty("serialNumbers").EnumerateArray()
+        .Select(value => value.GetString()).ToArray();
+    Check(serials.SequenceEqual(new[] { "UhtX8gAftf" }),
+        "Hai URL khác host cùng serial chỉ gửi một serial trong request Checkee");
+    var rows = await test.RowsAsync();
+    Check(rows.Count == 2 && rows.All(row => row.Status == ScanStatuses.Pass
+        && row.SendStatus == ScanSendStatuses.Sent)
+        && rows.Select(row => row.CodeContent).ToHashSet(StringComparer.Ordinal)
+            .SetEquals(new[] { sampleUrl1, alternateUrl })
+        && rows.All(row => row.Raw == row.CodeContent),
+        "Loại serial trùng ở outbound vẫn giữ hai URL và trạng thái riêng của từng bản ghi local");
 }
 
 await using (var test = new SendTestSession(""))
@@ -246,8 +341,22 @@ sealed class SendTestSession : IAsyncDisposable
         _client.Dispose();
         _httpClient.Dispose();
         await _services.DisposeAsync();
-        SqliteConnection.ClearAllPools();
-        Directory.Delete(_root, recursive: true);
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                SqliteConnection.ClearAllPools();
+                Directory.Delete(_root, recursive: true);
+                break;
+            }
+            catch (IOException) when (attempt < 4)
+            {
+                // Windows có thể còn giữ handle SQLite của tác vụ khởi tạo nền.
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                await Task.Delay(100);
+            }
+        }
     }
 }
 

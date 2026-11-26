@@ -225,8 +225,8 @@ internal sealed class CheckeeSendWorker : BackgroundService
             $"Đang gửi {pending.Count} mã lên Checkee...",
             isError: false);
 
-        // GTIN chỉ là metadata bắt buộc của giao thức Checkee. Định danh mã
-        // gửi trong serialNumbers luôn là CodeContent đầy đủ, không parse QR.
+        // GTIN là metadata của giao thức Checkee. Worker giữ nguyên CodeContent
+        // để đối chiếu bản ghi; client tách serial sau /21/ khi tạo payload gửi.
         var groups = pending
             .GroupBy(r => (Gtin: ResolveProductGtin(r), Batch: NormalizeBatch(r)))
             .ToList();

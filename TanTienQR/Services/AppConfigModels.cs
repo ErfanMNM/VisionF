@@ -293,7 +293,7 @@ public sealed class CheckeeConfig
     [ConfigField("Loại mã TXNG", Order = 10, Options = new[] { "DECLARE", "RANDOM", "INCREASING" }, RequiresRestart = true)]
     [JsonPropertyName("SerialType")] public string SerialType { get; set; } = "DECLARE";
 
-    [ConfigField("GTIN gửi Checkee", Order = 11, Required = false, RequiresRestart = true, HelpText = "Metadata riêng cho API ngoài; không dùng nhận diện mã sản xuất. CodeContent được gửi nguyên văn trong serialNumbers. Thiếu GTIN giữ mã Pending.")]
+    [ConfigField("GTIN gửi Checkee", Order = 11, Required = false, RequiresRestart = true, HelpText = "Metadata riêng cho API ngoài; không dùng nhận diện mã sản xuất. Khi gửi Checkee, URL được tách serial sau /21/; CodeContent lưu tại máy vẫn giữ nguyên. Thiếu GTIN giữ mã Pending.")]
     [JsonPropertyName("ProductGtin")] public string ProductGtin { get; set; } = string.Empty;
 
 }

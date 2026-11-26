@@ -70,6 +70,16 @@ public sealed class CheckeeActivateRequest
     /// <summary>Danh sách mã serial cần kích hoạt.</summary>
     [JsonPropertyName("serialNumbers")]
     public List<string> SerialNumbers { get; set; } = [];
+
+    /// <summary>Chỉ số bắt đầu gửi kèm danh sách mã, luôn bằng 0.</summary>
+    [JsonPropertyName("fromIndex")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public int FromIndex { get; set; }
+
+    /// <summary>Chỉ số kết thúc gửi kèm danh sách mã, luôn bằng 0.</summary>
+    [JsonPropertyName("toIndex")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public int ToIndex { get; set; }
 }
 
 /// <summary>Dữ liệu trả về sau khi kích hoạt mã.</summary>

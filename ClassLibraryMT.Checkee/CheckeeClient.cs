@@ -198,7 +198,7 @@ public sealed class CheckeeClient : IDisposable
     /// <param name="gtin">GTIN sản phẩm.</param>
     /// <param name="batchCode">Mã lô / lệnh sản xuất.</param>
     /// <param name="serialType">Loại mã TXNG (RANDOM / DECLARE / INCREASING).</param>
-    /// <param name="serialNumbers">Danh sách mã serial cần kích hoạt.</param>
+    /// <param name="serialNumbers">Danh sách serial hoặc URL Digital Link; serial sau /21/ được tách khi tạo payload.</param>
     /// <param name="ct">Token hủy.</param>
     /// <returns>Kết quả gửi.</returns>
     public async Task<CheckeeSendResult> ActivateAsync(
@@ -225,7 +225,9 @@ public sealed class CheckeeClient : IDisposable
             Gtin = gtin ?? string.Empty,
             BatchCode = batchCode ?? string.Empty,
             Type = string.IsNullOrWhiteSpace(serialType) ? "DECLARE" : serialType,
-            SerialNumbers = [.. serialNumbers],
+            SerialNumbers = serialNumbers.Select(ExtractSerialNumber).Distinct(StringComparer.Ordinal).ToList(),
+            FromIndex = 0,
+            ToIndex = 0,
         };
 
         // Tối đa 2 lần: nếu token hết hạn (401) thì ép lấy token mới rồi gửi lại.
@@ -345,7 +347,7 @@ public sealed class CheckeeClient : IDisposable
                     };
                 }
 
-                var activated = parsed?.Data?.ActiveSerials ?? serialNumbers.Count;
+                var activated = parsed?.Data?.ActiveSerials ?? payload.SerialNumbers.Count;
 
                 return new CheckeeSendResult
                 {
@@ -365,6 +367,23 @@ public sealed class CheckeeClient : IDisposable
             RawMessage = "Unauthorized",
             IsTransient = false,
         };
+    }
+
+    /// <summary>Tách serial từ path AI 21 của URL khi gửi Checkee, không thay đổi CodeContent đã lưu.</summary>
+    private static string ExtractSerialNumber(string codeContent)
+    {
+        if (!Uri.TryCreate(codeContent, UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            return codeContent;
+
+        var path = uri.AbsolutePath;
+        var marker = path.LastIndexOf("/21/", StringComparison.Ordinal);
+        if (marker < 0) return codeContent;
+
+        var serial = path[(marker + 4)..];
+        return serial.Length > 0 && !serial.Contains('/')
+            ? Uri.UnescapeDataString(serial)
+            : codeContent;
     }
 
     /// <summary>
