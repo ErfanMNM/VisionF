@@ -1,5 +1,7 @@
 using System.Net;
 using ClassLibraryMT.Checkee;
+using ClassLibraryMT.Po;
+using Microsoft.Data.Sqlite;
 using ClassLibraryMT.Scans;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -138,18 +140,32 @@ sealed class Fixture : IDisposable
     public CheckeeSendWorker Worker { get; }
     private readonly HttpClient _http;
     private readonly CheckeeClient _client;
+    private readonly string _root=Path.Combine(Path.GetTempPath(), "TEST-ASYNC-PO-20261127-UpdateSend-"+Guid.NewGuid().ToString("N"));
 
     public Fixture()
     {
         var options = new CheckeeOptions { ApiKey = "fake", ClientId = "fake", BaseUrl = "https://checkee.test" };
         _http = new HttpClient(Http) { BaseAddress = new Uri("https://checkee.test/") };
         _client = new CheckeeClient(_http, options);
+        Directory.CreateDirectory(_root);
+        var poStore=new PoStore(Path.Combine(_root,"po"));
+        var po=new ProductionOrderService(new EmptyPoClient(),poStore,new PoHistoryStore(poStore.DbRoot),new PoCodeCache());
+        var order=new ProductionOrder { OrderNo=FakeStore.OrderNo,CreatedUtc=FakeStore.Created,Gtin=FakeStore.Gtin,OrderQty=2 };
+        poStore.EnsurePoDbAsync(order,[new PoCode {CodeContent=FakeStore.Code},new PoCode {CodeContent=FakeStore.Code+"2"}]).GetAwaiter().GetResult();
+        if(!po.StartProductionAsync(order.OrderNo).GetAwaiter().GetResult()) throw new Exception("Fixture cannot start sandbox PO");
         Worker = new CheckeeSendWorker(_client, Store, Writer, Options.Create(options),
-            Options.Create(new CheckeeOutboundOptions { ProductGtin = "1234" }), Intake,
+            Options.Create(new CheckeeOutboundOptions { AuditLogPath=Path.Combine(_root,"audit.jsonl") }), Intake, po,
             NullLogger<CheckeeSendWorker>.Instance);
     }
 
-    public void Dispose() { Worker.Dispose(); _client.Dispose(); _http.Dispose(); }
+    public void Dispose()
+    {
+        Worker.Dispose(); _client.Dispose(); _http.Dispose(); SqliteConnection.ClearAllPools();
+        var target=Path.GetFullPath(_root);
+        if(!string.Equals(Path.GetDirectoryName(target),Path.GetFullPath(Path.GetTempPath()).TrimEnd(Path.DirectorySeparatorChar),StringComparison.OrdinalIgnoreCase)
+            || !Path.GetFileName(target).StartsWith("TEST-ASYNC-PO-20261127-UpdateSend-")) throw new Exception("Unsafe cleanup path");
+        Directory.Delete(target,true);
+    }
 }
 
 sealed class FakeHttp : HttpMessageHandler
@@ -183,6 +199,13 @@ sealed class FakeWriter : IScanRecordWriter
 
 sealed class FakeStore : IScanSendStatusStore
 {
+    public const string Gtin="08935348800215";
+    public const string Code="https://resolver.invalid/01/08935348800215/21/TEST";
+    public const string OrderNo="TEST-ASYNC-PO-20261127-UPDATESEND";
+    public static readonly DateTime Created=new(2026,11,27,0,0,0,DateTimeKind.Utc);
+    private static ScanRecordEntity Row()=>new() { Id=1,CodeContent=Code,Gtin=Gtin,Status=ScanStatuses.Pass,OrderNo=OrderNo,OrderCreatedUtc=Created,PoAccepted=true };
+    public Task<IReadOnlyList<ScanRecordEntity>> GetPendingForOrderAsync(string orderNo,DateTime orderCreatedUtc,string gtin,int limit=100,CancellationToken cancellationToken=default)
+        => GetPendingAsync(true,limit,cancellationToken);
     public Task<long> BeginSendAttemptAsync(IReadOnlyList<ScanRecordEntity> records, string productGtin,
         string batchCode, string serialType, CancellationToken cancellationToken = default) => Task.FromResult(1L);
     public Task CompleteSendAttemptAsync(long attemptId, string status, int statusCode, string message,
@@ -205,7 +228,7 @@ sealed class FakeStore : IScanSendStatusStore
     {
         Interlocked.Increment(ref ReadCount);
         if (ThrowOnRead) throw new IOException("Lỗi đọc giả lập.");
-        return Task.FromResult<IReadOnlyList<ScanRecordEntity>>([new ScanRecordEntity { Id = 1, CodeContent = "TEST", BatchNo = "BATCH" }]);
+        return Task.FromResult<IReadOnlyList<ScanRecordEntity>>(Sent==0 ? [Row()] : []);
     }
     public async Task MarkSentAsync(long id, string message, CancellationToken cancellationToken = default)
     {
@@ -222,6 +245,14 @@ sealed class FakeStore : IScanSendStatusStore
         await AllowReset.Task.WaitAsync(cancellationToken);
         return ids.Count;
     }
-    public Task<IReadOnlyList<ScanRecordEntity>> GetBySendStatusAsync(ScanSendFilter? filter = null, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<ScanRecordEntity>>([]);
+    public Task<IReadOnlyList<ScanRecordEntity>> GetBySendStatusAsync(ScanSendFilter? filter = null, CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<ScanRecordEntity>>(Sent==0 ? [Row()] : []);
     public Task<Dictionary<string, long>> CountBySendStatusAsync(CancellationToken cancellationToken = default) => Task.FromResult(new Dictionary<string, long>());
+}
+
+sealed class EmptyPoClient : IPoClient
+{
+    public Task<IReadOnlyList<ProductionOrder>> GetOrdersAsync(bool includeCompleted=false,CancellationToken ct=default)=>Task.FromResult<IReadOnlyList<ProductionOrder>>([]);
+    public Task<IReadOnlyList<PoCode>> GetCodesAsync(string orderNo,CancellationToken ct=default)=>Task.FromResult<IReadOnlyList<PoCode>>([]);
+    public Task<ProductionOrder?> CreateOrderAsync(string orderNo,int orderQty,CancellationToken ct=default)=>Task.FromResult<ProductionOrder?>(null);
 }

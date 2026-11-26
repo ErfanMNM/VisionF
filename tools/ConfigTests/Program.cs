@@ -236,12 +236,29 @@ s.Scanner.TcpHost = "bad host!";
 Check("Scanner host sai -> bao loi", !ConfigValidation.Validate(s, out var e16), e16 ?? "");
 
 s = NewSnapshot();
+s.Scanner.Mode = "Serial";
 s.Scanner.ComPort = "";
 Check("Scanner COM rong -> bao loi", !ConfigValidation.Validate(s, out var e17), e17 ?? "");
 
 s = NewSnapshot();
+s.Scanner.Mode = "Serial";
 s.Scanner.BaudRate = 0;
 Check("Scanner baud <= 0 -> bao loi", !ConfigValidation.Validate(s, out var e18), e18 ?? "");
+
+s = NewSnapshot();
+s.Scanner.Mode = "Serial";
+s.Scanner.TcpHost = "unused invalid host!";
+s.Scanner.TcpPort = 0;
+Check("Serial không bị chặn bởi TCP chưa sử dụng", ConfigValidation.Validate(s, out var serialError), serialError ?? "");
+s = NewSnapshot();
+s.Scanner.Mode = "TcpClient";
+s.Scanner.ComPort = "";
+s.Scanner.BaudRate = 0;
+Check("TCP không bị chặn bởi COM chưa sử dụng", ConfigValidation.Validate(s, out var tcpError), tcpError ?? "");
+s.Scanner.Mode = "Unsupported";
+Check("Chế độ máy quét không hỗ trợ bị từ chối", !ConfigValidation.Validate(s, out _));
+Check("Schema và mặc định máy quét hỗ trợ COM Serial", new ScannerConfig().Mode == "Serial"
+    && ConfigSchemaProvider.FindField("Scanner:Mode")!.Options.Contains("Serial"));
 
 s = NewSnapshot();
 s.Scanner.Enabled = false;
@@ -360,6 +377,28 @@ Check("Doi ResetCounterAddress hot-apply, khong restart",
 Check("Schema counter/reset cung hot-apply, reset khong bat buoc",
     ConfigSchemaProvider.FindField("Plc:CounterAddress") is { RequiresRestart: false, Required: true }
     && ConfigSchemaProvider.FindField("Plc:ResetCounterAddress") is { RequiresRestart: false, Required: false });
+
+after = NewSnapshot();
+after.Checkee.Enabled = !before.Checkee.Enabled;
+Check("Bật/tắt gửi Checkee đánh dấu dirty và không yêu cầu restart",
+    !ConfigDiff.AreEquivalent(before, after)
+    && ConfigDiff.DescribeCriticalChanges(before, after).Count == 0
+    && ConfigSchemaProvider.FindField("Checkee:Enabled") is { RequiresRestart: false });
+Check("Không còn cấu hình giả lập MES hoặc metadata Checkee lấy từ PO",
+    ConfigSchemaProvider.FindSection("MesSimulator") is null
+    && new[] { "ProductGtin", "BatchCode", "OnlyPassCodes" }
+        .All(name => ConfigSchemaProvider.FindField("Checkee:" + name) is null));
+var oldCheckee = JsonSerializer.Deserialize("""{"MesSimulator":{"Enabled":true},"Checkee":{"Enabled":false,"OnlyPassCodes":false,"ProductGtin":"old","BatchCode":"old"}}""",
+    AppConfigJsonContext.Default.AppConfigSnapshot)!;
+Check("Cấu hình cũ vẫn đọc Enabled nhưng không ghi lại simulator/GTIN/lô/tùy chọn không Pass",
+    !oldCheckee.Checkee.Enabled && !JsonSerializer.Serialize(oldCheckee, AppConfigJsonContext.Default.AppConfigSnapshot)
+        .Contains("OnlyPassCodes", StringComparison.Ordinal)
+    && !JsonSerializer.Serialize(oldCheckee, AppConfigJsonContext.Default.AppConfigSnapshot)
+        .Contains("MesSimulator", StringComparison.Ordinal)
+    && !JsonSerializer.Serialize(oldCheckee, AppConfigJsonContext.Default.AppConfigSnapshot)
+        .Contains("ProductGtin", StringComparison.Ordinal)
+    && !JsonSerializer.Serialize(oldCheckee, AppConfigJsonContext.Default.AppConfigSnapshot)
+        .Contains("BatchCode", StringComparison.Ordinal));
 foreach (var name in counterFields.Concat(new[] { "CounterDisplaySource", "FailIncludesTimeout", "ClearErrorAddress" }))
 {
     after = NewSnapshot();
@@ -637,7 +676,7 @@ try
     // Tên key đã loại bỏ chỉ xuất hiện trong fixture migration để kiểm tra nâng cấp config cũ.
     const string retiredCameraKey = "DuplicateWindowSeconds";
     var configPath = Path.Combine(migrationDirectory, "appsettings.json");
-    File.WriteAllText(configPath, """{"Camera":{"Ip":"127.0.0.1","Port":9000,"DuplicateWindowSeconds":30,"FutureCameraSetting":"keep"},"FutureSection":{"value":7}}""");
+    File.WriteAllText(configPath, """{"Camera":{"Ip":"127.0.0.1","Port":9000,"DuplicateWindowSeconds":30,"FutureCameraSetting":"keep"},"MesSimulator":{"Enabled":true,"CustomFilePath":"old.csv"},"Checkee":{"Enabled":false,"ProductGtin":"old","BatchCode":"old","OnlyPassCodes":false,"FutureCheckeeSetting":"keep"},"FutureSection":{"value":7}}""");
     var storeType = typeof(AppConfigSnapshot).Assembly.GetType("TanTienQR.Services.ConfigStore")!;
     var loggerType = typeof(Microsoft.Extensions.Logging.Abstractions.NullLogger<>).MakeGenericType(storeType);
     var configStore = Activator.CreateInstance(storeType, Activator.CreateInstance(loggerType), migrationDirectory)!;
@@ -648,12 +687,22 @@ try
         detailed.Raw?["Camera"]?[retiredCameraKey] is null && !detailed.Flat.ContainsKey("Camera:" + retiredCameraKey));
     Check("LoadDetailed van giu key la thuc su", detailed.Flat["Camera:FutureCameraSetting"] == "keep"
         && detailed.Flat["FutureSection:value"] == "7");
+    Check("LoadDetailed không đưa tính năng đã bỏ vào mục khóa chưa ánh xạ",
+        detailed.Raw?["MesSimulator"] is null && !detailed.Flat.Keys.Any(key => key.StartsWith("MesSimulator:", StringComparison.Ordinal))
+        && new[] { "ProductGtin", "BatchCode", "OnlyPassCodes" }.All(key => !detailed.Flat.ContainsKey("Checkee:" + key))
+        && detailed.Flat["Checkee:FutureCheckeeSetting"] == "keep");
     Check("SaveMerged migration thanh cong", (bool)storeType.GetMethod("SaveMerged")!.Invoke(configStore, [detailed.Snapshot])!);
     using var saved = JsonDocument.Parse(File.ReadAllText(configPath));
     Check("SaveMerged xoa key cu tren dia nhung bao toan key la",
         !saved.RootElement.GetProperty("Camera").TryGetProperty(retiredCameraKey, out _)
         && saved.RootElement.GetProperty("Camera").GetProperty("FutureCameraSetting").GetString() == "keep"
         && saved.RootElement.GetProperty("FutureSection").GetProperty("value").GetInt32() == 7);
+    Check("SaveMerged xóa simulator và thông số Checkee cũ, vẫn giữ extension",
+        !saved.RootElement.TryGetProperty("MesSimulator", out _)
+        && new[] { "ProductGtin", "BatchCode", "OnlyPassCodes" }
+            .All(key => !saved.RootElement.GetProperty("Checkee").TryGetProperty(key, out _))
+        && !saved.RootElement.GetProperty("Checkee").GetProperty("Enabled").GetBoolean()
+        && saved.RootElement.GetProperty("Checkee").GetProperty("FutureCheckeeSetting").GetString() == "keep");
 }
 finally { Directory.Delete(migrationDirectory, recursive: true); }
 

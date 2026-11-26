@@ -12,7 +12,7 @@ void Check(bool valid, string description)
 
 var root = Path.Combine(Path.GetTempPath(), "VisionF-ScanCodeContent-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(root);
-using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(45));
 var token = timeout.Token;
 var path = Path.Combine(root, "scans.db");
 var store = new ScanStore(path);
@@ -129,6 +129,95 @@ var manyIds = Enumerable.Range(10000, 1200).Select(value => (long)value).Append(
 Check(await exactSend.ResetToPendingAsync(manyIds, token) == 1
         && await exactSend.ResetToPendingAsync([], token) == 0,
     "ResetToPending chia danh sách lớn thành batch và chấp nhận danh sách rỗng");
+
+// Dedicated concurrent clients share a start gate, not an initialization lock. No OpenAsync
+// is allowed to warm up the fixture before the competing clients are released together.
+// Independent instances exercise the database-level guarantee, not just singleton DI usage.
+await ParallelSchemaInitializationAsync("parallel-shared-fresh.db", sharedInstance: true, legacy: false);
+await ParallelSchemaInitializationAsync("parallel-independent-fresh.db", sharedInstance: false, legacy: false);
+await ParallelSchemaInitializationAsync("parallel-independent-legacy.db", sharedInstance: false, legacy: true);
+
+async Task ParallelSchemaInitializationAsync(string fileName, bool sharedInstance, bool legacy)
+{
+    var parallelPath = Path.Combine(root, fileName);
+    const string legacyContent = "  Legacy/Việt\u001dFULL-Code  ";
+    if (legacy)
+    {
+        await using var seed = new SqliteConnection(new SqliteConnectionStringBuilder
+        { DataSource = parallelPath, Pooling = false }.ToString());
+        await seed.OpenAsync(token);
+        await using var command = seed.CreateCommand();
+        command.CommandText = """
+            PRAGMA journal_mode=WAL;
+            CREATE TABLE ScanRecords (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT, ReceivedUtc TEXT NOT NULL, Code TEXT NOT NULL,
+                Status TEXT NOT NULL DEFAULT 'Fail',
+                ProcessingTimeMs INTEGER NOT NULL DEFAULT 0, Raw TEXT NOT NULL DEFAULT '',
+                SendStatus TEXT NOT NULL DEFAULT '', SendAttempts INTEGER NOT NULL DEFAULT 0,
+                SendMessage TEXT NOT NULL DEFAULT '');
+            INSERT INTO ScanRecords (Id,ReceivedUtc,Code,Status,ProcessingTimeMs,Raw,SendStatus,SendAttempts,SendMessage)
+            VALUES (41,'2026-11-27T00:00:00.0000000Z','legacy-tail','Pass',0.375,$raw,'Sent',3,'legacy ACK');
+            """;
+        command.Parameters.AddWithValue("$raw", legacyContent);
+        await command.ExecuteNonQueryAsync(token);
+    }
+
+    const int clientCount = 12;
+    using var ready = new CountdownEvent(clientCount);
+    using var start = new ManualResetEventSlim();
+    var common = new ScanStore(parallelPath);
+    var clients = Enumerable.Range(0, clientCount).Select(_ => Task.Factory.StartNew(() =>
+    {
+        var client = sharedInstance ? common : new ScanStore(parallelPath);
+        ready.Signal();
+        start.Wait(token);
+        using var connection = client.OpenAsync(token).GetAwaiter().GetResult();
+        var columns = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        using (var schema = connection.CreateCommand())
+        {
+            schema.CommandText = "PRAGMA table_info(ScanRecords);";
+            using var reader = schema.ExecuteReader();
+            while (reader.Read()) columns.Add(reader.GetString(1), reader.GetString(2));
+        }
+        var expectedColumns = new[] { "EventId", "OrderCreatedUtc", "PersistenceReady", "PoAccepted", "PlcAckTimeMs" };
+        if (expectedColumns.Any(column => !columns.ContainsKey(column)) || columns["ProcessingTimeMs"] != "REAL")
+            throw new InvalidOperationException("Parallel opener observed an incomplete/reverted migration: " + fileName);
+        using var version = connection.CreateCommand();
+        version.CommandText = "SELECT COUNT(*) FROM SchemaVersion WHERE Version=$version;";
+        version.Parameters.AddWithValue("$version", ScanStore.CurrentSchemaVersion);
+        if (Convert.ToInt64(version.ExecuteScalar()) != 1)
+            throw new InvalidOperationException("Parallel opener observed missing schema commit marker.");
+        return columns.Count;
+    }, token, TaskCreationOptions.LongRunning, TaskScheduler.Default)).ToArray();
+    try { ready.Wait(token); }
+    finally { start.Set(); }
+    var completed = await Task.WhenAll(clients).WaitAsync(token);
+    Check(completed.Length == clientCount && completed.Distinct().Count() == 1,
+        "Mở schema đồng thời hoàn tất đầy đủ, không duplicate column/rebuild race: " + fileName);
+
+    await using var verify = await new ScanStore(parallelPath).OpenAsync(token);
+    await using (var schema = verify.CreateCommand())
+    {
+        schema.CommandText = """
+            SELECT COUNT(*) FROM sqlite_master
+            WHERE type='index' AND name='IX_ScanRecords_EventId'
+                AND NOT EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='ScanRecords_Legacy');
+            """;
+        Check(Convert.ToInt64(await schema.ExecuteScalarAsync(token)) == 1,
+            "Parallel migration giữ unique EventId index và không để bảng Legacy trung gian: " + fileName);
+    }
+    if (legacy)
+    {
+        await using var history = verify.CreateCommand();
+        history.CommandText = "SELECT Id,Raw,ProcessingTimeMs,SendStatus,SendAttempts,SendMessage,Status FROM ScanRecords;";
+        await using var reader = await history.ExecuteReaderAsync(token);
+        Check(await reader.ReadAsync(token) && reader.GetInt64(0) == 41 && reader.GetString(1) == legacyContent
+            && reader.GetDouble(2) == 0.375 && reader.GetString(3) == ScanSendStatuses.Sent
+            && reader.GetInt32(4) == 3 && reader.GetString(5) == "legacy ACK" && reader.GetString(6) == ScanStatuses.Pass
+            && !await reader.ReadAsync(token),
+            "Parallel INTEGER→REAL migration bảo toàn primary key, raw GS/Unicode, timing, Pass và Sent ACK đúng một dòng");
+    }
+}
 
 var reliablePath = Path.Combine(root, "reliable-queue.db");
 using (var writer = new ScanRecordWriter(

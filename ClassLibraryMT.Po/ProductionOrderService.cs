@@ -148,6 +148,22 @@ public sealed class ProductionOrderService
         }
     }
 
+    /// <summary>A consistent detached snapshot for outbound eligibility decisions.</summary>
+    public ProductionOrder? GetRunningOrderSnapshot()
+    {
+        lock (_gate)
+        {
+            if (_current is not { } order || _currentStatus != ProductionOrderStatus.Running)
+                return null;
+            return new ProductionOrder
+            {
+                OrderNo = order.OrderNo, CreatedUtc = order.CreatedUtc, OrderQty = order.OrderQty,
+                Gtin = order.Gtin,
+                Additional = new Dictionary<string, string>(order.Additional, order.Additional.Comparer),
+            };
+        }
+    }
+
     /// <summary>Trạng thái hiện tại của PO.</summary>
     public ProductionOrderStatus CurrentStatus
     {
@@ -886,6 +902,38 @@ public sealed class ProductionOrderService
     [Obsolete("Pass the complete CodeContent to ValidateCode.")]
     public PoCodeValidation ValidateCode(string gtin, string serial) =>
         ValidateCode(PoStore.BuildCodeKey(gtin, serial));
+
+    /// <summary>
+    /// Manual intake: reserved persistence capacity is required before calling.
+    /// Validates GTIN and exact dictionary identity, then consumes RAM atomically.
+    /// Does not acquire the PO lifecycle mutex, open SQLite, or perform PLC I/O.
+    /// The caller MUST publish Mutation to its reservation before any audit await.
+    /// </summary>
+    public PoScanResult AcceptManualCode(string codeContent, DateTime receivedUtc, string eventId)
+    {
+        ArgumentNullException.ThrowIfNull(codeContent);
+        ArgumentException.ThrowIfNullOrWhiteSpace(eventId);
+        var hasGtin = PoCodeParser.TryGetGtin(codeContent, out var gtin);
+        PoScanResult result;
+        lock (_gate)
+        {
+            var order = _current;
+            var validation = ValidateCode(codeContent);
+            if (validation != PoCodeValidation.Valid || order is null)
+                return new PoScanResult(validation, null, false, order?.OrderNo ?? string.Empty);
+            if (!hasGtin || !PoCodeParser.TryNormalizeGtin(order.Gtin, out var orderGtin)
+                || !string.Equals(gtin, orderGtin, StringComparison.Ordinal))
+                return new PoScanResult(PoCodeValidation.InvalidForOrder, null, false, order.OrderNo);
+            validation = _cache.ValidateAndAccept(order.OrderNo, codeContent, accept: true);
+            if (validation != PoCodeValidation.Valid)
+                return new PoScanResult(validation, null, false, order.OrderNo);
+            _completionPending = _cache.ValidCount > 0 && _cache.ScannedCount >= _cache.ValidCount;
+            var mutation = new PoScanMutation(eventId, order.OrderNo, order.CreatedUtc, codeContent, receivedUtc);
+            result = new PoScanResult(PoCodeValidation.Valid, null, true, order.OrderNo) { Mutation = mutation };
+        }
+        RaiseChanged();
+        return result;
+    }
 
     /// <summary>
     /// Consume an eligible code atomically in RAM before sending PLC Pass.

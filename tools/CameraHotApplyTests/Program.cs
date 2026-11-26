@@ -127,7 +127,7 @@ try
     var workerReader = new Reader("127.0.0.1", portA);
     var worker = Activator.CreateInstance(workerType,
         BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null,
-        new object?[] { workerReader, null, null, null, wrapped, null, null, intake, logger }, null)!;
+        new object?[] { workerReader, null, null, null, wrapped, null, null, intake, logger, null }, null)!;
     var apply = workerType.GetMethod("ApplyConfigurationAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
     Task Apply(CameraConfig target, CancellationToken token = default) => (Task)apply.Invoke(worker, new object[] { target, token })!;
     var unsafeRejected = false;

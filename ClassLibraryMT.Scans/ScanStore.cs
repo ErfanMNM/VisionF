@@ -50,8 +50,8 @@ internal sealed class ScanStore
         try
         {
             await connection.OpenAsync(ct).ConfigureAwait(false);
-            await ExecutePragmaAsync(connection, "PRAGMA journal_mode=WAL;", ct).ConfigureAwait(false);
             await ExecutePragmaAsync(connection, "PRAGMA busy_timeout=5000;", ct).ConfigureAwait(false);
+            await ExecutePragmaAsync(connection, "PRAGMA journal_mode=WAL;", ct).ConfigureAwait(false);
             await ExecutePragmaAsync(connection, "PRAGMA synchronous=NORMAL;", ct).ConfigureAwait(false);
             await ExecutePragmaAsync(connection, "PRAGMA foreign_keys=ON;", ct).ConfigureAwait(false);
             await EnsureSchemaAsync(connection, ct).ConfigureAwait(false);
@@ -71,6 +71,12 @@ internal sealed class ScanStore
     /// </summary>
     private static async Task EnsureSchemaAsync(SqliteConnection connection, CancellationToken ct)
     {
+        // Schema reads and DDL must share one database write reservation. An instance-only
+        // semaphore cannot protect another ScanStore/process opening the same file. Acquire
+        // BEFORE checking columns/types so the waiting initializer rechecks the committed schema.
+        ct.ThrowIfCancellationRequested();
+        await using var transaction = connection.BeginTransaction(deferred: false); // BEGIN IMMEDIATE
+        ct.ThrowIfCancellationRequested();
         const string schema = """
             CREATE TABLE IF NOT EXISTS SchemaVersion (
                 Version     INTEGER NOT NULL PRIMARY KEY,
@@ -122,59 +128,60 @@ internal sealed class ScanStore
             """;
 
         await using var cmd = connection.CreateCommand();
+        cmd.Transaction = transaction;
         cmd.CommandText = schema;
         await cmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
 
         // Migration: bảng đã tồn tại từ phiên bản cũ có thể thiếu cột.
-        await EnsureColumnAsync(connection, "ScanRecords", "Gtin", "TEXT NOT NULL DEFAULT ''", ct)
+        await EnsureColumnAsync(connection, transaction, "ScanRecords", "Gtin", "TEXT NOT NULL DEFAULT ''", ct)
             .ConfigureAwait(false);
-        await EnsureColumnAsync(connection, "ScanRecords", "Serial", "TEXT NOT NULL DEFAULT ''", ct)
+        await EnsureColumnAsync(connection, transaction, "ScanRecords", "Serial", "TEXT NOT NULL DEFAULT ''", ct)
             .ConfigureAwait(false);
-        await EnsureColumnAsync(connection, "ScanRecords", "ProcessingTimeMs", "REAL NOT NULL DEFAULT 0", ct)
+        await EnsureColumnAsync(connection, transaction, "ScanRecords", "ProcessingTimeMs", "REAL NOT NULL DEFAULT 0", ct)
             .ConfigureAwait(false);
-        await EnsureColumnAsync(connection, "ScanRecords", "PlcResult", "TEXT NOT NULL DEFAULT 'Skipped'", ct)
+        await EnsureColumnAsync(connection, transaction, "ScanRecords", "PlcResult", "TEXT NOT NULL DEFAULT 'Skipped'", ct)
             .ConfigureAwait(false);
-        await EnsureColumnAsync(connection, "ScanRecords", "BatchNo", "TEXT NOT NULL DEFAULT 'NoBatch'", ct)
+        await EnsureColumnAsync(connection, transaction, "ScanRecords", "BatchNo", "TEXT NOT NULL DEFAULT 'NoBatch'", ct)
             .ConfigureAwait(false);
-        await EnsureColumnAsync(connection, "ScanRecords", "Raw", "TEXT NOT NULL DEFAULT ''", ct)
+        await EnsureColumnAsync(connection, transaction, "ScanRecords", "Raw", "TEXT NOT NULL DEFAULT ''", ct)
             .ConfigureAwait(false);
 
         // Migration v3: cột OrderNo — biết mã quét thuộc PO nào (dùng cho cơ
         // chế chống trùng lịch sử toàn cục và để truy vết báo cáo).
-        await EnsureColumnAsync(connection, "ScanRecords", "OrderNo", "TEXT NOT NULL DEFAULT ''", ct)
+        await EnsureColumnAsync(connection, transaction, "ScanRecords", "OrderNo", "TEXT NOT NULL DEFAULT ''", ct)
             .ConfigureAwait(false);
 
         // Migration v4: các cột trạng thái gửi mã lên Checkee. Dữ liệu cũ
         // được giữ nguyên — cột mới có giá trị mặc định (chưa gửi).
-        await EnsureColumnAsync(connection, "ScanRecords", "SendStatus", "TEXT NOT NULL DEFAULT ''", ct)
+        await EnsureColumnAsync(connection, transaction, "ScanRecords", "SendStatus", "TEXT NOT NULL DEFAULT ''", ct)
             .ConfigureAwait(false);
-        await EnsureColumnAsync(connection, "ScanRecords", "SendStatusCode", "INTEGER NOT NULL DEFAULT 0", ct)
+        await EnsureColumnAsync(connection, transaction, "ScanRecords", "SendStatusCode", "INTEGER NOT NULL DEFAULT 0", ct)
             .ConfigureAwait(false);
-        await EnsureColumnAsync(connection, "ScanRecords", "SendMessage", "TEXT NOT NULL DEFAULT ''", ct)
+        await EnsureColumnAsync(connection, transaction, "ScanRecords", "SendMessage", "TEXT NOT NULL DEFAULT ''", ct)
             .ConfigureAwait(false);
-        await EnsureColumnAsync(connection, "ScanRecords", "SendAttempts", "INTEGER NOT NULL DEFAULT 0", ct)
+        await EnsureColumnAsync(connection, transaction, "ScanRecords", "SendAttempts", "INTEGER NOT NULL DEFAULT 0", ct)
             .ConfigureAwait(false);
-        await EnsureColumnAsync(connection, "ScanRecords", "SendTimeUtc", "TEXT NULL", ct)
+        await EnsureColumnAsync(connection, transaction, "ScanRecords", "SendTimeUtc", "TEXT NULL", ct)
             .ConfigureAwait(false);
-        await EnsureColumnAsync(connection, "ScanRecords", "SendAttemptUtc", "TEXT NULL", ct)
+        await EnsureColumnAsync(connection, transaction, "ScanRecords", "SendAttemptUtc", "TEXT NULL", ct)
             .ConfigureAwait(false);
 
         // Migration v2: cột ProcessingTimeMs đổi từ INTEGER sang REAL để giữ
         // được phần thập phân (ví dụ 0.333 ms). SQLite là kiểu động nên dữ
         // liệu cũ vẫn đọc được, nhưng khai báo kiểu trong schema cho đúng.
-        await MigrateProcessingTimeToRealAsync(connection, ct).ConfigureAwait(false);
+        await MigrateProcessingTimeToRealAsync(connection, transaction, ct).ConfigureAwait(false);
 
         // Add v6 only AFTER the legacy table rebuild, so upgrading an INTEGER
         // ProcessingTimeMs database cannot discard persistence metadata.
-        await EnsureColumnAsync(connection, "ScanRecords", "EventId", "TEXT NULL", ct)
+        await EnsureColumnAsync(connection, transaction, "ScanRecords", "EventId", "TEXT NULL", ct)
             .ConfigureAwait(false);
-        await EnsureColumnAsync(connection, "ScanRecords", "OrderCreatedUtc", "TEXT NULL", ct)
+        await EnsureColumnAsync(connection, transaction, "ScanRecords", "OrderCreatedUtc", "TEXT NULL", ct)
             .ConfigureAwait(false);
-        await EnsureColumnAsync(connection, "ScanRecords", "PersistenceReady", "INTEGER NOT NULL DEFAULT 1", ct)
+        await EnsureColumnAsync(connection, transaction, "ScanRecords", "PersistenceReady", "INTEGER NOT NULL DEFAULT 1", ct)
             .ConfigureAwait(false);
-        await EnsureColumnAsync(connection, "ScanRecords", "PoAccepted", "INTEGER NOT NULL DEFAULT 0", ct)
+        await EnsureColumnAsync(connection, transaction, "ScanRecords", "PoAccepted", "INTEGER NOT NULL DEFAULT 0", ct)
             .ConfigureAwait(false);
-        await EnsureColumnAsync(connection, "ScanRecords", "PlcAckTimeMs", "REAL NOT NULL DEFAULT 0", ct)
+        await EnsureColumnAsync(connection, transaction, "ScanRecords", "PlcAckTimeMs", "REAL NOT NULL DEFAULT 0", ct)
             .ConfigureAwait(false);
 
         // Tạo index SAU khi migration xong — index IX_ScanRecords_OrderNo tham
@@ -182,6 +189,7 @@ internal sealed class ScanStore
         // ("no such column") với các DB đã tồn tại từ phiên bản cũ.
         await using (var indexCmd = connection.CreateCommand())
         {
+            indexCmd.Transaction = transaction;
             indexCmd.CommandText = """
                 CREATE INDEX IF NOT EXISTS IX_ScanRecords_ReceivedUtc ON ScanRecords (ReceivedUtc DESC);
                 CREATE INDEX IF NOT EXISTS IX_ScanRecords_Status ON ScanRecords (Status);
@@ -208,6 +216,7 @@ internal sealed class ScanStore
         }
 
         await using var versionCmd = connection.CreateCommand();
+        versionCmd.Transaction = transaction;
         versionCmd.CommandText = """
             INSERT OR IGNORE INTO SchemaVersion (Version, AppliedUtc)
             VALUES ($version, $appliedUtc);
@@ -216,6 +225,7 @@ internal sealed class ScanStore
         versionCmd.Parameters.AddWithValue(
             "$appliedUtc", DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture));
         await versionCmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        await transaction.CommitAsync(ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -223,18 +233,20 @@ internal sealed class ScanStore
     /// </summary>
     private static async Task EnsureColumnAsync(
         SqliteConnection connection,
+        SqliteTransaction transaction,
         string table,
         string column,
         string definition,
         CancellationToken ct)
     {
-        var existing = await GetColumnNamesAsync(connection, table, ct).ConfigureAwait(false);
+        var existing = await GetColumnNamesAsync(connection, transaction, table, ct).ConfigureAwait(false);
         if (existing.Contains(column))
         {
             return;
         }
 
         await using var alter = connection.CreateCommand();
+        alter.Transaction = transaction;
         alter.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {definition};";
         await alter.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
@@ -252,20 +264,18 @@ internal sealed class ScanStore
     /// </summary>
     private static async Task MigrateProcessingTimeToRealAsync(
         SqliteConnection connection,
+        SqliteTransaction transaction,
         CancellationToken ct)
     {
         // Lấy kiểu khai báo hiện tại của cột.
         var columnType = await GetColumnTypeAsync(
-            connection, "ScanRecords", "ProcessingTimeMs", ct).ConfigureAwait(false);
+            connection, transaction, "ScanRecords", "ProcessingTimeMs", ct).ConfigureAwait(false);
 
         if (columnType is null || columnType.Contains("REAL", StringComparison.OrdinalIgnoreCase))
         {
             // Chưa có cột, hoặc đã là REAL -> không cần migrate.
             return;
         }
-
-        await using var transaction = (SqliteTransaction)await connection
-            .BeginTransactionAsync(ct).ConfigureAwait(false);
 
         await using (var cmd = connection.CreateCommand())
         {
@@ -318,25 +328,26 @@ internal sealed class ScanStore
 
             await indexCmd.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
         }
-
-        await transaction.CommitAsync(ct).ConfigureAwait(false);
     }
 
     /// <summary>
     /// Lấy kiểu khai báo của một cột (ví dụ <c>INTEGER</c>, <c>REAL</c>).
     /// </summary>
     /// <param name="connection">Connection đã mở.</param>
+    /// <param name="transaction">Transaction giữ khóa schema trong lúc đọc metadata.</param>
     /// <param name="table">Tên bảng.</param>
     /// <param name="column">Tên cột.</param>
     /// <param name="ct">Token hủy.</param>
     /// <returns>Kiểu của cột, hoặc null nếu cột không tồn tại.</returns>
     private static async Task<string?> GetColumnTypeAsync(
         SqliteConnection connection,
+        SqliteTransaction transaction,
         string table,
         string column,
         CancellationToken ct)
     {
         await using var cmd = connection.CreateCommand();
+        cmd.Transaction = transaction;
         cmd.CommandText = $"PRAGMA table_info({table});";
 
         await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);
@@ -357,12 +368,14 @@ internal sealed class ScanStore
     /// </summary>
     private static async Task<HashSet<string>> GetColumnNamesAsync(
         SqliteConnection connection,
+        SqliteTransaction transaction,
         string table,
         CancellationToken ct)
     {
         var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         await using var cmd = connection.CreateCommand();
+        cmd.Transaction = transaction;
         cmd.CommandText = $"PRAGMA table_info({table});";
 
         await using var reader = await cmd.ExecuteReaderAsync(ct).ConfigureAwait(false);

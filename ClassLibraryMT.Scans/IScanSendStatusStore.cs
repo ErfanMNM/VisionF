@@ -9,6 +9,10 @@ namespace ClassLibraryMT.Scans;
 /// </summary>
 public interface IScanSendStatusStore
 {
+    /// <summary>Chỉ lấy Pass đã đồng bộ của đúng phiên bản PO và GTIN, lọc trước LIMIT.</summary>
+    Task<IReadOnlyList<ScanRecordEntity>> GetPendingForOrderAsync(string orderNo, DateTime orderCreatedUtc,
+        string gtin, int limit = 100, CancellationToken cancellationToken = default);
+
     /// <summary>Lưu snapshot bền vững trước khi gọi Checkee, mỗi HTTP batch là một lần gửi.</summary>
     Task<long> BeginSendAttemptAsync(IReadOnlyList<ScanRecordEntity> records,
         string productGtin, string batchCode, string serialType,

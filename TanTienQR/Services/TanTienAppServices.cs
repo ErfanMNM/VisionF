@@ -9,7 +9,6 @@ using ClassLibraryMT.Plc;
 using ClassLibraryMT.Po;
 using ClassLibraryMT.PoServer;
 using ClassLibraryMT.Print;
-using ClassLibraryMT.MesSimulator;
 using ClassLibraryMT.MultiConnect;
 using ClassLibraryMT.Scans;
 using Microsoft.Extensions.Configuration;
@@ -76,17 +75,27 @@ public static class TanTienAppServices
         // cùng bảng ScanRecords (logs/scans.db).
         services.AddCheckee(configuration);
         services.AddOptions<CheckeeOutboundOptions>().Configure(o =>
-            o.ProductGtin = ConfigReader.GetString(configuration, "Checkee:ProductGtin", string.Empty));
+            o.AuditLogPath = ConfigReader.GetString(configuration, "Checkee:AuditLogPath", o.AuditLogPath));
+
+        services.AddOptions<ManualActivationOptions>().Configure(o =>
+        {
+            const string section = "ManualActivation";
+            o.QueueCapacity = ConfigReader.GetInt(configuration, $"{section}:QueueCapacity", o.QueueCapacity);
+            o.HistoryPath = ConfigReader.GetString(configuration, $"{section}:HistoryPath", o.HistoryPath);
+            o.HttpPrefix = ConfigReader.GetString(configuration, $"{section}:HttpPrefix", o.HttpPrefix);
+            o.MaxCodeLength = ConfigReader.GetInt(configuration, $"{section}:MaxCodeLength", o.MaxCodeLength);
+            o.MaxBodyBytes = ConfigReader.GetInt(configuration, $"{section}:MaxBodyBytes", o.MaxBodyBytes);
+            o.MaxConcurrentRequests = ConfigReader.GetInt(configuration, $"{section}:MaxConcurrentRequests", o.MaxConcurrentRequests);
+            o.RequestTimeoutSeconds = ConfigReader.GetInt(configuration, $"{section}:RequestTimeoutSeconds", o.RequestTimeoutSeconds);
+        });
+        services.AddSingleton<ManualActivationHistoryStore>();
+        services.AddSingleton<ManualActivationService>();
 
         // ---- HTTP server nhận PO từ MES (POST /api/po) ----
         // Đăng ký SAU AddProductionOrders vì PoHttpServer dùng chung PoStore
         // (cùng thư mục DB với luồng cào PO) để PO nhận về hiện luôn trong
         // danh sách "Truy xuất Sản xuất (Local)".
         services.AddPoServer(configuration);
-
-        // ---- MES simulator (chỉ dùng cho test tích hợp) ----
-        // Mặc định tắt; khi bật sẽ gửi PO mẫu tới PoServer qua HTTP POST.
-        services.AddMesSimulator(configuration);
 
         // ---- MultiConnect: Serial/TCP client/UDP sang TCP server ----
         // Mặc định tắt. Khi bật, mỗi kênh mở một TCP server riêng để app (hoặc
@@ -173,7 +182,7 @@ public static class TanTienAppServices
         services.AddSingleton<ScanFeed>();
 
         // ---- Máy quét cầm tay (handheld) ----
-        // Mô phỏng qua TCP localhost:6999; giao diện COM sẽ thêm sau.
+        // COM/TCP chỉ kết nối trong vòng đời tab Tra cứu hoặc Thêm mã.
         services.AddOptions<HandheldOptions>()
             .Configure<IConfiguration>((o, cfg) =>
             {
@@ -183,10 +192,13 @@ public static class TanTienAppServices
                 o.ComPort = ConfigReader.GetString(cfg, $"{HandheldOptions.SectionName}:ComPort", o.ComPort);
                 o.BaudRate = ConfigReader.GetInt(cfg, $"{HandheldOptions.SectionName}:BaudRate", o.BaudRate);
 
-                var mode = ConfigReader.GetString(cfg, $"{HandheldOptions.SectionName}:Mode", "TcpServer");
-                o.Mode = string.Equals(mode, "TcpClient", StringComparison.OrdinalIgnoreCase)
-                    ? HandheldMode.TcpClient
-                    : HandheldMode.TcpServer;
+                var mode = ConfigReader.GetString(cfg, $"{HandheldOptions.SectionName}:Mode", "Serial");
+                o.Mode = mode.ToUpperInvariant() switch
+                {
+                    "TCPSERVER" => HandheldMode.TcpServer,
+                    "TCPCLIENT" => HandheldMode.TcpClient,
+                    _ => HandheldMode.Serial,
+                };
             })
             .Validate(o => !string.IsNullOrWhiteSpace(o.TcpHost), "Scanner:TcpHost không được để trống.")
             .Validate(o => o.TcpPort is > 0 and <= 65535, "Scanner:TcpPort phải từ 1 đến 65535.")
@@ -243,6 +255,10 @@ public static class TanTienAppServices
         services.AddSingleton<CameraSignalWorker>();
         services.AddHostedService(sp => sp.GetRequiredService<CameraSignalWorker>());
 
+        // PDA intake remains available independently of desktop tab visibility.
+        services.AddSingleton<ManualActivationHttpServer>();
+        services.AddHostedService(sp => sp.GetRequiredService<ManualActivationHttpServer>());
+
         // Heartbeat PLC: ghi trạng thái Ready xuống D16 mỗi chu kỳ.
         services.AddHostedService<PlcHeartbeatService>();
 
@@ -272,6 +288,7 @@ public static class TanTienAppServices
         services.AddSingleton<PlcSettingsViewModel>();
         services.AddSingleton<DevViewModel>();
         services.AddSingleton<CodeLookupViewModel>();
+        services.AddSingleton<ManualActivationViewModel>();
         services.AddSingleton<ProductionInfoViewModel>();
         services.AddSingleton<ProductionOrdersViewModel>();
         services.AddSingleton<PrintViewModel>();

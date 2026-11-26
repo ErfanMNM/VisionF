@@ -17,11 +17,14 @@ var ct = timeout.Token;
 var created = new DateTime(2026, 11, 27, 1, 2, 3, DateTimeKind.Utc).AddTicks(1234567);
 var scanned = created.AddMinutes(1).AddTicks(7654321);
 const string order = "TEST-ASYNC-PO-20261127-Outbox";
-const string code = "  Việt/GS1/01/PART\u001d21/FULL-CODE  ";
+const string gtin = "09506000134352"; // Valid checksum, normalized 14-digit PO GTIN.
+const string code = "https://id.example.invalid/01/09506000134352/21/FULL-Code%2F42";
+const string invalidCode = "  Việt/GS1/01/PART\u001d21/FULL-CODE  ";
 ScanPersistenceEnvelope Attempt(string eventId, string status, bool accepted, string content = code) => new(eventId,
     new ScanRecordEntity
     {
-        OrderNo = order, ReceivedUtc = scanned, CodeContent = content, Raw = content,
+        OrderNo = order, OrderCreatedUtc = created, PoAccepted = accepted, Gtin = gtin,
+        ReceivedUtc = scanned, CodeContent = content, Raw = content,
         Status = status, PlcResult = ScanPlcResults.Failed, ProcessingTimeMs = 0.345, PlcAckTimeMs = 2.456,
     }, created, accepted);
 var first = Attempt("scan-event-1", ScanStatuses.Pass, true);
@@ -29,7 +32,7 @@ var duplicate = Attempt("scan-event-2", ScanStatuses.Duplicate, false);
 var batch = new[]
 {
     first, duplicate, Attempt("scan-event-3", ScanStatuses.NoRead, false, ""),
-    Attempt("scan-event-4", ScanStatuses.InvalidStructure, false, "bad"),
+    Attempt("scan-event-4", ScanStatuses.InvalidStructure, false, invalidCode),
     Attempt("scan-event-5", ScanStatuses.Overload, false, "busy"),
 };
 var rawStore = new ScanStore(path);
@@ -44,6 +47,8 @@ Check(history.Items.Count(row => row.CodeContent == code) == 2, "Same full code 
 Check(history.Items.Any(row => row.Status == ScanStatuses.NoRead)
     && history.Items.Any(row => row.Status == ScanStatuses.InvalidStructure)
     && history.Items.Any(row => row.Status == ScanStatuses.Overload), "NoRead, invalid and overload all have scan history");
+Check(history.Items.Single(row => row.Status == ScanStatuses.InvalidStructure).CodeContent == invalidCode,
+    "Rejected structure retains original whitespace, Unicode and GS separator without claiming accepted Pass");
 
 // Recreate store as on process restart, before the separate PO commit has completed.
 persistence = new ScanPersistenceStore(new ScanStore(path));
@@ -68,7 +73,7 @@ var blocked = (await query.GetAsync(new ScanRecordFilter { Status = ScanStatus.P
 Check(blocked.SendStatus == "" && blocked.SendAttempts == 0, "Manual send state methods cannot acknowledge unresolved PO records");
 try
 {
-    await sender.BeginSendAttemptAsync([blockedRow], "TEST-PRODUCT", "TEST-BATCH", "TEST-TYPE", ct);
+    await sender.BeginSendAttemptAsync([blockedRow], gtin, "TEST-BATCH", "TEST-TYPE", ct);
     throw new InvalidOperationException("Expected blocked Checkee intent");
 }
 catch (InvalidOperationException ex) when (ex.Message.Contains("chưa đồng bộ", StringComparison.Ordinal)) { }
@@ -107,7 +112,10 @@ await persistence.CompleteAsync([first.EventId], ct); // Represents successful s
 Check((await persistence.GetPendingAsync(ct)).Count == 0, "Completing PO intent removes it from replay");
 var ready = (await sender.GetPendingAsync(true, 100, ct)).Single();
 Check(ready.Id == blockedRow.Id && ready.CodeContent == code, "PO completion makes original history eligible without changing record identity");
-var sendAttempt = await sender.BeginSendAttemptAsync([ready], "TEST-PRODUCT", "TEST-BATCH", "TEST-TYPE", ct);
+Check(ready.PoAccepted && ready.Status == ScanStatuses.Pass && ready.OrderNo == order
+    && ready.OrderCreatedUtc == created && ready.Gtin == gtin,
+    "Ready Checkee fixture carries accepted Pass, immutable PO identity and normalized matching GTIN");
+var sendAttempt = await sender.BeginSendAttemptAsync([ready], gtin, "TEST-BATCH", "TEST-TYPE", ct);
 await sender.CompleteSendAttemptAsync(sendAttempt, CheckeeSendAttemptStatuses.Sent, 200, "TEST ACK", ct);
 await persistence.PersistBatchAsync(batch, ct); // Lost worker acknowledgement after both DB commits.
 await persistence.CompleteAsync([first.EventId], ct);

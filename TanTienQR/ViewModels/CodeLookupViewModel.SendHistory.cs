@@ -24,15 +24,6 @@ internal sealed partial class CodeLookupViewModel
     public string SendDetailTitle => SelectedSendAttempt is { } row
         ? $"Chi tiết lần gửi #{row.AttemptId} · {row.TimeText} · {row.CountText}" : "Chi tiết lần gửi";
 
-    private async void OnScannerTimerTick(object? sender, EventArgs e)
-    {
-        ScannerStatusText = _scanner.StatusText;
-        CheckeeStatusText = _sendWorker.State.Status;
-        OnPropertyChanged(nameof(HasCheckeeError));
-        if (!IsSendHistoryBusy && _lastHistoryRunUtc != _sendWorker.State.LastRunUtc)
-            await LoadSendHistoryAsync();
-    }
-
     [RelayCommand]
     public async Task LoadSendHistoryAsync()
     {

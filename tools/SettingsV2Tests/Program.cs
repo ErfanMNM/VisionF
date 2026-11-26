@@ -48,10 +48,12 @@ try
         ["Plc:Ip"] = "127.0.0.1", ["Plc:Port"] = "9600", ["Plc:Enabled"] = "true",
         ["Scanner:Enabled"] = "false", ["Web:Enabled"] = "false", ["Checkee:Enabled"] = "false",
         ["Print:Enabled"] = "false", ["Print:Remote:Enabled"] = "false", ["PoServer:Enabled"] = "false",
-        ["MultiConnect:Enabled"] = "false", ["MesSimulator:Enabled"] = "false",
+        ["MultiConnect:Enabled"] = "false",
         ["Po:BaseUrl"] = "http://127.0.0.1:1", ["Po:DbRoot"] = Path.Combine(sandbox, "po"),
         ["Auth:DbPath"] = Path.Combine(sandbox, "users.db"), ["Scans:DbPath"] = Path.Combine(sandbox, "scans.db"),
         ["PlcSettings:DbPath"] = Path.Combine(sandbox, "plc.db"), ["Logging:Sqlite:Path"] = Path.Combine(sandbox, "app.db"),
+        ["ManualActivation:HistoryPath"] = Path.Combine(sandbox, "manual-activation.db"),
+        ["Checkee:AuditLogPath"] = Path.Combine(sandbox, "checkee-send-audit.jsonl"),
     });
     builder.Logging.ClearProviders();
     builder.Services.AddTanTienServices(builder.Configuration);
@@ -76,6 +78,18 @@ try
     var flowSections = nodes.Select(node => Read<ConfigSectionViewModel>(node, "Section")).ToArray();
     Check(flowSections.Concat(other).Distinct().Count() == sections.Length
           && !flowSections.Intersect(other).Any(), "Every config section is reachable exactly once in flow or other settings");
+    Check(sections.All(section => section.Key != "MesSimulator")
+        && sections.Single(section => section.Key == "Checkee").Fields.All(field =>
+            field.JsonPath is not ("Checkee:ProductGtin" or "Checkee:BatchCode" or "Checkee:OnlyPassCodes")),
+        "Both config views omit retired simulator and PO-derived / unsafe Checkee fields");
+    var scannerNode = Read<object>(settings, "Scanner");
+    var scannerFields = sections.Single(section => section.Key == "Scanner").Fields;
+    var scannerMode = scannerFields.Single(field => field.JsonPath == "Scanner:Mode");
+    Check(scannerMode.Options.Contains("Serial") && Read<string>(scannerNode, "Endpoint") == "COM3 · 9600 baud",
+        "Serial scanner shows the real configured COM endpoint rather than unused TCP host");
+    scannerFields.Single(field => field.JsonPath == "Scanner:ComPort").TextValue = "COM7";
+    Check(Read<string>(scannerNode, "Endpoint") == "COM7 · 9600 baud", "Scanner node follows COM draft edits immediately");
+    scannerFields.Single(field => field.JsonPath == "Scanner:ComPort").TextValue = "COM3";
 
     var cameraField = sections.Single(section => section.Key == "Camera").Fields.Single(field => field.JsonPath == "Camera:Ip");
     cameraField.TextValue = "192.168.20.15";
@@ -106,6 +120,27 @@ try
         Check(applier.ApplyCount == 1 && saved.RootElement.GetProperty("Camera").GetProperty("Ip").GetString() == "192.168.20.15"
               && saved.RootElement.GetProperty("preservedExtension").GetProperty("value").GetInt32() == 42,
             "Confirmed V2 save uses device applier, persists real configuration and preserves extension keys");
+
+    var checkeeEnabled = sections.Single(section => section.Key == "Checkee").Fields
+        .Single(field => field.JsonPath == "Checkee:Enabled");
+    var checkeeWorker = host.Services.GetRequiredService(assembly.GetType("TanTienQR.Services.CheckeeSendWorker", true)!);
+    Check(!Read<bool>(checkeeWorker, "SendingEnabled") && !checkeeEnabled.RequiresRestart,
+        "Saved disabled Checkee state remains disabled without requiring restart");
+    checkeeEnabled.TextValue = "true";
+    cameraField.TextValue = "invalid camera host!!";
+    Complete(((IAsyncRelayCommand)Command(editor, "SaveCommand")).ExecuteAsync(null));
+    Check(!Read<bool>(checkeeWorker, "SendingEnabled"), "Validation failure does not apply an unsaved Checkee toggle");
+    cameraField.TextValue = "192.168.20.15";
+    Complete(((IAsyncRelayCommand)Command(editor, "SaveCommand")).ExecuteAsync(null));
+    Check(Read<bool>(checkeeWorker, "SendingEnabled") && !Read<bool>(editor, "HasUnsavedChanges")
+        && !Read<bool>(editor, "RestartRequired") && applier.ApplyCount == 1,
+        "Checkee enable applies to the existing worker after successful save without reconnecting devices or restart");
+    checkeeEnabled.TextValue = "false";
+    Complete(((IAsyncRelayCommand)Command(editor, "SaveCommand")).ExecuteAsync(null));
+    using (var saved = JsonDocument.Parse(File.ReadAllText(configPath)))
+        Check(!Read<bool>(checkeeWorker, "SendingEnabled") && !Read<bool>(editor, "RestartRequired")
+            && !saved.RootElement.GetProperty("Checkee").GetProperty("Enabled").GetBoolean(),
+            "Checkee disable updates runtime and disk together without stale restart state");
 
     AppStateManager.SetLicenseValid(true);
     AppStateManager.SetCameraStatus(CameraStatus.Connected);

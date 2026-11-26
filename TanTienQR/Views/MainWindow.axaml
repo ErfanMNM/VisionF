@@ -441,6 +441,18 @@
                                 </StackPanel>
                             </Button>
                             <Button Classes="menubtn"
+                                    Classes.active="{Binding IsManualActivationVisible}"
+                                    Command="{Binding ShowManualActivationTabCommand}"
+                                    Click="OnMoreItemClick">
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <Path Width="16" Height="16" Stretch="Uniform"
+                                          Stroke="{StaticResource TextMuted}" StrokeThickness="1.9"
+                                          StrokeLineCap="Round" StrokeJoin="Round"
+                                          VerticalAlignment="Center" Data="{StaticResource Icon.Clipboard}" />
+                                    <TextBlock Text="Thêm mã" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                            <Button Classes="menubtn"
                                     Classes.active="{Binding IsPrintVisible}"
                                     Command="{Binding ShowPrintTabCommand}"
                                     Click="OnMoreItemClick">
@@ -656,6 +668,9 @@
                 <views:LazyTabHost x:Name="CodeLookupTab"
                                    IsVisible="{Binding IsCodeLookupVisible}"
                                    Factory="{x:Static views:LazyTabFactories.CodeLookup}" />
+                <views:LazyTabHost x:Name="ManualActivationTab"
+                                   IsVisible="{Binding IsManualActivationVisible}"
+                                   Factory="{x:Static views:LazyTabFactories.ManualActivation}" />
                 <views:LazyTabHost x:Name="ProductionOrdersTab"
                                    IsVisible="{Binding IsProductionOrdersVisible}"
                                    Factory="{x:Static views:LazyTabFactories.ProductionOrders}" />

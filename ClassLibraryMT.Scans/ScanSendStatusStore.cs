@@ -22,6 +22,36 @@ internal sealed partial class ScanSendStatusStore : IScanSendStatusStore
         _store = store;
     }
 
+    public async Task<IReadOnlyList<ScanRecordEntity>> GetPendingForOrderAsync(string orderNo,
+        DateTime orderCreatedUtc, string gtin, int limit = 100, CancellationToken cancellationToken = default)
+    {
+        await using var connection = await _store.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            SELECT Id, ReceivedUtc, Code, Gtin, Serial, Status,
+                   ProcessingTimeMs, PlcResult, BatchNo, Raw, OrderNo,
+                   SendStatus, SendStatusCode, SendMessage, SendAttempts,
+                   SendTimeUtc, SendAttemptUtc, PlcAckTimeMs, OrderCreatedUtc, PoAccepted
+            FROM ScanRecords
+            WHERE PersistenceReady=1 AND PoAccepted=1 AND Status=$pass
+                AND OrderNo=$order COLLATE BINARY AND OrderCreatedUtc=$created
+                AND Gtin=$gtin COLLATE BINARY
+                AND (SendStatus='' OR SendStatus IS NULL OR SendStatus=$pending)
+            ORDER BY COALESCE(SendAttemptUtc, '') ASC, ReceivedUtc ASC, Id ASC
+            LIMIT $limit;
+            """;
+        cmd.Parameters.AddWithValue("$pass", ScanStatuses.Pass);
+        cmd.Parameters.AddWithValue("$order", orderNo);
+        cmd.Parameters.AddWithValue("$created", ScanStore.FormatUtc(orderCreatedUtc));
+        cmd.Parameters.AddWithValue("$gtin", gtin);
+        cmd.Parameters.AddWithValue("$pending", ScanSendStatuses.Pending);
+        cmd.Parameters.AddWithValue("$limit", Math.Clamp(limit, 1, 500));
+        var result = new List<ScanRecordEntity>();
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false)) result.Add(MapRecord(reader));
+        return result;
+    }
+
     /// <inheritdoc/>
     public async Task<IReadOnlyList<ScanRecordEntity>> GetPendingAsync(
         bool onlyPass = true,
@@ -53,7 +83,7 @@ internal sealed partial class ScanSendStatusStore : IScanSendStatusStore
             SELECT Id, ReceivedUtc, Code, Gtin, Serial, Status,
                    ProcessingTimeMs, PlcResult, BatchNo, Raw, OrderNo,
                    SendStatus, SendStatusCode, SendMessage, SendAttempts,
-                   SendTimeUtc, SendAttemptUtc, PlcAckTimeMs
+                   SendTimeUtc, SendAttemptUtc, PlcAckTimeMs, OrderCreatedUtc, PoAccepted
             FROM ScanRecords
             {where}
             -- Retry the least recently attempted rows first. Rows retained as Pending
@@ -87,9 +117,27 @@ internal sealed partial class ScanSendStatusStore : IScanSendStatusStore
 
         if (filter is not null)
         {
+            if (filter.OrderNo is not null)
+            {
+                where += " AND OrderNo=$order COLLATE BINARY";
+                parameters.Add(("$order", filter.OrderNo));
+            }
+            if (filter.OrderCreatedUtc is { } created)
+            {
+                where += " AND OrderCreatedUtc=$created";
+                parameters.Add(("$created", ScanStore.FormatUtc(created)));
+            }
+            if (filter.Gtin is not null)
+            {
+                where += " AND Gtin=$gtin COLLATE BINARY";
+                parameters.Add(("$gtin", filter.Gtin));
+            }
+            if (filter.OnlyAccepted) where += " AND PoAccepted=1";
             if (!string.IsNullOrWhiteSpace(filter.SendStatus))
             {
-                where += " AND SendStatus = $sendStatus";
+                where += filter.SendStatus == ScanSendStatuses.Pending
+                    ? " AND (SendStatus='' OR SendStatus IS NULL OR SendStatus=$sendStatus)"
+                    : " AND SendStatus = $sendStatus";
                 parameters.Add(("$sendStatus", filter.SendStatus));
             }
 
@@ -123,7 +171,7 @@ internal sealed partial class ScanSendStatusStore : IScanSendStatusStore
             SELECT Id, ReceivedUtc, Code, Gtin, Serial, Status,
                    ProcessingTimeMs, PlcResult, BatchNo, Raw, OrderNo,
                    SendStatus, SendStatusCode, SendMessage, SendAttempts,
-                   SendTimeUtc, SendAttemptUtc, PlcAckTimeMs
+                   SendTimeUtc, SendAttemptUtc, PlcAckTimeMs, OrderCreatedUtc, PoAccepted
             FROM ScanRecords
             {where}
             ORDER BY ReceivedUtc DESC, Id DESC
@@ -280,7 +328,7 @@ internal sealed partial class ScanSendStatusStore : IScanSendStatusStore
 
         await using var cmd = connection.CreateCommand();
         cmd.CommandText = """
-            SELECT SendStatus, COUNT(*) FROM ScanRecords WHERE PersistenceReady = 1 GROUP BY SendStatus;
+            SELECT SendStatus, COUNT(*) FROM ScanRecords WHERE PersistenceReady = 1 AND Status='Pass' GROUP BY SendStatus;
             """;
 
         await using var reader = await cmd
@@ -344,6 +392,8 @@ internal sealed partial class ScanSendStatusStore : IScanSendStatusStore
         SendTimeUtc = record.IsDBNull(15) ? null : ParseUtc(record.GetString(15)),
         SendAttemptUtc = record.IsDBNull(16) ? null : ParseUtc(record.GetString(16)),
         PlcAckTimeMs = record.GetDouble(17),
+        OrderCreatedUtc = record.IsDBNull(18) ? null : ParseUtc(record.GetString(18)),
+        PoAccepted = record.GetInt32(19) == 1,
     };
 
     /// <summary>

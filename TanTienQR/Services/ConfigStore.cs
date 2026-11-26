@@ -148,7 +148,7 @@ internal sealed class ConfigStore
             // Dựng bản phẳng từ JsonObject gốc (giữ nguyên giá trị thô).
             if (raw is not null)
             {
-                RemoveRetiredCameraSettings(raw);
+                RemoveRetiredSettings(raw);
                 Flatten(raw, null, flat);
             }
         }
@@ -231,7 +231,7 @@ internal sealed class ConfigStore
                 root = new JsonObject();
             }
 
-            RemoveRetiredCameraSettings(root);
+            RemoveRetiredSettings(root);
 
             // Merge từng field theo schema để không mất key lạ.
             // Schema đã bao gồm cả section lồng nhau (Logging:Sqlite, Logging:History).
@@ -267,10 +267,17 @@ internal sealed class ConfigStore
     }
 
     // Chỉ migration cấu hình cũ; trường đã loại bỏ không xuất hiện ở UI hoặc lần lưu mới.
-    private static void RemoveRetiredCameraSettings(JsonObject root)
+    private static void RemoveRetiredSettings(JsonObject root)
     {
         if (root["Camera"] is JsonObject camera)
             camera.Remove("DuplicateWindowSeconds");
+        root.Remove("MesSimulator");
+        if (root["Checkee"] is JsonObject checkee)
+        {
+            checkee.Remove("ProductGtin");
+            checkee.Remove("BatchCode");
+            checkee.Remove("OnlyPassCodes");
+        }
     }
 
     /// <summary>

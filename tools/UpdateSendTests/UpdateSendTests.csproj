@@ -9,6 +9,7 @@
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.14" />
     <ProjectReference Include="../../ClassLibraryMT.Checkee/ClassLibraryMT.Checkee.csproj" />
     <ProjectReference Include="../../ClassLibraryMT.Scans/ClassLibraryMT.Scans.csproj" />
+    <ProjectReference Include="../../ClassLibraryMT.Po/ClassLibraryMT.Po.csproj" />
     <Compile Include="../../TanTienQR/Services/CheckeeSendWorker.cs" Link="CheckeeSendWorker.cs" />
     <Compile Include="../../TanTienQR/Services/CheckeeOutboundOptions.cs" Link="CheckeeOutboundOptions.cs" />
     <Compile Include="../../TanTienQR/Services/ScanIntakeGate.cs" Link="ScanIntakeGate.cs" />

@@ -90,6 +90,7 @@ internal static class Program
                 Enabled = true, Ip = "127.0.0.1", Port = 1, ResetCounterAddress = "D60",
                 ClearErrorAddress = "D62", CounterDisplaySource = "PLC",
             }, CancellationToken.None)!);
+            CheckPlcActionGuards(main, writer, session, host.Services.GetRequiredService<ScanIntakeGate>());
             writer.GetType().GetField("_latestCounters", All)!.SetValue(writer,
                 Activator.CreateInstance(snapshotType, [int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue]));
             AppStateManager.SetPlcStatus(PLCStatus.Connected);
@@ -120,10 +121,28 @@ internal static class Program
 
             var lookup = Read<object>(main, "CodeLookup");
             var historyStore = host.Services.GetRequiredService<IScanSendStatusStore>();
-            var pendingAttempt = historyStore.BeginSendAttemptAsync([new ScanRecordEntity
+            var persistence = host.Services.GetRequiredService<IScanPersistenceStore>();
+            const string auditOrderNo = "PO-UI-001";
+            const string auditGtin = "04006381333931";
+            var auditOrderCreatedUtc = DateTime.UtcNow;
+            var auditEventId = Guid.NewGuid().ToString("N");
+            Complete(persistence.PersistBatchAsync([new ScanPersistenceEnvelope(auditEventId, new ScanRecordEntity
             {
-                Id = 1001, CodeContent = longCode, Raw = longCode, OrderNo = "PO-UI-001",
-            }], "04006381333931", "PO-UI-001", "DECLARE");
+                CodeContent = longCode, Raw = longCode, OrderNo = auditOrderNo,
+                Gtin = auditGtin, Status = ScanStatuses.Pass, PlcResult = ScanPlcResults.Ok,
+                ReceivedUtc = DateTime.UtcNow,
+            }, auditOrderCreatedUtc, Accepted: true)]));
+            var beforeAuditComplete = historyStore.GetPendingForOrderAsync(auditOrderNo, auditOrderCreatedUtc, auditGtin);
+            Complete(beforeAuditComplete);
+            Check(beforeAuditComplete.Result.Count == 0, "Audit fixture chưa hoàn tất outbox PO chưa đủ điều kiện gửi");
+            Complete(persistence.CompleteAsync([auditEventId]));
+            var auditCandidates = historyStore.GetPendingForOrderAsync(auditOrderNo, auditOrderCreatedUtc, auditGtin);
+            Complete(auditCandidates);
+            var auditRecord = auditCandidates.Result.Single();
+            Check(auditRecord.Id > 0 && auditRecord.PoAccepted && auditRecord.OrderCreatedUtc == auditOrderCreatedUtc
+                && auditRecord.Gtin == auditGtin && auditRecord.CodeContent == longCode,
+                "Audit fixture đọc lại đúng identity Pass đã được PO chấp nhận và đồng bộ từ SQLite");
+            var pendingAttempt = historyStore.BeginSendAttemptAsync([auditRecord], auditGtin, auditOrderNo, "DECLARE");
             Complete(pendingAttempt);
             Complete((Task)Invoke(lookup, "LoadSendHistoryAsync")!);
             var liveAttemptRow = ((IList)Read<object>(lookup, "SendHistoryRows"))[0]!;
@@ -161,6 +180,50 @@ internal static class Program
             }])!;
             ((IList)Read<object>(lookup, "SendHistoryRows")).Add(historyRow);
             Check(row.CodeText == longCode, "Tra cứu giữ nguyên toàn bộ CodeContent");
+
+            // Seed all three monitor tabs through the durable scan/outbox API.
+            // No worker or HTTP client is started by this harness.
+            var monitorSamples = new[]
+            {
+                (Status: ScanSendStatuses.Pending, Label: "Đang chờ gửi", Rows: "PendingSendRows", Count: "PendingSendCountText"),
+                (Status: ScanSendStatuses.Sent, Label: "Đã gửi", Rows: "SentSendRows", Count: "SentSendCountText"),
+                (Status: ScanSendStatuses.Failed, Label: "Gửi lỗi", Rows: "FailedSendRows", Count: "FailedSendCountText"),
+            };
+            foreach (var sample in monitorSamples)
+            {
+                var monitorCode = "https://trace.example/01/" + auditGtin + "/21/UI-MONITOR-" + sample.Status;
+                var monitorEvent = Guid.NewGuid().ToString("N");
+                Complete(persistence.PersistBatchAsync([new ScanPersistenceEnvelope(monitorEvent, new ScanRecordEntity
+                {
+                    CodeContent = monitorCode, Raw = monitorCode, Gtin = auditGtin, OrderNo = auditOrderNo,
+                    Status = ScanStatuses.Pass, PlcResult = ScanPlcResults.Ok, ReceivedUtc = DateTime.UtcNow,
+                }, auditOrderCreatedUtc, Accepted: true)]));
+                Complete(persistence.CompleteAsync([monitorEvent]));
+                var pending = historyStore.GetPendingForOrderAsync(auditOrderNo, auditOrderCreatedUtc, auditGtin);
+                Complete(pending);
+                var persisted = pending.Result.Single(record => record.CodeContent == monitorCode);
+                if (sample.Status == ScanSendStatuses.Sent)
+                    Complete(historyStore.MarkSentAsync(persisted.Id, "Checkee xác nhận mẫu monitor."));
+                else if (sample.Status == ScanSendStatuses.Failed)
+                    Complete(historyStore.MarkFailedAsync(persisted.Id, 422, "Mẫu monitor bị từ chối; cần đối soát trước khi gửi lại."));
+            }
+            Complete((Task)Invoke(lookup, "RefreshSendMonitorAsync")!);
+            foreach (var sample in monitorSamples)
+            {
+                var monitorRows = Read<IEnumerable>(lookup, sample.Rows).Cast<CheckeeMonitorRowViewModel>().ToArray();
+                var sampleCode = "https://trace.example/01/" + auditGtin + "/21/UI-MONITOR-" + sample.Status;
+                Check(monitorRows.Any(item => item.CodeText == sampleCode && item.StatusText == sample.Label
+                        && item.OrderNoText == auditOrderNo)
+                    && monitorRows.All(item => item.StatusText == sample.Label),
+                    "Monitor " + sample.Status + " tải đúng bản ghi SQLite, PO và nhãn trạng thái");
+                var expectedCount = sample.Status == ScanSendStatuses.Sent ? 2 : 1;
+                Check(Read<string>(lookup, sample.Count).EndsWith("(" + expectedCount + ")", StringComparison.Ordinal),
+                    "Monitor " + sample.Status + " hiển thị số lượng đúng theo dữ liệu đã lưu");
+            }
+            // Refresh also reloads the real audit history; keep the separate
+            // failed-history presentation fixture for existing overlay checks.
+            ((IList)Read<object>(lookup, "SendHistoryRows")).Clear();
+            ((IList)Read<object>(lookup, "SendHistoryRows")).Add(historyRow);
             foreach (var (status, label) in new[]
             {
                 (ScanStatuses.Duplicate, "Trùng"), (ScanStatuses.InvalidForOrder, "Không tồn tại"), (ScanStatuses.NoRead, "NoRead"),
@@ -181,6 +244,16 @@ internal static class Program
             // A MainWindow also reserves 232px for its sidebar and a top header.
             Capture(new InfoView { DataContext = main }, "Info_content_1048x540", 1048, 540, longCode, info: true);
             Capture(new CodeLookupView { DataContext = main }, "CodeLookup_content_1048x540", 1048, 540, longCode, info: false);
+
+            for (var tabIndex = 0; tabIndex < monitorSamples.Length; tabIndex++)
+            {
+                var sample = monitorSamples[tabIndex];
+                var sampleCode = "https://trace.example/01/" + auditGtin + "/21/UI-MONITOR-" + sample.Status;
+                foreach (var (width, height) in new[] { (1048, 540), (1280, 720) })
+                    Capture(new CodeLookupView { DataContext = main }, $"CodeLookup_monitor_{sample.Status}_{width}x{height}",
+                        width, height, longCode, info: false, monitorIndex: tabIndex,
+                        monitorCode: sampleCode, monitorLabel: sample.Label);
+            }
 
             Set(lookup, "SelectedSendAttempt", historyRow);
             ((IList)Read<object>(lookup, "SendDetailRows")).Clear();
@@ -236,7 +309,8 @@ internal static class Program
         }
     }
 
-    private static void Capture(UserControl view, string stem, int width, int height, string longCode, bool info)
+    private static void Capture(UserControl view, string stem, int width, int height, string longCode, bool info,
+        int? monitorIndex = null, string? monitorCode = null, string? monitorLabel = null)
     {
         var window = new Window
         {
@@ -248,6 +322,15 @@ internal static class Program
         {
             window.Show();
             for (var pass = 0; pass < 3; pass++) { window.UpdateLayout(); Pump(100); }
+            if (monitorIndex is { } selectedTab)
+            {
+                var tabs = view.FindControl<TabControl>("CheckeeSendMonitorTabs")!;
+                tabs.SelectedIndex = selectedTab;
+                view.FindControl<Border>("CheckeeSendMonitorPanel")!.BringIntoView();
+                for (var pass = 0; pass < 3; pass++) { window.UpdateLayout(); Pump(100); }
+                Check(tabs.SelectedIndex == selectedTab && tabs.Bounds.Height >= 48,
+                    stem + ": chọn đúng tab monitor và có vùng nội dung hữu hạn");
+            }
             var blocks = view.GetVisualDescendants().OfType<TextBlock>().ToArray();
             var nodes = blocks.Where(block => block.IsVisible).Select(block =>
             {
@@ -269,6 +352,19 @@ internal static class Program
             Check(!blocks.Any(block => block.Text is "GTIN" or "MÃ / SERIAL"), stem + ": không còn cột định danh GTIN/serial");
             if (info)
             {
+                var resetButton = view.FindControl<Button>("ResetPlcCountersButton")!;
+                var clearButton = view.FindControl<Button>("ClearPlcErrorsButton")!;
+                var appBadge = view.FindControl<Border>("AppStateBadge")!;
+                var plcBadge = view.FindControl<Border>("PlcStateBadge")!;
+                var actionControls = new Control[] { resetButton, clearButton, appBadge, plcBadge };
+                var actionPositions = actionControls.Select(control => control.TranslatePoint(default, view)!.Value).ToArray();
+                Check(actionControls.All(control => Math.Abs(control.Bounds.Height - 44) < 1)
+                    && actionPositions.All(point => Math.Abs(point.Y - actionPositions[0].Y) < 1)
+                    && actionPositions.Zip(actionControls).All(pair => pair.First.X >= 0
+                        && pair.First.X + pair.Second.Bounds.Width <= view.Bounds.Width + 1),
+                    stem + ": nút PLC và hai badge thẳng hàng, cao đồng nhất, nằm trong viewport");
+                Check(view.FindControl<TextBlock>("PlcActionStatus") is { Text.Length: > 0, TextWrapping: TextWrapping.Wrap },
+                    stem + ": lý do khả dụng lệnh PLC luôn hiện, kể cả khi nút bị khóa");
                 var headerCode = codes.FirstOrDefault(block => block.GetVisualAncestors().OfType<ScrollViewer>()
                     .Any(scroll => scroll.MaxHeight <= 72));
                 Check(headerCode is not null, stem + ": mã cuối có vùng cuộn giới hạn 72px");
@@ -300,6 +396,42 @@ internal static class Program
                     && block.TranslatePoint(default, viewport!) is { } point
                     && point.Y >= 0 && point.Y + block.Bounds.Height <= viewport!.Bounds.Height)),
                     stem + ": thời gian/kết quả/PLC/PO/gửi hiện cùng đầu mã dài");
+                if (monitorIndex.HasValue)
+                {
+                    var monitorTable = view.GetVisualDescendants().OfType<ItemsControl>()
+                        .Single(items => items.IsEffectivelyVisible && items.Items.OfType<CheckeeMonitorRowViewModel>()
+                            .Any(item => item.CodeText == monitorCode));
+                    var monitorViewport = monitorTable.GetVisualAncestors().OfType<ScrollViewer>().First();
+                    Check(monitorViewport.Bounds.Height >= 24,
+                        stem + ": tab monitor có ít nhất 24px vùng cuộn nhìn thấy");
+                    var displayedRow = monitorTable.Items.OfType<CheckeeMonitorRowViewModel>()
+                        .Single(item => item.CodeText == monitorCode);
+                    var monitorBlocks = blocks.Where(block => block.IsEffectivelyVisible
+                        && block.GetVisualAncestors().OfType<ItemsControl>().Contains(monitorTable)).ToArray();
+                    Check(monitorBlocks.Any(block => block.Text == monitorCode
+                            && block.TextWrapping == TextWrapping.Wrap && block.TextTrimming == TextTrimming.None)
+                        && monitorBlocks.Any(block => block.Text == monitorLabel)
+                        && monitorBlocks.Any(block => block.Text == displayedRow.OrderNoText)
+                        && monitorBlocks.Any(block => block.Text == displayedRow.DetailText),
+                        stem + ": tab đã chọn hiện đầy đủ mã/PO/trạng thái/phản hồi, giữ wrap và nội dung nguyên vẹn");
+                    Check(new[] { displayedRow.TimeText, monitorCode, displayedRow.OrderNoText,
+                            monitorLabel, displayedRow.DetailText }.All(text => monitorBlocks.Any(block => block.Text == text
+                            && block.TranslatePoint(default, monitorViewport) is { } point
+                            && point.Y >= 0 && point.Y + block.Bounds.Height <= monitorViewport.Bounds.Height)),
+                        stem + ": dòng monitor mẫu có mã và metadata trọn vẹn trong vùng cuộn của tab đã chọn");
+                    var controls = view.GetVisualDescendants().OfType<Control>().ToArray();
+                    var sendToggle = controls.OfType<CheckBox>().Single(box => Equals(box.Content, "Bật gửi"));
+                    var lookup = Read<object>(view.DataContext!, "CodeLookup");
+                    var refresh = controls.OfType<Button>().Single(button => button.Command == Read<ICommand>(lookup, "RefreshSendMonitorCommand"));
+                    var toggleAt = sendToggle.TranslatePoint(default, view)!.Value;
+                    var refreshAt = refresh.TranslatePoint(default, view)!.Value;
+                    Check(sendToggle.IsChecked == false && refresh.IsEffectivelyVisible
+                        && Math.Abs(toggleAt.Y + sendToggle.Bounds.Height / 2 - refreshAt.Y - refresh.Bounds.Height / 2) <= 1
+                        && toggleAt.Y >= 0 && refreshAt.Y >= 0
+                        && toggleAt.Y + sendToggle.Bounds.Height <= view.Bounds.Height
+                        && refreshAt.Y + refresh.Bounds.Height <= view.Bounds.Height,
+                        stem + ": Bật gửi và Làm mới thẳng hàng, hiển thị trong viewport, giữ runtime đã tắt");
+                }
             }
         }
         finally { window.Close(); Pump(30); }
@@ -317,10 +449,12 @@ internal static class Program
             ["Plc:TimeoutMs"] = "100", ["Plc:Retries"] = "0", ["Plc:CounterAddress"] = "D100", ["Plc:ResetCounterAddress"] = "D60",
             ["Scanner:Enabled"] = "false", ["Web:Enabled"] = "false", ["Checkee:Enabled"] = "false",
             ["Print:Enabled"] = "false", ["Print:Remote:Enabled"] = "false", ["PoServer:Enabled"] = "false",
-            ["MultiConnect:Enabled"] = "false", ["MesSimulator:Enabled"] = "false",
+            ["MultiConnect:Enabled"] = "false",
             ["Po:BaseUrl"] = "http://127.0.0.1:1", ["Po:DbRoot"] = Path.Combine(root, "po"),
             ["Auth:DbPath"] = Path.Combine(root, "users.db"), ["Scans:DbPath"] = Path.Combine(root, "scans.db"),
             ["PlcSettings:DbPath"] = Path.Combine(root, "plc.db"), ["Logging:Sqlite:Path"] = Path.Combine(root, "app.db"),
+            ["ManualActivation:HistoryPath"] = Path.Combine(root, "manual-activation.db"),
+            ["Checkee:AuditLogPath"] = Path.Combine(root, "checkee-send-audit.jsonl"),
         });
         builder.Logging.ClearProviders();
         builder.Services.AddTanTienServices(builder.Configuration);
@@ -329,6 +463,83 @@ internal static class Program
 
     private static (long Total, long Pass, long Fail) Metrics(object main) =>
         (Read<long>(main, "TotalScans"), Read<long>(main, "PassCount"), Read<long>(main, "FailCount"));
+
+    private static void CheckPlcActionGuards(object main, object writer, ISessionContext session, ScanIntakeGate intake)
+    {
+        var reset = (ICommand)Read<object>(main, "ResetPlcCountersCommand");
+        var clear = (ICommand)Read<object>(main, "ClearPlcErrorsCommand");
+        void SignIn(UserRole role) => session.SignIn(new UserAccount
+        {
+            Id = 1, Username = "ui-fixture", RoleValue = (int)role,
+        });
+        void Apply(bool enabled = true, string resetAddress = "D60", string clearAddress = "D62") =>
+            Complete((Task)Invoke(writer, "ApplyConfigurationAsync", new PlcConfig
+            {
+                Enabled = enabled, Ip = "127.0.0.1", Port = 1, ResetCounterAddress = resetAddress,
+                ClearErrorAddress = clearAddress, CounterDisplaySource = "PLC",
+            }, CancellationToken.None)!);
+
+        session.SignOut();
+        Check(!reset.CanExecute(null) && !clear.CanExecute(null)
+            && Read<string>(main, "PlcActionStatusText").Contains("Đăng nhập", StringComparison.Ordinal),
+            "Chưa đăng nhập khóa cả hai lệnh và hiển thị lý do xác thực");
+        // Invoke the method directly as well: the UI's disabled state cannot be the only guard.
+        Complete((Task)Invoke(main, "ResetPlcCountersAsync")!);
+        Complete((Task)Invoke(main, "ClearPlcErrorsAsync")!);
+        SignIn(UserRole.Worker);
+        AppStateManager.SetPlcStatus(PLCStatus.Connected);
+        Check(!reset.CanExecute(null) && !clear.CanExecute(null)
+            && Read<string>(main, "PlcActionStatusText").Contains("không có quyền", StringComparison.Ordinal),
+            "Worker không gửi lệnh dù PLC kết nối; lý do là quyền, không phải lỗi thiết bị");
+        SignIn(UserRole.Operator);
+        Check(reset.CanExecute(null) && clear.CanExecute(null),
+            "Operator có quyền sửa cấu hình được gửi lệnh khi mapping và PLC sẵn sàng");
+        AppStateManager.SetPlcStatus(PLCStatus.Reconnecting);
+        Check(!reset.CanExecute(null) && !clear.CanExecute(null)
+            && Read<string>(main, "PlcActionStatusText").Contains("chưa kết nối", StringComparison.Ordinal),
+            "Mất kết nối thực tế khóa lệnh ngay cả trước chu kỳ UI refresh");
+        AppStateManager.SetPlcStatus(PLCStatus.Connected);
+        var notifications = new List<string?>();
+        ((System.ComponentModel.INotifyPropertyChanged)main).PropertyChanged += Observe;
+        try
+        {
+            Set(main, "IsResettingPlcCounters", true);
+            Check(!reset.CanExecute(null) && !clear.CanExecute(null), "Đang gửi reset không xếp thêm reset hoặc Clear");
+            notifications.Clear();
+            Set(main, "IsResettingPlcCounters", false);
+            Check(reset.CanExecute(null) && clear.CanExecute(null)
+                && new[] { "CanResetPlcCounters", "CanClearPlcErrors", "PlcActionStatusText" }.All(notifications.Contains),
+                "Kết thúc reset cập nhật khả dụng và lý do ngay, không chờ polling");
+            Set(main, "IsClearingPlcErrors", true);
+            Check(!reset.CanExecute(null) && !clear.CanExecute(null), "Đang gửi Clear khóa đồng thời cả hai nút");
+            Set(main, "IsClearingPlcErrors", false);
+        }
+        finally { ((System.ComponentModel.INotifyPropertyChanged)main).PropertyChanged -= Observe; }
+        Invoke(intake, "SetSuspended", true);
+        Check(!reset.CanExecute(null) && !clear.CanExecute(null)
+            && Read<string>(main, "PlcActionStatusText").Contains("tạm khóa", StringComparison.Ordinal),
+            "Bảo trì/đổi cấu hình vẫn giữ khóa an toàn với người có quyền");
+        Invoke(intake, "SetSuspended", false);
+        Apply(resetAddress: "");
+        AppStateManager.SetPlcStatus(PLCStatus.Connected);
+        Check(!reset.CanExecute(null) && clear.CanExecute(null)
+            && Read<string>(main, "ResetPlcCountersHint").Contains("ResetCounterAddress", StringComparison.Ordinal),
+            "Thiếu D reset chỉ khóa xóa số và chỉ rõ mapping cần cấu hình");
+        Apply(clearAddress: "");
+        AppStateManager.SetPlcStatus(PLCStatus.Connected);
+        Check(reset.CanExecute(null) && !clear.CanExecute(null)
+            && Read<string>(main, "ClearPlcErrorsHint").Contains("ClearErrorAddress", StringComparison.Ordinal),
+            "Thiếu D Clear chỉ khóa xóa lỗi và không đoán địa chỉ máy");
+        Apply(enabled: false);
+        AppStateManager.SetPlcStatus(PLCStatus.Connected);
+        Check(!reset.CanExecute(null) && !clear.CanExecute(null)
+            && Read<string>(main, "PlcActionStatusText").Contains("đang tắt", StringComparison.Ordinal),
+            "Cấu hình PLC đã tắt vẫn khóa lệnh ngay cả khi nhãn trạng thái cũ báo Connected");
+        Apply();
+        SignIn(UserRole.Developer);
+        AppStateManager.SetPlcStatus(PLCStatus.Connected);
+        void Observe(object? sender, System.ComponentModel.PropertyChangedEventArgs args) => notifications.Add(args.PropertyName);
+    }
     private static object Service(IServiceProvider provider, string type) => provider.GetRequiredService(AppAssembly.GetType(type, true)!);
     private static T Read<T>(object target, string property) => (T)target.GetType().GetProperty(property, All)!.GetValue(target)!;
     private static void Set(object target, string property, object value) => target.GetType().GetProperty(property, All)!.SetValue(target, value);

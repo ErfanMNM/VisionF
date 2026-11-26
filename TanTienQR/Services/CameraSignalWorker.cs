@@ -26,22 +26,27 @@ internal sealed class CameraSignalWorker : BackgroundService
     private readonly ProductionOrderService _po;
     private readonly ScanIntakeGate _intake;
     private readonly ILogger<CameraSignalWorker> _logger;
+    private readonly ManualActivationService? _manual;
+    private readonly Channel<bool> _wake = Channel.CreateBounded<bool>(
+        new BoundedChannelOptions(1) { SingleReader = true, FullMode = BoundedChannelFullMode.DropWrite });
     private readonly Channel<ScanRequest> _scanQueue = Channel.CreateBounded<ScanRequest>(
         new BoundedChannelOptions(1) { SingleReader = true, FullMode = BoundedChannelFullMode.Wait });
     private int _inFlight;
 
     public CameraSignalWorker(Reader camera, PlcWriter plc, ScanFeed feed, IScanRecordWriter scanWriter,
         IOptions<CameraOptions> options, RuntimeCounters counters, ProductionOrderService po,
-        ScanIntakeGate intake, ILogger<CameraSignalWorker> logger)
+        ScanIntakeGate intake, ILogger<CameraSignalWorker> logger, ManualActivationService? manual = null)
     {
         _camera = camera; _plc = plc; _feed = feed; _scanWriter = scanWriter;
         _persistence = scanWriter as ScanPersistenceWorker;
         _opt = options.Value; _counters = counters; _po = po; _intake = intake; _logger = logger;
+        _manual = manual;
     }
 
     internal async Task DrainAsync(CancellationToken ct)
     {
         while (Volatile.Read(ref _inFlight) != 0) await Task.Delay(10, ct).ConfigureAwait(false);
+        if (_manual is not null) await _manual.DrainAsync(ct).ConfigureAwait(false);
         if (_scanWriter is not null) await _scanWriter.FlushAsync(ct).ConfigureAwait(false);
     }
 
@@ -57,28 +62,70 @@ internal sealed class CameraSignalWorker : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _camera.ClientCallback += OnCameraEvent;
+        if (_manual is not null) _manual.WorkAvailable += Wake;
         var queueTask = ProcessQueueAsync(CancellationToken.None);
+        Wake(); // Covers submissions queued before this worker subscribed.
         try { await _camera.RunAsync(stoppingToken).ConfigureAwait(false); }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
-        finally { _camera.ClientCallback -= OnCameraEvent; _scanQueue.Writer.TryComplete(); }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Camera receiver stopped; manual intake remains available.");
+            try { await Task.Delay(Timeout.Infinite, stoppingToken).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+        }
+        finally
+        {
+            // A disconnected reader may return normally; do not end manual service with it.
+            if (!stoppingToken.IsCancellationRequested)
+            {
+                try { await Task.Delay(Timeout.Infinite, stoppingToken).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
+            }
+            _camera.ClientCallback -= OnCameraEvent;
+            _scanQueue.Writer.TryComplete();
+            _manual?.StopAccepting();
+            if (_manual is not null) _manual.WorkAvailable -= Wake;
+            _wake.Writer.TryComplete();
+        }
         await queueTask.ConfigureAwait(false);
+        // Queue consumption only publishes immutable scan envelopes. Separate bounded audit
+        // finalizations also belong to this worker's shutdown lifetime.
+        if (_manual is not null) await _manual.DrainAsync(CancellationToken.None).ConfigureAwait(false);
     }
+
+    public override Task StopAsync(CancellationToken cancellationToken)
+    {
+        _manual?.StopAccepting();
+        return base.StopAsync(cancellationToken);
+    }
+
+    private void Wake() => _wake.Writer.TryWrite(true);
 
     private async Task ProcessQueueAsync(CancellationToken ct)
     {
-        await foreach (var request in _scanQueue.Reader.ReadAllAsync(ct))
+        await foreach (var _ in _wake.Reader.ReadAllAsync(ct))
         {
-            try { await HandleAsync(request, ct).ConfigureAwait(false); }
-            catch (Exception ex)
+            while (true)
             {
-                _logger.LogError(ex, "Lỗi xử lý mã {CodeContent}", request.Raw);
-                if (request.Reservation?.IsPublished != true)
+                var processed = false;
+                if (_scanQueue.Reader.TryRead(out var request))
                 {
-                    _counters.AddScan(false);
-                    Publish(request, ScanOutcome.Halted, false, MeasureProcessingMs(request), plcSkipped: true);
+                    processed = true;
+                    try { await HandleAsync(request, ct).ConfigureAwait(false); }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Lỗi xử lý mã {CodeContent}", request.Raw);
+                        if (request.Reservation?.IsPublished != true)
+                        {
+                            _counters.AddScan(false);
+                            Publish(request, ScanOutcome.Halted, false, MeasureProcessingMs(request), plcSkipped: true);
+                        }
+                    }
+                    finally { Interlocked.Decrement(ref _inFlight); }
                 }
+                if (_manual is not null && await _manual.ProcessNextAsync(_counters).ConfigureAwait(false)) processed = true;
+                if (!processed) break;
             }
-            finally { Interlocked.Decrement(ref _inFlight); }
         }
     }
 
@@ -145,6 +192,7 @@ internal sealed class CameraSignalWorker : BackgroundService
         var record = new ScanRecordEntity
         {
             ReceivedUtc = request.ReceivedUtc, CodeContent = request.Raw, Raw = request.Raw,
+            Gtin = PoCodeParser.TryGetGtin(request.Raw, out var gtin) ? gtin : "",
             OrderNo = orderNo ?? request.OrderNo, BatchNo = ScanBatchDefaults.NoBatch,
             ProcessingTimeMs = processingMs, PlcAckTimeMs = plcAckMs,
             Status = outcome switch
@@ -199,6 +247,7 @@ internal sealed class CameraSignalWorker : BackgroundService
             Interlocked.Decrement(ref _inFlight); _counters.AddScan(false);
             Publish(request, ScanOutcome.Overload, false, MeasureProcessingMs(request), plcSkipped: true);
         }
+        else Wake();
     }
 }
 

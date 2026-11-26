@@ -390,8 +390,17 @@ public sealed class CheckeeClient : IDisposable
     }
 
     /// <summary>Tách serial từ path AI 21 của URL khi gửi Checkee, không thay đổi CodeContent đã lưu.</summary>
-    private static string ExtractSerialNumber(string codeContent)
+    public static string ExtractSerialNumber(string codeContent)
     {
+        // The PO parser also accepts GS1 parenthesized and element strings.
+        var gs1 = System.Text.RegularExpressions.Regex.Match(codeContent,
+            @"\A\(01\)[0-9]{14}\(21\)(?<serial>[^\r\n]{1,20})\z");
+        if (!gs1.Success) gs1 = System.Text.RegularExpressions.Regex.Match(codeContent,
+            @"\A(?:\]C1|\]d2|\]Q3)?\x1d?01[0-9]{14}\x1d?21(?<serial>[^\x1d\r\n]{1,20})\x1d?\z");
+        if (gs1.Success) return gs1.Groups["serial"].Value;
+        var relative = System.Text.RegularExpressions.Regex.Match(codeContent,
+            @"\A/01/(?:[0-9]{8}|[0-9]{12,14})/21/(?<serial>[^/?#\s\\]+)(?:\?[^#\s\\]*)?(?:#[^\s\\]*)?\z");
+        if (relative.Success) return Uri.UnescapeDataString(relative.Groups["serial"].Value);
         if (!Uri.TryCreate(codeContent, UriKind.Absolute, out var uri)
             || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
             return codeContent;

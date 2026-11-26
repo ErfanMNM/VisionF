@@ -43,6 +43,11 @@ public static class ScanSendStatuses
 /// </summary>
 public sealed class ScanSendFilter
 {
+    /// <summary>Phạm vi PO nguồn; CreatedUtc phân biệt OrderNo được tái sử dụng.</summary>
+    public string? OrderNo { get; set; }
+    public DateTime? OrderCreatedUtc { get; set; }
+    public string? Gtin { get; set; }
+    public bool OnlyAccepted { get; set; }
     /// <summary>
     /// Lọc theo trạng thái gửi (null = tất cả).
     /// </summary>

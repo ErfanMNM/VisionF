@@ -18,7 +18,7 @@ internal sealed partial class SettingsV2ViewModel : ViewModelBase
     {
         Editor = editor;
         _main = main;
-        Scanner = Create("Scanner", "Scanner", "TCP / COM", "Máy quét cầm tay");
+        Scanner = Create("Scanner", "Scanner", "COM / TCP", "Máy quét cầm tay");
         Gateway = Create("MultiConnect", "MultiConnect", "GATEWAY", "Chuyển tiếp giao thức");
         Camera = Create("Camera", "Camera", "TCP", "Đầu đọc mã");
         Printer = Create("Print", "Printer", "TCP", "Máy in G10");
@@ -156,7 +156,9 @@ internal sealed partial class SettingsV2NodeViewModel : ViewModelBase
     // the same device ViewModels as the original app; no demo connectivity flags.
     public string Endpoint => Section.Key switch
     {
-        "Scanner" => Value("TcpHost") + ":" + Value("TcpPort"),
+        "Scanner" => Value("Mode").Equals("Serial", StringComparison.OrdinalIgnoreCase)
+            ? Value("ComPort") + " · " + Value("BaudRate") + " baud"
+            : Value("TcpHost") + ":" + Value("TcpPort"),
         "Camera" or "Plc" or "Print" => Value("Ip") + ":" + Value("Port"),
         "Checkee" or "Po" => Value("BaseUrl"),
         "PoServer" => Value("BindAddress") + ":" + Value("Port"),

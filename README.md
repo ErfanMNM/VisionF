@@ -7,3 +7,5 @@ Xem [hướng dẫn phát hành, bootstrap và rollback](docs/cloudflare-updates
 Quy trình PO hiện dùng file một cột `CodeContent`, đối chiếu toàn bộ nội dung mã theo DB riêng từng PO. Xem [hợp đồng nhập PO](docs/contract.md), [mẫu CSV](docs/examples/po-codecontent.csv), [mẫu JSON](docs/examples/po-codecontent.json) và [hướng dẫn màn sản xuất / bộ đếm PLC](docs/application-codecontent.md).
 
 Kết quả tích hợp và giới hạn kiểm thử: [CodeContent validation](docs/codecontent-validation.md).
+
+Thêm mã bằng COM, nhập tay, PDA/POST và monitor gửi Checkee theo PO: [hướng dẫn vận hành](docs/manual-activation.md).

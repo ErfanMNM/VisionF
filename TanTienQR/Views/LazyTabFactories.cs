@@ -42,6 +42,9 @@ public static class LazyTabFactories
     /// <summary>Tab Tra cứu mã (dựng khi mở tab).</summary>
     public static Func<Control> CodeLookup => static () => new CodeLookupView();
 
+    /// <summary>Tab thêm mã thủ công (dựng khi mở tab).</summary>
+    public static Func<Control> ManualActivation => static () => new ManualActivationView();
+
     /// <summary>Tab Truy xuất sản xuất (dựng khi mở tab).</summary>
     public static Func<Control> ProductionOrders => static () => new ProductionOrdersView();
 

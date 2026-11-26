@@ -45,6 +45,7 @@ internal partial class ConfigEditorViewModel : ViewModelBase
     private readonly IConfiguration _configuration;
     private readonly IUserActionLogger _actionLog;
     private readonly IDeviceConfigurationApplier _deviceApplier;
+    private readonly CheckeeSendWorker? _checkeeSendWorker;
     private bool _loaded;
 
     /// <summary>Chủ cửa sổ gắn callback; thiếu xác nhận thì không đổi thiết bị.</summary>
@@ -68,12 +69,14 @@ internal partial class ConfigEditorViewModel : ViewModelBase
         ConfigStore store,
         IConfiguration configuration,
         IUserActionLogger actionLog,
-        IDeviceConfigurationApplier deviceApplier)
+        IDeviceConfigurationApplier deviceApplier,
+        CheckeeSendWorker? checkeeSendWorker = null)
     {
         _store = store;
         _configuration = configuration;
         _actionLog = actionLog;
         _deviceApplier = deviceApplier;
+        _checkeeSendWorker = checkeeSendWorker;
 
         BuildSectionsFromSchema();
     }
@@ -486,6 +489,12 @@ internal partial class ConfigEditorViewModel : ViewModelBase
                 UserActionResults.Failed);
             return;
         }
+
+        // Apply the send gate only after saving succeeds; transport credentials
+        // still use their explicitly restart-bound configuration.
+        if (_checkeeSendWorker is not null)
+            _checkeeSendWorker.SendingEnabled = snapshot.Checkee.Enabled;
+        _runningSnapshot.Checkee.Enabled = snapshot.Checkee.Enabled;
 
         // Mốc so sánh mới = cấu hình vừa lưu (đây cũng là cấu hình sẽ chạy sau restart).
         _baseline = snapshot;

@@ -78,7 +78,6 @@
     <ProjectReference Include="..\ClassLibraryMT.Po\ClassLibraryMT.Po.csproj" />
     <ProjectReference Include="..\ClassLibraryMT.Print\ClassLibraryMT.Print.csproj" />
     <ProjectReference Include="..\ClassLibraryMT.PoServer\ClassLibraryMT.PoServer.csproj" />
-    <ProjectReference Include="..\ClassLibraryMT.MesSimulator\ClassLibraryMT.MesSimulator.csproj" />
     <ProjectReference Include="..\ClassLibraryMT.MultiConnect\ClassLibraryMT.MultiConnect.csproj" />
     <ProjectReference Include="..\ClassLibraryMT.Checkee\ClassLibraryMT.Checkee.csproj" />
   </ItemGroup>

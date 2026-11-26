@@ -1,11 +1,10 @@
 namespace TanTienQR.Services;
 
-/// <summary>Metadata sản phẩm cho giao thức gửi Checkee, độc lập với định danh mã quét.</summary>
+/// <summary>Đường dẫn audit gửi Checkee; metadata sản phẩm/lô lấy từ PO.</summary>
 internal sealed class CheckeeOutboundOptions
 {
     /// <summary>
-    /// GTIN sản phẩm do người vận hành cấu hình tại Checkee:ProductGtin.
-    /// Không suy ra từ CodeContent và không dùng để kiểm tra mã của PO.
+    /// File JSONL append-only, ghi bền intent và kết quả từng batch, không chứa credential.
     /// </summary>
-    public string ProductGtin { get; set; } = string.Empty;
+    public string AuditLogPath { get; set; } = Path.Combine("logs", "checkee-send-audit.jsonl");
 }

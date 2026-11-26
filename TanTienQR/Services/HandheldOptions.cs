@@ -7,7 +7,7 @@ public enum HandheldMode
 {
     /// <summary>
     /// App chạy TCP server, chờ handheld/emulator kết nối vào
-    /// (mặc định — dùng để mô phỏng khi chưa có thiết bị thật).
+    /// (giữ tương thích công cụ mô phỏng cũ).
     /// </summary>
     TcpServer = 0,
 
@@ -16,6 +16,9 @@ public enum HandheldMode
     /// (dùng khi handheld ở chế độ client, ví dụ qua WiFi).
     /// </summary>
     TcpClient = 1,
+
+    /// <summary>Máy quét thật qua COM, 8 data bits, no parity, 1 stop bit.</summary>
+    Serial = 2,
 }
 
 /// <summary>
@@ -36,8 +39,8 @@ public sealed class HandheldOptions
     /// </summary>
     public bool Enabled { get; set; } = true;
 
-    /// <summary>Chế độ kết nối (server / client).</summary>
-    public HandheldMode Mode { get; set; } = HandheldMode.TcpServer;
+    /// <summary>Chế độ kết nối (COM mặc định, TCP tương thích).</summary>
+    public HandheldMode Mode { get; set; } = HandheldMode.Serial;
 
     /// <summary>Địa chỉ IP dùng cho chế độ client (hoặc địa chỉ bind của server).</summary>
     public string TcpHost { get; set; } = "127.0.0.1";
@@ -46,10 +49,10 @@ public sealed class HandheldOptions
     public int TcpPort { get; set; } = 6999;
 
     /// <summary>
-    /// Cổng COM của handheld (để dành cho giai đoạn sau khi nối thiết bị thật).
+    /// Cổng COM của handheld, chỉ mở khi tab nhận mã đang hoạt động.
     /// </summary>
     public string ComPort { get; set; } = "COM3";
 
-    /// <summary>Tốc độ baudrate cho cổng COM (để dành cho giai đoạn sau).</summary>
+    /// <summary>Tốc độ baudrate cho cổng COM.</summary>
     public int BaudRate { get; set; } = 9600;
 }

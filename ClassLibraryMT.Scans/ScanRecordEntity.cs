@@ -58,6 +58,12 @@ public sealed class ScanRecordEntity
     /// </summary>
     public string OrderNo { get; set; } = string.Empty;
 
+    /// <summary>Định danh phiên bản PO đã chấp nhận mã, lấy từ snapshot lúc quét.</summary>
+    public DateTime? OrderCreatedUtc { get; set; }
+
+    /// <summary>True khi mã được PO chấp nhận và đã có intent đồng bộ bền vững.</summary>
+    public bool PoAccepted { get; set; }
+
     /// <summary>
     /// Trạng thái gửi mã lên Checkee: <c>Pending</c> / <c>Sent</c> / <c>Failed</c>.
     /// Mã cũ (trước khi có tính năng này) có giá trị rỗng -> coi như chưa gửi.

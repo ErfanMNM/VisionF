@@ -42,6 +42,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
     private readonly ProductionInfoViewModel _productionInfo;
     private readonly ProductionOrdersViewModel _productionOrders;
     public PrintViewModel Print { get; }
+    public ManualActivationViewModel ManualActivation { get; }
 
     /// <summary>Tab MultiConnect: dữ liệu vào/ra của các kênh gateway.</summary>
     public MultiConnectViewModel MultiConnect { get; }
@@ -78,6 +79,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         PlcSettingsViewModel plcSettingsView,
         DevViewModel devView,
         CodeLookupViewModel codeLookupView,
+        ManualActivationViewModel manualActivation,
         ProductionInfoViewModel productionInfo,
         ProductionOrdersViewModel productionOrders,
         PrintViewModel print,
@@ -103,6 +105,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         _plcSettingsView = plcSettingsView;
         _devView = devView;
         _codeLookupView = codeLookupView;
+        ManualActivation = manualActivation;
         _productionInfo = productionInfo;
         _productionOrders = productionOrders;
         Print = print;
@@ -695,6 +698,7 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         // trong khi trước đây chỉ có ShowProductionOrdersTab() gọi Load().
         // Load() có guard Orders.Count == 0 nên gọi lại sau đăng nhập không đọc DB thừa.
         ProductionOrders.Load();
+        ResumeScannerTab();
 
         if (_pollTimer != null) return;
 
@@ -852,6 +856,8 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
         _disposed = true;
         RefreshPrinterRemotePresentation();
         Print.Dispose();
+        ManualActivation.Dispose();
+        _codeLookupView.Dispose();
         Internet.Dispose();
         _configEditor.DeviceConfigurationApplied -= OnDeviceConfigurationApplied;
         _configEditor.ConfirmConnectionChangesAsync = null;
@@ -906,6 +912,8 @@ internal partial class MainViewModel : ViewModelBase, IDisposable
 
         // Tắt timer của tab Dev (đăng nhập lại sẽ bật lại khi mở tab).
         _devView.Deactivate();
+        ManualActivation.Deactivate();
+        _codeLookupView.Deactivate();
 
         // Ngừng theo dõi phiên (đăng nhập lại sẽ subscribe lại trong Start).
         _session.Changed -= OnSessionChanged;

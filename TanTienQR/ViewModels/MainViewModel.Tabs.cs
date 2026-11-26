@@ -76,6 +76,7 @@ internal partial class MainViewModel
     [NotifyPropertyChangedFor(nameof(IsPlcSettingsVisible))]
     [NotifyPropertyChangedFor(nameof(IsDevVisible))]
     [NotifyPropertyChangedFor(nameof(IsCodeLookupVisible))]
+    [NotifyPropertyChangedFor(nameof(IsManualActivationVisible))]
     [NotifyPropertyChangedFor(nameof(IsProductionOrdersVisible))]
     [NotifyPropertyChangedFor(nameof(IsPrintVisible))]
     [NotifyPropertyChangedFor(nameof(IsAboutVisible))]
@@ -128,6 +129,26 @@ internal partial class MainViewModel
     public bool IsCodeLookupVisible =>
         CurrentSection == AppSection.CodeLookup;
 
+    public bool IsManualActivationVisible => CurrentSection == AppSection.ManualActivation;
+
+    // The two scanner tabs share one transport. Close the old tab before opening
+    // the next, including direct property navigation from login/test paths.
+    partial void OnCurrentSectionChanging(AppSection oldValue, AppSection newValue)
+    {
+        if (oldValue == AppSection.CodeLookup) CodeLookup.Deactivate();
+        if (oldValue == AppSection.ManualActivation) ManualActivation.Deactivate();
+        ActivateScannerTab(newValue);
+    }
+
+    /// <summary>Resume after Stop/login even when CurrentSection did not change.</summary>
+    public void ResumeScannerTab() => ActivateScannerTab(CurrentSection);
+
+    private void ActivateScannerTab(AppSection section)
+    {
+        if (section == AppSection.CodeLookup) CodeLookup.Activate();
+        if (section == AppSection.ManualActivation) ManualActivation.Activate();
+    }
+
     /// <summary>
     /// True khi đang ở tab Truy xuất Sản xuất (Local).
     ///
@@ -166,6 +187,7 @@ internal partial class MainViewModel
         AppSection.PlcSettings => "Chỉnh PLC",
         AppSection.Dev => "Dev",
         AppSection.CodeLookup => "Tra cứu mã",
+        AppSection.ManualActivation => "Thêm mã",
         AppSection.ProductionOrders => "Truy xuất Sản xuất (Local)",
         AppSection.Print => "Máy in",
         AppSection.About => "Giới thiệu",
@@ -184,6 +206,7 @@ internal partial class MainViewModel
         AppSection.PlcSettings => "Đọc/ghi ô nhớ PLC Omron, quản lý tham số và áp dụng recipe",
         AppSection.Dev => "Trạng thái runtime, bộ đếm, bộ nhớ, log kỹ thuật — dành cho nhà phát triển",
         AppSection.CodeLookup => "Tra cứu mã đã quét qua hệ thống — nhập tay hoặc quét bằng handheld cầm tay",
+        AppSection.ManualActivation => "Nhập tay hoặc quét COM để thêm mã vào PO đang chạy — lưu 10 lần nhận gần nhất",
         AppSection.ProductionOrders => "Quản lý lệnh sản xuất (PO) tải từ server — bắt đầu / hoàn tất sản xuất",
         AppSection.Print => "Gửi mã từ PO vào máy in và theo dõi xác nhận, mực, lỗi",
         AppSection.About => "Phiên bản phần mềm, giấy phép sử dụng và cập nhật",
@@ -239,6 +262,7 @@ internal partial class MainViewModel
         OnPropertyChanged(nameof(IsPlcSettingsVisible));
         OnPropertyChanged(nameof(IsDevVisible));
         OnPropertyChanged(nameof(IsCodeLookupVisible));
+        OnPropertyChanged(nameof(IsManualActivationVisible));
         OnPropertyChanged(nameof(IsProductionOrdersVisible));
         OnPropertyChanged(nameof(CanUsePrinter));
         OnPropertyChanged(nameof(IsPrintVisible));
@@ -387,6 +411,9 @@ internal partial class MainViewModel
         // Nạp danh sách mã quét gần đây (không ghi đè kết quả đang tra cứu).
         CodeLookup.LoadCommand.Execute(null);
     }
+
+    [RelayCommand]
+    private void ShowManualActivationTab() => SwitchTo(AppSection.ManualActivation, "Thêm mã");
 
     /// <summary>
     /// Chuyển sang tab Truy xuất Sản xuất (Local) — quản lý PO.

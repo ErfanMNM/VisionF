@@ -25,6 +25,8 @@
   <Project Path="tools/LicenseTool/LicenseTool.csproj" />
   <Project Path="tools/MultiConnectGateway/MultiConnectGateway.csproj" />
   <Project Path="tools/MultiConnectTests/MultiConnectTests.csproj" />
+  <Project Path="tools/ManualActivationTests/ManualActivationTests.csproj" />
+  <Project Path="tools/ManualActivationUiTests/ManualActivationUiTests.csproj" />
   <Project Path="tools/MesSimulatorTests/MesSimulatorTests.csproj" />
   <Project Path="tools/PoFlowTests/PoFlowTests.csproj" />
   <Project Path="tools/PoServer/PoServer.csproj" />

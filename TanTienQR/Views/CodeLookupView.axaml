@@ -7,9 +7,27 @@
              x:Class="TanTienQR.Views.CodeLookupView"
              x:DataType="vm:MainViewModel">
 
+    <UserControl.Resources>
+        <DataTemplate x:Key="SendMonitorRow" x:DataType="vm:CheckeeMonitorRowViewModel">
+            <Border BorderBrush="{StaticResource LineColor}" BorderThickness="0,0,0,1" Padding="12,7">
+                <Grid ColumnDefinitions="110,2*,100,110,2*" ColumnSpacing="10">
+                    <TextBlock Classes="mono" FontSize="11" Text="{Binding TimeText}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Column="1" Classes="mono" FontSize="11" Text="{Binding CodeText}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Column="2" Classes="label" FontSize="11" Text="{Binding OrderNoText}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Column="3" Classes="label" FontSize="11" FontWeight="SemiBold" Text="{Binding StatusText}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Column="4" Classes="label" FontSize="11" Text="{Binding DetailText}" TextWrapping="Wrap" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </UserControl.Resources>
+
     <!-- Bố cục theo FScan.cs (dự án tham khảo): ô nhập + bảng thông tin
          mã vừa tra cứu. KHÔNG hiển thị danh sách lịch sử quét chung. -->
-    <Grid RowDefinitions="Auto,Auto,1.3*,*" Margin="18,6,18,18" RowSpacing="12">
+    <Grid>
+        <!-- Preserve usable section viewports on short displays; the page scrolls vertically. -->
+        <ScrollViewer x:Name="CodeLookupPageScroll"
+                      HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto" Margin="18,6,18,18" RowSpacing="12">
 
         <!-- Tiêu đề -->
         <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="12">
@@ -95,8 +113,8 @@
         </Border>
 
         <!-- ===== Bảng thông tin mã vừa tra cứu ===== -->
-        <Border Grid.Row="2" Classes="panel" Padding="0">
-            <Grid RowDefinitions="Auto,*,*">
+        <Border Grid.Row="2" Classes="panel" Padding="0" Height="350">
+            <Grid RowDefinitions="Auto,Auto,*">
 
                 <!-- Header: tiêu đề + trạng thái kích hoạt -->
                 <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10" Margin="14,12">
@@ -247,7 +265,7 @@
                         <TextBlock Grid.Column="6" Classes="overline" Text="CHECKEE" />
                     </Grid>
 
-                    <ScrollViewer Grid.Row="2"
+                    <ScrollViewer x:Name="CodeLookupScanRowsScroll" Grid.Row="2" MinHeight="48"
                                   HorizontalScrollBarVisibility="Disabled"
                                   VerticalScrollBarVisibility="Auto">
                         <ItemsControl ItemsSource="{Binding CodeLookup.Rows}"
@@ -347,19 +365,56 @@
                 </Grid>
             </Grid>
         </Border>
+        <Border x:Name="CheckeeSendMonitorPanel" Grid.Row="3" Classes="panel" Padding="0" Height="260">
+            <Grid RowDefinitions="Auto,Auto,*">
+                <Grid Margin="14,8" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
+                    <StackPanel VerticalAlignment="Center" Spacing="2">
+                        <TextBlock Classes="sectionTitle" Text="THEO DÕI GỬI CHECKEE" />
+                        <TextBlock Classes="label" FontSize="11" Text="{Binding CodeLookup.SendMonitorSummary}" />
+                    </StackPanel>
+                    <CheckBox Grid.Column="1" Content="Bật gửi" VerticalAlignment="Center"
+                              IsChecked="{Binding CodeLookup.SendingEnabled, Mode=TwoWay}" />
+                    <Button Grid.Column="2" Classes="soft" Content="Làm mới" Height="36" MinWidth="94"
+                            VerticalAlignment="Center" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                            IsEnabled="{Binding !CodeLookup.IsSendMonitorBusy}"
+                            Command="{Binding CodeLookup.RefreshSendMonitorCommand}" />
+                </Grid>
+                <TextBlock Grid.Row="1" Classes="label" Margin="14,0,14,4" FontSize="11" TextWrapping="Wrap"
+                           Text="{Binding CodeLookup.CheckeeStatusText}" />
+                <TabControl x:Name="CheckeeSendMonitorTabs" Grid.Row="2">
+                    <TabItem Header="{Binding CodeLookup.PendingSendCountText}">
+                        <ScrollViewer x:Name="PendingSendScroll" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding CodeLookup.PendingSendRows}" ItemTemplate="{StaticResource SendMonitorRow}" />
+                        </ScrollViewer>
+                    </TabItem>
+                    <TabItem Header="{Binding CodeLookup.SentSendCountText}">
+                        <ScrollViewer x:Name="SentSendScroll" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding CodeLookup.SentSendRows}" ItemTemplate="{StaticResource SendMonitorRow}" />
+                        </ScrollViewer>
+                    </TabItem>
+                    <TabItem Header="{Binding CodeLookup.FailedSendCountText}">
+                        <ScrollViewer x:Name="FailedSendScroll" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding CodeLookup.FailedSendRows}" ItemTemplate="{StaticResource SendMonitorRow}" />
+                        </ScrollViewer>
+                    </TabItem>
+                </TabControl>
+            </Grid>
+        </Border>
         <!-- Lịch sử là snapshot từng lần gửi, tối đa 60 lần mới nhất. -->
-        <Border Grid.Row="3" Classes="panel" Padding="0">
+        <Border x:Name="CheckeeSendHistoryPanel" Grid.Row="4" Classes="panel" Padding="0" Height="220">
             <Grid RowDefinitions="Auto,Auto,*">
                 <Grid ColumnDefinitions="*,Auto,Auto" Margin="14,10" ColumnSpacing="8">
                     <StackPanel Spacing="2">
                         <TextBlock Classes="sectionTitle" Text="LỊCH SỬ GỬI CHECKEE" />
                         <TextBlock Classes="label" FontSize="11" Text="{Binding CodeLookup.SendHistoryCountText}" />
                     </StackPanel>
-                    <Button Grid.Column="1" Classes="soft" Content="Làm mới"
+                    <Button Grid.Column="1" Classes="soft" Content="Làm mới" Height="36" MinWidth="94"
+                            VerticalAlignment="Center" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
                             IsEnabled="{Binding !CodeLookup.IsSendHistoryBusy}"
                             Command="{Binding CodeLookup.LoadSendHistoryCommand}" />
-                    <Button Grid.Column="2" Classes="soft" Content="Gửi lại mã lỗi"
-                            IsEnabled="{Binding !CodeLookup.IsResending}"
+                    <Button Grid.Column="2" Classes="soft" Content="Gửi lại mã lỗi" Height="36" MinWidth="132"
+                            VerticalAlignment="Center" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                            IsEnabled="{Binding CodeLookup.SendingEnabled}"
                             Command="{Binding CodeLookup.ResendFailedCommand}"
                             ToolTip.Tip="Đưa mã có trạng thái gửi lỗi về hàng đợi để gửi lại sau khi đối soát." />
                 </Grid>
@@ -396,8 +451,10 @@
                 </Grid>
             </Grid>
         </Border>
+    </Grid>
+        </ScrollViewer>
         <!-- Bảng chi tiết nổi: chiều cao hữu hạn, nội dung mã/lỗi luôn wrap và cuộn. -->
-        <Border Grid.RowSpan="4" Background="#80000000" IsVisible="{Binding CodeLookup.IsSendDetailsOpen}"
+        <Border Background="#80000000" IsVisible="{Binding CodeLookup.IsSendDetailsOpen}"
                 Padding="18" ZIndex="10">
             <Border Classes="panel" Padding="16" BoxShadow="0 8 30 0 #30000000">
                 <Grid RowDefinitions="Auto,Auto,Auto,*" RowSpacing="10">

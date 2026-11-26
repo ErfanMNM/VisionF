@@ -44,10 +44,15 @@ public static class ConfigValidation
 
         // ---- Quy tắc liên-section (không thể suy ra từ 1 field) ----
 
-        // Scanner chỉ kiểm tra TCP/COM khi đang bật.
+        // Chỉ kiểm tra thông số của phương thức kết nối đang được chọn.
         if (snapshot.Scanner.Enabled)
         {
-            if (!IsValidIpOrHost(snapshot.Scanner.TcpHost))
+            if (snapshot.Scanner.Mode is not ("Serial" or "TcpServer" or "TcpClient"))
+            {
+                error = "Chế độ máy quét phải là Serial, TcpServer hoặc TcpClient.";
+                return false;
+            }
+            if (snapshot.Scanner.Mode != "Serial" && !IsValidIpOrHost(snapshot.Scanner.TcpHost))
             {
                 error = "Host TCP của máy quét không hợp lệ.";
                 return false;
@@ -259,6 +264,12 @@ public static class ConfigValidation
     /// <returns>True nếu cần validate.</returns>
     private static bool ShouldValidate(ConfigFieldSchema field, AppConfigSnapshot snapshot)
     {
+        if (field.Section.Key == "Scanner")
+        {
+            var serial = snapshot.Scanner.Mode == "Serial";
+            if (serial && field.JsonKey is ("TcpHost" or "TcpPort")) return false;
+            if (!serial && field.JsonKey is ("ComPort" or "BaudRate")) return false;
+        }
         var gatePath = field.SkipWhenDisabledBy;
         if (string.IsNullOrWhiteSpace(gatePath))
         {

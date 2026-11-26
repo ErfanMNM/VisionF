@@ -35,6 +35,9 @@ internal sealed class PlcWriter
     public PlcCounterSnapshot? LatestCounters => Enabled ? Volatile.Read(ref _latestCounters) : null;
     public bool CanResetCounters => Enabled && !_intake.IsSuspended && !string.IsNullOrWhiteSpace(Volatile.Read(ref _current).ResetCounterAddress);
     public bool CanClearErrors => Enabled && !_intake.IsSuspended && !string.IsNullOrWhiteSpace(Volatile.Read(ref _current).ClearErrorAddress);
+    public bool IsResetSuspended => _intake.IsSuspended;
+    public bool HasResetCounterAddress => !string.IsNullOrWhiteSpace(Volatile.Read(ref _current).ResetCounterAddress);
+    public bool HasClearErrorAddress => !string.IsNullOrWhiteSpace(Volatile.Read(ref _current).ClearErrorAddress);
     public string CounterDisplaySource => Volatile.Read(ref _current).CounterDisplaySource;
     public AppCounterSnapshot AppCounters => _counters.SnapshotScans();
     public int RefreshIntervalMs => Volatile.Read(ref _current).RefreshIntervalMs;

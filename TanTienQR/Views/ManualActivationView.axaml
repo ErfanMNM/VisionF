@@ -1,0 +1,104 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:TanTienQR.ViewModels"
+             x:Class="TanTienQR.Views.ManualActivationView"
+             x:DataType="vm:MainViewModel">
+    <UserControl.Resources>
+        <DataTemplate x:Key="ActivationRow" x:DataType="vm:ManualActivationRowViewModel">
+            <Border BorderBrush="{StaticResource LineColor}" BorderThickness="0,0,0,1" Padding="14,8">
+                <Grid ColumnDefinitions="150,2*,90,120,125,3*" ColumnSpacing="10">
+                    <TextBlock Classes="mono" FontSize="11" Text="{Binding TimeText}" />
+                    <TextBlock Grid.Column="1" Classes="mono" FontSize="12" TextWrapping="Wrap"
+                               Foreground="{StaticResource TextPrimary}" Text="{Binding CodeText}" />
+                    <TextBlock Grid.Column="2" Classes="label" FontSize="12" Text="{Binding SourceText}" />
+                    <TextBlock Grid.Column="3" Classes="mono" FontSize="12" TextWrapping="Wrap" Text="{Binding OrderNoText}" />
+                    <Border Grid.Column="4" Classes="badge" HorizontalAlignment="Left" VerticalAlignment="Top"
+                            Classes.running="{Binding IsSuccess}" Classes.warning="{Binding IsPending}"
+                            Classes.fault="{Binding IsFailure}">
+                        <TextBlock Text="{Binding StatusText}" />
+                    </Border>
+                    <TextBlock Grid.Column="5" Classes="label" FontSize="12" TextWrapping="Wrap"
+                               Text="{Binding DetailText}" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,1*,2*" Margin="18,6,18,18" RowSpacing="12">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+            <StackPanel Spacing="3">
+                <TextBlock Classes="pageTitle" Text="Thêm mã" />
+                <TextBlock Classes="label" FontSize="12" TextWrapping="Wrap"
+                           Text="Nhập mã rồi bấm Thêm mã. Tay quét COM tự gửi khi nhận đủ khung CR/LF." />
+            </StackPanel>
+            <Border Grid.Column="1" Classes="pill" VerticalAlignment="Center">
+                <TextBlock Text="{Binding ManualActivation.ScannerStatusText}" />
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="1" Classes="filterBar" Padding="14,12">
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8" VerticalAlignment="Center">
+                <TextBox x:Name="CodeInputBox" Classes="field" MinWidth="0" Height="38"
+                         FontSize="14" VerticalContentAlignment="Center" HorizontalAlignment="Stretch"
+                         PlaceholderText="Nhập chính xác toàn bộ nội dung mã..."
+                         Text="{Binding ManualActivation.CodeInput}" KeyDown="OnCodeInputKeyDown">
+                    <TextBox.InnerLeftContent>
+                        <Path Width="17" Height="17" Margin="12,0,0,0" VerticalAlignment="Center"
+                              Stroke="{StaticResource TextMuted}" Data="{StaticResource Icon.Search}" />
+                    </TextBox.InnerLeftContent>
+                </TextBox>
+                <Button x:Name="AddCodeButton" Grid.Column="1" Classes="primary" Height="38" MinWidth="105"
+                        Padding="14,0" VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                        Command="{Binding ManualActivation.AddCommand}" Content="Thêm mã" />
+                <Button Grid.Column="2" Classes="soft" Height="38" MinWidth="80" Padding="14,0"
+                        VerticalContentAlignment="Center" HorizontalContentAlignment="Center"
+                        Command="{Binding ManualActivation.ClearInputCommand}" Content="Xoá" />
+            </Grid>
+        </Border>
+
+        <StackPanel Grid.Row="2" Spacing="2">
+            <TextBlock Classes="label" FontSize="12" TextWrapping="Wrap" Text="{Binding ManualActivation.PdaStatusText}" />
+            <TextBlock Classes="mono" FontSize="12" TextWrapping="Wrap" Text="{Binding ManualActivation.PdaEndpointText}" />
+        </StackPanel>
+        <TextBlock Grid.Row="3" Classes="label" FontSize="12" TextWrapping="Wrap"
+                   Text="{Binding ManualActivation.StatusMessage}" IsVisible="{Binding ManualActivation.HasStatus}" />
+
+        <Border Grid.Row="4" Classes="panel" Padding="0" ClipToBounds="True">
+            <Grid RowDefinitions="Auto,Auto,*">
+                <TextBlock Classes="overline" Margin="14,12,14,10" Text="KẾT QUẢ GẦN NHẤT" />
+                <Grid Grid.Row="1" ColumnDefinitions="150,2*,90,120,125,3*" ColumnSpacing="10" Margin="14,0,14,6">
+                    <TextBlock Classes="overline" Text="THỜI GIAN" />
+                    <TextBlock Grid.Column="1" Classes="overline" Text="NỘI DUNG MÃ" />
+                    <TextBlock Grid.Column="2" Classes="overline" Text="NGUỒN" />
+                    <TextBlock Grid.Column="3" Classes="overline" Text="LỆNH SX" />
+                    <TextBlock Grid.Column="4" Classes="overline" Text="KẾT QUẢ" />
+                    <TextBlock Grid.Column="5" Classes="overline" Text="CHI TIẾT" />
+                </Grid>
+                <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding ManualActivation.CurrentRows}" ItemTemplate="{StaticResource ActivationRow}" />
+                </ScrollViewer>
+                <TextBlock Grid.Row="2" Classes="label" Margin="14" Text="Chưa nhận mã."
+                           IsVisible="{Binding !ManualActivation.HasCurrentResult}" />
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="5" Classes="panel" Padding="0" ClipToBounds="True">
+            <Grid RowDefinitions="Auto,Auto,*">
+                <TextBlock Classes="overline" Margin="14,12,14,10" Text="10 LẦN NHẬN MÃ GẦN NHẤT · SQLITE" />
+                <Grid Grid.Row="1" ColumnDefinitions="150,2*,90,120,125,3*" ColumnSpacing="10" Margin="14,0,14,6">
+                    <TextBlock Classes="overline" Text="THỜI GIAN" />
+                    <TextBlock Grid.Column="1" Classes="overline" Text="NỘI DUNG MÃ" />
+                    <TextBlock Grid.Column="2" Classes="overline" Text="NGUỒN" />
+                    <TextBlock Grid.Column="3" Classes="overline" Text="LỆNH SX" />
+                    <TextBlock Grid.Column="4" Classes="overline" Text="KẾT QUẢ" />
+                    <TextBlock Grid.Column="5" Classes="overline" Text="CHI TIẾT" />
+                </Grid>
+                <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                    <ItemsControl ItemsSource="{Binding ManualActivation.HistoryRows}" ItemTemplate="{StaticResource ActivationRow}" />
+                </ScrollViewer>
+                <TextBlock Grid.Row="2" Classes="label" Margin="14" Text="Chưa có lịch sử thêm mã."
+                           IsVisible="{Binding !ManualActivation.HasHistory}" />
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

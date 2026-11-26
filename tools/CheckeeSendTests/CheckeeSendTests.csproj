@@ -11,7 +11,8 @@
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.14" />
     <ProjectReference Include="../../ClassLibraryMT.Checkee/ClassLibraryMT.Checkee.csproj" />
     <ProjectReference Include="../../ClassLibraryMT.Scans/ClassLibraryMT.Scans.csproj" />
-    <!-- Compile the actual outbound worker without building the UI or PO backend. -->
+    <ProjectReference Include="../../ClassLibraryMT.Po/ClassLibraryMT.Po.csproj" />
+    <!-- Exercise the actual outbound worker and PO lifecycle without building UI. -->
     <Compile Include="../../TanTienQR/Services/CheckeeSendWorker.cs" Link="CheckeeSendWorker.cs" />
     <Compile Include="../../TanTienQR/Services/CheckeeOutboundOptions.cs" Link="CheckeeOutboundOptions.cs" />
     <Compile Include="../../TanTienQR/Services/ScanIntakeGate.cs" Link="ScanIntakeGate.cs" />

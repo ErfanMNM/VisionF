@@ -20,10 +20,18 @@ internal sealed partial class ScanSendStatusStore
             ready.CommandText = """
                 SELECT COUNT(*) FROM ScanRecords
                 WHERE Id = $id AND PersistenceReady = 1
+                    AND PoAccepted=1 AND Status='Pass'
+                    AND OrderNo=$order COLLATE BINARY AND OrderCreatedUtc=$created
+                    AND Gtin=$gtin COLLATE BINARY
+                    AND (SendStatus='' OR SendStatus IS NULL OR SendStatus='Pending')
                     AND (CASE WHEN Raw <> '' THEN Raw ELSE Code END) = $code COLLATE BINARY;
                 """;
             ready.Parameters.AddWithValue("$id", record.Id);
             ready.Parameters.AddWithValue("$code", record.CodeContent);
+            ready.Parameters.AddWithValue("$order", record.OrderNo);
+            ready.Parameters.AddWithValue("$created", record.OrderCreatedUtc is { } created
+                ? ScanStore.FormatUtc(created) : DBNull.Value);
+            ready.Parameters.AddWithValue("$gtin", productGtin);
             if (Convert.ToInt64(await ready.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false)) != 1)
                 throw new InvalidOperationException("Bản ghi chưa đồng bộ PO hoặc không còn khớp; không được gửi Checkee.");
         }

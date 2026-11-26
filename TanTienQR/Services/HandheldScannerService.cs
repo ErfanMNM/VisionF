@@ -1,3 +1,4 @@
+using System.IO.Ports;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -6,416 +7,312 @@ using Microsoft.Extensions.Options;
 
 namespace TanTienQR.Services;
 
+/// <summary>A scanner transport opened once for a single active-tab visit.</summary>
+public interface IHandheldScannerTransport : IDisposable
+{
+    Task OpenAsync(CancellationToken cancellationToken);
+    ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken);
+}
+
 /// <summary>
-/// Lắng nghe mã quét từ máy quét cầm tay (handheld scanner).
-///
-/// <para>
-/// Hiện tại mô phỏng handheld bằng TCP: app mở TCP server trên
-/// <c>127.0.0.1:6999</c> (hoặc chủ động kết nối ra nếu
-/// <see cref="HandheldOptions.Mode"/> = <see cref="HandheldMode.TcpClient"/>).
-/// Mỗi khung (kết thúc bằng <c>\r</c> hoặc <c>\n</c>) được coi là một mã
-/// và phát qua event <see cref="CodeReceived"/>.
-/// </para>
-///
-/// <para>
-/// Giao diện COM (cổng cắm của handheld) sẽ là một transport khác cùng
-/// interface — hiện chưa triển khai, chỉ để sẵn cấu hình trong
-/// <see cref="HandheldOptions"/>.
-/// </para>
-///
-/// <para>
-/// Mọi I/O chạy trên luồng nền; event được phát từ luồng I/O nên ViewModel
-/// phải dispatch sang luồng UI trước khi cập nhật binding.
-/// </para>
+/// Receives complete CR/LF scanner frames only while a scanner tab is active.
+/// Each activation makes one connection attempt; reopening the tab permits retry.
 /// </summary>
 public sealed class HandheldScannerService : IDisposable
 {
-    /// <summary>Bộ đệm đọc từ socket.</summary>
-    private const int ReadBufferSize = 1024;
-
-    /// <summary>
-    /// Số ký tự tối đa cho một mã. Mã quét thường ngắn; giới hạn để tránh
-    /// một client gửi dữ liệu vô hạn làm phình bộ đệm.
-    /// </summary>
-    private const int MaxCodeLength = 512;
-
-    private readonly HandheldOptions _opt;
+    private readonly HandheldOptions _options;
     private readonly ILogger<HandheldScannerService> _logger;
-    private readonly CancellationTokenSource _cts = new();
-
-    /// <summary>Các task đang chạy (listener / client loop).</summary>
-    private readonly List<Task> _tasks = [];
-
-    /// <summary>Cờ chống dispose 2 lần.</summary>
-    private bool _disposed;
-
-    /// <summary>Cờ đã bắt đầu chưa.</summary>
-    private bool _started;
     private readonly ScanIntakeGate _intake;
+    private readonly Func<HandheldOptions, IHandheldScannerTransport> _transportFactory;
+    private readonly object _gate = new();
+    private Session? _session;
+    private bool _disposed;
+    private string _statusText = "Chưa bật";
 
+    public event Action<string>? CodeReceived;
+    public event Action<string>? StatusChanged;
+    public string StatusText => Volatile.Read(ref _statusText);
+    public bool IsActive { get { lock (_gate) return _session is not null; } }
     internal bool IsIntakeSuspended => _intake.IsSuspended;
 
-    /// <summary>Nội dung trạng thái (xem <see cref="StatusText"/>).</summary>
-    private string? _statusText;
+    public HandheldScannerService(IOptions<HandheldOptions> options,
+        ILogger<HandheldScannerService> logger, ScanIntakeGate intake)
+        : this(options, logger, intake, static o => new ScannerTransport(o)) { }
 
-    /// <summary>
-    /// Sự kiện phát ra khi nhận được một mã từ handheld.
-    ///
-    /// Tham số là nội dung mã đã trim.
-    /// </summary>
-    public event Action<string>? CodeReceived;
-
-    /// <summary>
-    /// Trạng thái hiện tại của kết nối (để hiển thị trên UI).
-    ///
-    /// Được ghi từ luồng I/O và đọc từ luồng UI -> dùng
-    /// <see cref="Volatile"/> để đảm bảo giá trị mới nhất được thấy.
-    /// </summary>
-    public string StatusText => Volatile.Read(ref _statusText) ?? "Chưa bật";
-
-    /// <summary>
-    /// Khởi tạo service lắng nghe handheld.
-    /// </summary>
-    /// <param name="options">Cấu hình kết nối.</param>
-    /// <param name="logger">Logger kỹ thuật.</param>
-    /// <param name="intake">Cổng nhận mã dùng khi bảo trì.</param>
-    public HandheldScannerService(
-        IOptions<HandheldOptions> options,
-        ILogger<HandheldScannerService> logger,
-        ScanIntakeGate intake)
+    // Allows deterministic offline transport/lifecycle tests without a COM device.
+    internal HandheldScannerService(IOptions<HandheldOptions> options,
+        ILogger<HandheldScannerService> logger, ScanIntakeGate intake,
+        Func<HandheldOptions, IHandheldScannerTransport> transportFactory)
     {
-        _opt = options.Value;
+        _options = options.Value;
         _logger = logger;
         _intake = intake;
+        _transportFactory = transportFactory;
     }
 
-    /// <summary>
-    /// Bắt đầu lắng nghe. Gọi 1 lần khi app khởi động.
-    ///
-    /// Không chặn: mọi thao tác I/O chạy nền.
-    /// </summary>
-    public void Start()
+    public void Activate()
     {
-        if (_disposed || _started)
+        Session session;
+        lock (_gate)
         {
-            return;
+            if (_disposed || _session is not null) return;
+            session = new Session();
+            _session = session;
         }
-
-        if (!_opt.Enabled)
-        {
-            SetStatus("Đã tắt");
-            _logger.LogInformation("Lắng nghe handheld đang tắt theo cấu hình.");
-            return;
-        }
-
-        _started = true;
-
-        var task = _opt.Mode == HandheldMode.TcpClient
-            ? RunClientAsync(_cts.Token)
-            : RunServerAsync(_cts.Token);
-
-        _tasks.Add(task);
+        UpdateStatus(session, _options.Enabled ? "Đang kết nối tay quét..." : "Không có tay quét");
+        _ = Task.Run(() => RunSessionAsync(session));
     }
 
-    /// <summary>Dừng lắng nghe và giải phóng tài nguyên.</summary>
-    public void Stop()
+    public void Deactivate()
     {
-        if (!_started)
+        Session? session;
+        lock (_gate)
         {
-            return;
+            session = _session;
+            _session = null;
+            Volatile.Write(ref _statusText, "Chưa bật");
         }
-
-        _started = false;
-
-        try
-        {
-            _cts.Cancel();
-        }
-        catch (ObjectDisposedException)
-        {
-            // Đã dispose rồi.
-        }
-
-        // Không chờ lâu — app đang tắt, không cần chờ hết vòng lặp socket.
-        try
-        {
-            Task.WaitAll(_tasks.ToArray(), TimeSpan.FromSeconds(2));
-        }
-        catch (Exception ex) when (ex is AggregateException or OperationCanceledException)
-        {
-            // Bỏ qua: đây là shutdown bình thường.
-        }
-
-        _tasks.Clear();
+        session?.Close();
+        PublishStatus();
     }
 
-    /// <summary>Chạy TCP server: nhận nhiều client, mỗi client một task riêng.</summary>
-    private async Task RunServerAsync(CancellationToken ct)
+    /// <summary>Compatibility alias; application startup must not call this.</summary>
+    public void Start() => Activate();
+    public void Stop() => Deactivate();
+
+    private async Task RunSessionAsync(Session session)
     {
-        IPAddress address;
-
+        var ct = session.Cancellation.Token;
         try
         {
-            if (!IPAddress.TryParse(_opt.TcpHost, out var parsed))
-            {
-                SetStatus($"Địa chỉ không hợp lệ: {_opt.TcpHost}");
-                _logger.LogError(
-                    "Handheld: địa chỉ bind không hợp lệ {Host}", _opt.TcpHost);
-                return;
-            }
+            if (!_options.Enabled) return;
+            ct.ThrowIfCancellationRequested();
+            var transport = _transportFactory(_options);
+            if (!session.SetTransport(transport)) return;
+            await transport.OpenAsync(ct).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+            UpdateStatus(session, _options.Mode == HandheldMode.Serial
+                ? $"Đã kết nối {_options.ComPort}" : $"Đã kết nối {_options.TcpHost}:{_options.TcpPort}");
 
-            address = parsed;
-        }
-        catch (Exception ex)
-        {
-            SetStatus("Lỗi địa chỉ");
-            _logger.LogError(ex, "Handheld: lỗi phân tích địa chỉ {Host}", _opt.TcpHost);
-            return;
-        }
-
-        TcpListener? listener = null;
-
-        try
-        {
-            listener = new TcpListener(address, _opt.TcpPort);
-            listener.Start();
-
-            SetStatus($"Đang lắng nghe {address}:{_opt.TcpPort}");
-            _logger.LogInformation(
-                "Handheld: đang lắng nghe TCP {Host}:{Port}", address, _opt.TcpPort);
-
+            var frames = new HandheldFrameDecoder();
+            var buffer = new byte[1024];
             while (!ct.IsCancellationRequested)
             {
-                TcpClient client;
-
-                try
+                var count = await transport.ReadAsync(buffer, ct).ConfigureAwait(false);
+                if (count == 0) break;
+                foreach (var code in frames.Push(buffer.AsSpan(0, count)))
                 {
-                    client = await listener.AcceptTcpClientAsync(ct).ConfigureAwait(false);
+                    _intake.Dispatch(() =>
+                    {
+                        lock (_gate)
+                        {
+                            if (!ReferenceEquals(_session, session) || ct.IsCancellationRequested) return;
+                            try { CodeReceived?.Invoke(code); }
+                            catch (Exception ex) { _logger.LogError(ex, "Handheld frame handler failed."); }
+                        }
+                    });
                 }
-                catch (OperationCanceledException)
-                {
-                    break;
-                }
-                catch (ObjectDisposedException)
-                {
-                    break;
-                }
-                catch (SocketException ex)
-                {
-                    _logger.LogWarning(ex, "Handheld: lỗi khi chấp nhận kết nối.");
-                    continue;
-                }
-
-                // Mỗi client một task — không chặn vòng lặp accept.
-                _tasks.Add(HandleClientAsync(client, ct));
             }
+            UpdateStatus(session, "Không có tay quét");
         }
-        catch (OperationCanceledException)
-        {
-            // Shutdown bình thường.
-        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
         catch (Exception ex)
         {
-            SetStatus("Lỗi listener");
-            _logger.LogError(ex, "Handheld: lỗi TCP server.");
+            if (!ct.IsCancellationRequested)
+            {
+                UpdateStatus(session, "Không có tay quét");
+                _logger.LogWarning(ex, "Handheld connection failed; retry only after reopening the tab.");
+            }
         }
         finally
         {
-            listener?.Stop();
+            // A failed session remains selected, preventing a retry in this visit.
+            session.Complete();
         }
     }
 
-    /// <summary>Chạy TCP client: kết nối ra handheld rồi đọc mã liên tục.</summary>
-    private async Task RunClientAsync(CancellationToken ct)
+    private void UpdateStatus(Session session, string status)
     {
-        while (!ct.IsCancellationRequested)
+        lock (_gate)
         {
-            try
-            {
-                if (!IPAddress.TryParse(_opt.TcpHost, out var address))
-                {
-                    SetStatus($"Địa chỉ không hợp lệ: {_opt.TcpHost}");
-                    _logger.LogError("Handheld: địa chỉ không hợp lệ {Host}", _opt.TcpHost);
-                    return;
-                }
-
-                using var client = new TcpClient();
-
-                await client.ConnectAsync(address, _opt.TcpPort, ct).ConfigureAwait(false);
-
-                SetStatus($"Đã kết nối {address}:{_opt.TcpPort}");
-                _logger.LogInformation(
-                    "Handheld: đã kết nối tới {Host}:{Port}", address, _opt.TcpPort);
-
-                await ReadLoopAsync(client, ct).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-            catch (Exception ex)
-            {
-                SetStatus("Mất kết nối");
-                _logger.LogWarning(ex, "Handheld: lỗi kết nối client.");
-            }
-
-            if (ct.IsCancellationRequested)
-            {
-                break;
-            }
-
-            // Thử lại sau 3 giây.
-            try
-            {
-                await Task.Delay(TimeSpan.FromSeconds(3), ct).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
+            if (!ReferenceEquals(_session, session)) return;
+            Volatile.Write(ref _statusText, status);
         }
+        PublishStatus();
     }
 
-    /// <summary>Xử lý một client kết nối (chỉ dùng cho chế độ server).</summary>
-    private async Task HandleClientAsync(TcpClient client, CancellationToken ct)
+    private void PublishStatus()
     {
-        try
-        {
-            using (client)
-            {
-                await ReadLoopAsync(client, ct).ConfigureAwait(false);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // Shutdown bình thường.
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Handheld: lỗi khi đọc dữ liệu từ handheld.");
-        }
+        try { StatusChanged?.Invoke(StatusText); }
+        catch (Exception ex) { _logger.LogError(ex, "Handheld status handler failed."); }
     }
 
-    /// <summary>
-    /// Đọc dữ liệu từ client và tách thành từng mã (kết thúc bằng CR/LF).
-    /// </summary>
-    private async Task ReadLoopAsync(TcpClient client, CancellationToken ct)
-    {
-        var stream = client.GetStream();
-        var buffer = new byte[ReadBufferSize];
-        var decoder = Encoding.UTF8.GetDecoder();
-        var chars = new char[Encoding.UTF8.GetMaxCharCount(buffer.Length)];
-        var frame = new StringBuilder();
-
-        while (!ct.IsCancellationRequested)
-        {
-            int received;
-
-            try
-            {
-                received = await stream.ReadAsync(buffer, ct).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-            catch (Exception ex) when (ex is IOException or ObjectDisposedException or SocketException)
-            {
-                break;
-            }
-
-            if (received <= 0)
-            {
-                // Client đóng kết nối.
-                break;
-            }
-
-            var charCount = decoder.GetChars(buffer.AsSpan(0, received), chars, false);
-
-            for (var i = 0; i < charCount; i++)
-            {
-                var c = chars[i];
-
-                if (c is '\r' or '\n')
-                {
-                    EmitFrame(frame);
-                    continue;
-                }
-
-                // Bỏ ký tự điều khiển (ASCII < 0x20 trừ CR/LF) — handheld có thể
-                // gửi ký tự NUL/BEL kèm theo.
-                if (c < ' ')
-                {
-                    continue;
-                }
-
-                frame.Append(c);
-
-                // Chặn độ dài quá lớn -> coi như mã hỏng, bỏ khung.
-                if (frame.Length > MaxCodeLength)
-                {
-                    frame.Clear();
-                }
-            }
-        }
-
-        // Client đóng kết nối giữa chừng -> vẫn phát nốt khung dở nếu có.
-        EmitFrame(frame);
-    }
-
-    /// <summary>Phát một khung mã hoàn chỉnh (nếu không rỗng).</summary>
-    private void EmitFrame(StringBuilder frame)
-    {
-        if (frame.Length == 0)
-        {
-            return;
-        }
-
-        var code = frame.ToString().Trim();
-        frame.Clear();
-
-        if (code.Length == 0)
-        {
-            return;
-        }
-
-        _logger.LogInformation("Handheld nhận mã: {Code}", code);
-
-        try
-        {
-            _intake.Dispatch(() => CodeReceived?.Invoke(code));
-        }
-        catch (Exception ex)
-        {
-            // Handler lỗi không được làm chết vòng đọc socket.
-            _logger.LogError(ex, "Handheld: lỗi trong handler nhận mã.");
-        }
-    }
-
-    /// <summary>Ghi trạng thái (an toàn khi gọi từ luồng I/O).</summary>
-    private void SetStatus(string text) => Volatile.Write(ref _statusText, text);
-
-    /// <summary>Giải phóng tài nguyên.</summary>
     public void Dispose()
     {
-        if (_disposed)
+        lock (_gate)
         {
-            return;
+            if (_disposed) return;
+            _disposed = true;
         }
-
-        _disposed = true;
-
-        Stop();
-
-        try
-        {
-            _cts.Dispose();
-        }
-        catch (ObjectDisposedException)
-        {
-            // Đã dispose rồi.
-        }
-
+        Deactivate();
         GC.SuppressFinalize(this);
+    }
+
+    private sealed class Session
+    {
+        private readonly object _gate = new();
+        private IHandheldScannerTransport? _transport;
+        private bool _closed;
+        public CancellationTokenSource Cancellation { get; } = new();
+        public bool SetTransport(IHandheldScannerTransport transport)
+        {
+            lock (_gate)
+            {
+                if (!_closed) { _transport = transport; return true; }
+            }
+            transport.Dispose();
+            return false;
+        }
+        public void Close()
+        {
+            IHandheldScannerTransport? transport;
+            lock (_gate)
+            {
+                if (_closed) return;
+                _closed = true;
+                Cancellation.Cancel();
+                transport = _transport;
+                _transport = null;
+            }
+            try { transport?.Dispose(); }
+            catch (Exception) { /* A driver close failure must not break navigation. */ }
+        }
+        public void Complete()
+        {
+            Close();
+            lock (_gate) Cancellation.Dispose();
+        }
+    }
+
+    private sealed class ScannerTransport : IHandheldScannerTransport
+    {
+        private readonly HandheldOptions _options;
+        private readonly object _gate = new();
+        private SerialPort? _serial;
+        private TcpClient? _client;
+        private TcpListener? _listener;
+        private Stream? _stream;
+        private bool _disposed;
+
+        public ScannerTransport(HandheldOptions options) => _options = options;
+
+        public async Task OpenAsync(CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (_options.Mode == HandheldMode.Serial)
+            {
+                lock (_gate)
+                {
+                    ObjectDisposedException.ThrowIf(_disposed, this);
+                    ct.ThrowIfCancellationRequested();
+                    _serial = new SerialPort(_options.ComPort, _options.BaudRate, Parity.None, 8, StopBits.One);
+                    _serial.Open();
+                    _stream = _serial.BaseStream;
+                }
+                return;
+            }
+            if (!IPAddress.TryParse(_options.TcpHost, out var address))
+                throw new ArgumentException("Scanner TCP host must be an IP address.");
+
+            // TCP compatibility has one connection per visit and no retry loop.
+            if (_options.Mode == HandheldMode.TcpServer)
+            {
+                var listener = new TcpListener(address, _options.TcpPort);
+                lock (_gate)
+                {
+                    ObjectDisposedException.ThrowIf(_disposed, this);
+                    _listener = listener;
+                    listener.Start();
+                }
+                var client = await listener.AcceptTcpClientAsync(ct).ConfigureAwait(false);
+                lock (_gate)
+                {
+                    if (_disposed) { client.Dispose(); throw new OperationCanceledException(ct); }
+                    _client = client;
+                }
+                listener.Stop();
+            }
+            else if (_options.Mode == HandheldMode.TcpClient)
+            {
+                var client = new TcpClient();
+                lock (_gate)
+                {
+                    if (_disposed) { client.Dispose(); throw new OperationCanceledException(ct); }
+                    _client = client;
+                }
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeout.CancelAfter(TimeSpan.FromSeconds(3));
+                await client.ConnectAsync(address, _options.TcpPort, timeout.Token).ConfigureAwait(false);
+            }
+            else throw new ArgumentOutOfRangeException(nameof(_options.Mode));
+
+            lock (_gate)
+            {
+                if (_disposed) { _client?.Dispose(); throw new OperationCanceledException(ct); }
+                _stream = _client!.GetStream();
+            }
+        }
+
+        public ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct) =>
+            (_stream ?? throw new InvalidOperationException("Scanner is not open.")).ReadAsync(buffer, ct);
+
+        public void Dispose()
+        {
+            lock (_gate)
+            {
+                if (_disposed) return;
+                _disposed = true;
+                _listener?.Stop();
+                _client?.Dispose();
+                _serial?.Dispose();
+                _stream = null;
+            }
+        }
+    }
+}
+
+/// <summary>Preserves GS1 GS and discards an overlong frame up to its terminator.</summary>
+internal sealed class HandheldFrameDecoder
+{
+    private const int MaxCodeLength = 512;
+    private readonly Decoder _decoder = Encoding.UTF8.GetDecoder();
+    private readonly StringBuilder _frame = new();
+    private bool _discard;
+
+    public IReadOnlyList<string> Push(ReadOnlySpan<byte> bytes)
+    {
+        var chars = new char[Encoding.UTF8.GetMaxCharCount(bytes.Length)];
+        var count = _decoder.GetChars(bytes, chars, false);
+        var result = new List<string>();
+        for (var i = 0; i < count; i++)
+        {
+            var c = chars[i];
+            if (c is '\r' or '\n')
+            {
+                if (!_discard && _frame.Length > 0)
+                {
+                    var code = _frame.ToString();
+                    if (!string.IsNullOrWhiteSpace(code)) result.Add(code);
+                }
+                _frame.Clear();
+                _discard = false;
+            }
+            else if (!_discard && (c >= ' ' || c == '\u001d'))
+            {
+                _frame.Append(c);
+                if (_frame.Length > MaxCodeLength) { _frame.Clear(); _discard = true; }
+            }
+        }
+        return result;
     }
 }

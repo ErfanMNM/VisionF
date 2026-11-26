@@ -63,19 +63,6 @@ internal sealed partial class CodeLookupViewModel : ViewModelBase, IDisposable
         _scanner = scanner;
         _actionLog = actionLog;
 
-        // Mã từ handheld -> tự động tra cứu (dispatch về luồng UI vì event
-        // được phát từ luồng I/O).
-        _scanner.CodeReceived += OnHandheldCodeReceived;
-
-        // Timer làm mới trạng thái kết nối handheld (service cập nhật từ
-        // luồng I/O nên không có event).
-        _scannerTimer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(1000),
-        };
-        _scannerTimer.Tick += OnScannerTimerTick;
-        _scannerTimer.Start();
-
         ScannerStatusText = _scanner.StatusText;
         CheckeeStatusText = _sendWorker.State.Status;
     }
@@ -316,7 +303,7 @@ internal sealed partial class CodeLookupViewModel : ViewModelBase, IDisposable
         CheckeeStatusText = _sendWorker.State.Status;
         OnPropertyChanged(nameof(HasCheckeeError));
 
-        await LoadSendHistoryAsync().ConfigureAwait(true);
+        await RefreshSendMonitorAsync().ConfigureAwait(true);
     }
 
     // ---------- Bảng "Mã gửi lỗi" ----------
@@ -397,7 +384,7 @@ internal sealed partial class CodeLookupViewModel : ViewModelBase, IDisposable
             CheckeeStatusText = _sendWorker.State.Status;
             OnPropertyChanged(nameof(HasCheckeeError));
 
-            await LoadSendHistoryAsync().ConfigureAwait(true);
+            await RefreshSendMonitorAsync().ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -426,20 +413,50 @@ internal sealed partial class CodeLookupViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     public partial string ScannerStatusText { get; set; } = "Chưa bật";
 
-    /// <summary>Timer làm mới trạng thái handheld.</summary>
-    private readonly DispatcherTimer _scannerTimer;
+    private bool _isActive;
+    private long _activationEpoch;
+    public bool IsActive => _isActive;
 
-    /// <summary>
-    /// Nhận mã từ handheld cầm tay -> điền vào ô nhập và tra cứu luôn.
-    /// </summary>
+    public void Activate()
+    {
+        if (_disposed || _isActive) return;
+        _isActive = true;
+        _activationEpoch++;
+        _scanner.CodeReceived += OnHandheldCodeReceived;
+        _scanner.StatusChanged += OnScannerStatusChanged;
+        _sendWorker.State.Changed += OnCheckeeStateChanged;
+        _scanner.Activate();
+        ScannerStatusText = _scanner.StatusText;
+        OnCheckeeStateChanged();
+    }
+
+    public void Deactivate()
+    {
+        if (!_isActive) return;
+        _isActive = false;
+        _activationEpoch++;
+        _scanner.CodeReceived -= OnHandheldCodeReceived;
+        _scanner.StatusChanged -= OnScannerStatusChanged;
+        _sendWorker.State.Changed -= OnCheckeeStateChanged;
+        _scanner.Deactivate();
+    }
+
+    private void OnScannerStatusChanged(string ignored)
+    {
+        var epoch = _activationEpoch;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_isActive && !_disposed && epoch == _activationEpoch) ScannerStatusText = _scanner.StatusText;
+        });
+    }
+
     private void OnHandheldCodeReceived(string code)
     {
-        // Event phát từ luồng I/O -> dispatch sang luồng UI.
-        Avalonia.Threading.Dispatcher.UIThread.Post(async () =>
+        if (!_isActive || _disposed) return;
+        var epoch = _activationEpoch;
+        Dispatcher.UIThread.Post(async () =>
         {
-            if (_scanner.IsIntakeSuspended)
-                return;
-
+            if (!_isActive || _disposed || epoch != _activationEpoch || _scanner.IsIntakeSuspended) return;
             CodeInput = code;
             await LookupAsync().ConfigureAwait(true);
         });
@@ -459,11 +476,8 @@ internal sealed partial class CodeLookupViewModel : ViewModelBase, IDisposable
             return;
         }
 
+        Deactivate();
         _disposed = true;
-        _scanner.CodeReceived -= OnHandheldCodeReceived;
-
-        _scannerTimer.Stop();
-        _scannerTimer.Tick -= OnScannerTimerTick;
 
         GC.SuppressFinalize(this);
     }

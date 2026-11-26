@@ -1,4 +1,7 @@
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using ClassLibraryMT.Checkee;
+using ClassLibraryMT.Po;
 using ClassLibraryMT.Scans;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -7,31 +10,8 @@ using Microsoft.Extensions.Options;
 namespace TanTienQR.Services;
 
 /// <summary>
-/// Worker nền gửi mã đã quét (kích hoạt) lên Checkee Middleware API.
-///
-/// <para>
-/// Mỗi chu kỳ (<see cref="CheckeeOptions.SendIntervalMs"/>, mặc định 1000 ms),
-/// worker gom các mã CHƯA gửi (<c>SendStatus = Pending</c>) rồi gửi
-/// lên <c>POST /middleware-api/CTEs/active</c> theo batch, nhóm theo GTIN +
-/// batch code vì API Checkee yêu cầu một GTIN / batchCode cho mỗi request.
-/// </para>
-///
-/// <para>
-/// Quy tắc xử lý kết quả:
-/// <list type="bullet">
-/// <item>HTTP thành công và Checkee chấp nhận -> đánh dấu <c>Sent</c> (kèm thời điểm gửi).</item>
-/// <item>HTTP lỗi hoặc Checkee từ chối nghiệp vụ -> đánh dấu <c>Failed</c> kèm mã HTTP + thông điệp,
-/// KHÔNG tự thử lại. Người dùng xem trong bảng "Mã gửi lỗi" và bấm "Gửi lại".</item>
-/// <item>Không có phản hồi (timeout / lỗi mạng) -> giữ mã ở trạng thái
-/// <c>Pending</c> để thử lại ở chu kỳ sau (KHÔNG bỏ mã).</item>
-/// <item>Thiếu metadata GTIN sản phẩm / mã lô -> giữ <c>Pending</c>,
-/// giải thích thông tin cần bổ sung; không thay đổi kết quả quét Pass.</item>
-/// </list>
-/// </para>
-///
-/// <para>
-/// Worker không bao giờ làm app crash: mọi lỗi đều bị bắt và ghi log.
-/// </para>
+/// Gửi Pass của sending-session PO đã quan sát Running. Sau auto-complete chỉ drain
+/// đúng OrderNo + CreatedUtc đã nhận; PO mới thay session, startup không chọn lịch sử.
 /// </summary>
 internal sealed class CheckeeSendWorker : BackgroundService
 {
@@ -40,363 +20,251 @@ internal sealed class CheckeeSendWorker : BackgroundService
     private readonly IScanRecordWriter _scanWriter;
     private readonly CheckeeOptions _opt;
     private readonly CheckeeOutboundOptions _outbound;
+    private readonly ProductionOrderService _po;
     private readonly ILogger<CheckeeSendWorker> _logger;
     private readonly ScanIntakeGate _intake;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
+    private readonly SemaphoreSlim _wake = new(0, 1);
+    private readonly object _sessionGate = new();
+    private ProductionOrder? _sendingSession;
+    private int _sendingEnabled;
     private int _inFlight;
-
-    /// <summary>Trạng thái gần nhất (để UI hiển thị, đọc an toàn từ nhiều luồng).</summary>
     private readonly CheckeeSendState _state = new();
 
-    public CheckeeSendWorker(
-        CheckeeClient client,
-        IScanSendStatusStore sendStore,
-        IScanRecordWriter scanWriter,
-        IOptions<CheckeeOptions> options,
-        IOptions<CheckeeOutboundOptions> outbound,
-        ScanIntakeGate intake,
-        ILogger<CheckeeSendWorker> logger)
+    public CheckeeSendWorker(CheckeeClient client, IScanSendStatusStore sendStore,
+        IScanRecordWriter scanWriter, IOptions<CheckeeOptions> options,
+        IOptions<CheckeeOutboundOptions> outbound, ScanIntakeGate intake,
+        ProductionOrderService po, ILogger<CheckeeSendWorker> logger)
     {
-        _client = client;
-        _sendStore = sendStore;
-        _scanWriter = scanWriter;
-        _opt = options.Value;
-        _outbound = outbound.Value;
-        _intake = intake;
-        _logger = logger;
+        _client=client; _sendStore=sendStore; _scanWriter=scanWriter;
+        _opt=options.Value; _outbound=outbound.Value; _intake=intake; _po=po; _logger=logger;
+        _sendingEnabled=_opt.Enabled ? 1 : 0;
+        _po.Changed += OnPoChanged;
+        ObserveRunningOrder();
+        _state.SetStatus(SendingEnabled ? "Đang chờ mã Pass của PO đang chạy." : "Đã tắt gửi Checkee.", false);
     }
 
-    /// <summary>
-    /// Trạng thái hiện tại của worker (dùng cho tab Tra cứu mã).
-    /// </summary>
     public CheckeeSendState State => _state;
+    public bool SendingEnabled
+    {
+        get => Volatile.Read(ref _sendingEnabled) == 1;
+        set
+        {
+            Interlocked.Exchange(ref _sendingEnabled, value ? 1 : 0);
+            _state.SetStatus(value ? "Đã bật gửi Checkee; đang chờ xử lý." : "Đã tắt gửi Checkee; lượt đã gửi đang hoàn tất.", false);
+            if (value && _wake.CurrentCount == 0)
+                try { _wake.Release(); } catch (SemaphoreFullException) { }
+        }
+    }
+
+    private static bool SameOrder(ProductionOrder? a, ProductionOrder? b) => a is not null && b is not null
+        && a.OrderNo == b.OrderNo && a.CreatedUtc == b.CreatedUtc;
+
+    private void OnPoChanged(object? sender, EventArgs e) => ObserveRunningOrder();
+    private ProductionOrder? ObserveRunningOrder()
+    {
+        // Serialize observation so a stale observer cannot overwrite a newer session.
+        lock (_sessionGate)
+        {
+            var running = _po.GetRunningOrderSnapshot();
+            if (running is not null) _sendingSession = running;
+            else if (_po.LastFinishedOrder is { } finished
+                && (_po.LastFinishedStatus == ProductionOrderStatus.Cancelled
+                    || !SameOrder(_sendingSession, finished))) _sendingSession = null;
+            return _sendingSession;
+        }
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (!_opt.Enabled)
-        {
-            _logger.LogInformation(
-                "CheckeeSendWorker không chạy (Checkee:Enabled = false).");
-            return;
-        }
-
-        if (!_opt.IsConfigured)
-        {
-            _logger.LogWarning(
-                "CheckeeSendWorker không chạy: thiếu cấu hình BaseUrl / ApiKey / ClientId. "
-                + "Vào tab Cấu hình để bổ sung.");
-            _state.SetStatus(
-                "Chưa cấu hình thông tin Checkee (BaseUrl / ApiKey / ClientId).",
-                isError: true);
-            return;
-        }
-
-        var interval = _opt.ResolveSendInterval();
-
-        _logger.LogInformation(
-            "CheckeeSendWorker bắt đầu, chu kỳ {IntervalMs} ms, batch tối đa {Batch} mã.",
-            interval.TotalMilliseconds,
-            _opt.BatchSize);
-
-        _state.SetStatus(
-            $"Đang chờ chu kỳ gửi mã ({interval.TotalMilliseconds:0} ms).",
-            isError: false);
-
-        using var timer = new PeriodicTimer(interval);
-
         try
         {
-            while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
+            // Keep the loop alive when disabled; runtime enable wakes it without a restart.
+            while (!stoppingToken.IsCancellationRequested)
             {
-                try
-                {
-                    await SendPendingAsync(stoppingToken).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-                {
-                    break;
-                }
+                try { await SendPendingAsync(stoppingToken).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
                 catch (Exception ex)
                 {
-                    // Lỗi mạng / server KHÔNG được làm chết worker.
-                    _logger.LogError(ex, "Lỗi trong chu kỳ gửi mã lên Checkee.");
-                    _state.SetStatus(
-                        "Lỗi khi gửi mã lên Checkee: " + ex.Message,
-                        isError: true);
+                    _logger.LogError("Chu kỳ Checkee thất bại ({ErrorType}).", ex.GetType().Name);
+                    _state.SetStatus("Không gửi được Checkee; xem audit và lịch sử lần gửi.", true);
                 }
+                await _wake.WaitAsync(_opt.ResolveSendInterval(), stoppingToken).ConfigureAwait(false);
             }
         }
-        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
-        {
-            // Shutdown bình thường.
-        }
-        finally
-        {
-            _logger.LogInformation("CheckeeSendWorker đã dừng.");
-        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
     }
 
-    /// <summary>
-    /// Gom và gửi toàn bộ mã đang chờ.
-    /// </summary>
-    /// <param name="ct">Token hủy.</param>
-    /// <returns>Số mã đã gửi thành công.</returns>
     public Task<int> SendPendingAsync(CancellationToken ct = default) =>
         SendWithGateAsync(() => SendPendingCoreAsync(ct), 0, ct);
 
-    /// <summary>Đưa mã lỗi về Pending rồi gửi trong cùng lượt được theo dõi khi bàn giao.</summary>
     public Task<(int Reset, int Sent)> ResendFailedAsync(IReadOnlyList<long> ids, CancellationToken ct = default) =>
         SendWithGateAsync(async () =>
         {
-            var reset = await _sendStore.ResetToPendingAsync(ids, ct).ConfigureAwait(false);
-            var sent = await SendPendingCoreAsync(ct).ConfigureAwait(false);
+            var session=ObserveRunningOrder();
+            if (session is null) return (0, 0);
+            var failed=await _sendStore.GetBySendStatusAsync(new ScanSendFilter
+            {
+                SendStatus=ScanSendStatuses.Failed, OnlyPass=true, OnlyAccepted=true,
+                OrderNo=session.OrderNo, OrderCreatedUtc=session.CreatedUtc, Gtin=session.Gtin, Limit=5000,
+            }, ct).ConfigureAwait(false);
+            var requested=ids.ToHashSet();
+            var eligible=failed.Where(r => requested.Contains(r.Id) && MatchesCode(r, session.Gtin)).Select(r => r.Id).ToArray();
+            if (!SendingEnabled) return (0, 0);
+            var reset=await _sendStore.ResetToPendingAsync(eligible, ct).ConfigureAwait(false);
+            var sent=await SendPendingCoreAsync(ct).ConfigureAwait(false);
             return (reset, sent);
         }, (0, 0), ct);
 
     private async Task<T> SendWithGateAsync<T>(Func<Task<T>> action, T suspendedResult, CancellationToken ct)
     {
-        // Admission dùng cùng khóa với bật bảo trì: Drain không bỏ sót một
-        // yêu cầu manual/timer vừa đi qua cổng nhưng chưa bắt đầu HTTP.
-        var admitted = false;
-        _intake.Dispatch(() =>
-        {
-            Interlocked.Increment(ref _inFlight);
-            admitted = true;
-        });
-        if (!admitted)
-        {
-            _state.SetStatus("Tạm dừng gửi mã trong lúc cập nhật phần mềm.", isError: false);
-            return suspendedResult;
-        }
-
-        var acquired = false;
+        if (!SendingEnabled) { _state.SetStatus("Đã tắt gửi Checkee.", false); return suspendedResult; }
+        var admitted=false;
+        _intake.Dispatch(() => { Interlocked.Increment(ref _inFlight); admitted=true; });
+        if (!admitted) { _state.SetStatus("Tạm dừng gửi mã trong lúc cập nhật phần mềm.", false); return suspendedResult; }
+        var acquired=false;
         try
         {
-            // Một lượt manual và một tick timer không được gửi trùng tập Pending.
-            await _sendLock.WaitAsync(ct).ConfigureAwait(false);
-            acquired = true;
-            if (_intake.IsSuspended)
-                return suspendedResult;
+            await _sendLock.WaitAsync(ct).ConfigureAwait(false); acquired=true;
+            if (_intake.IsSuspended || !SendingEnabled) return suspendedResult;
             return await action().ConfigureAwait(false);
         }
-        finally
-        {
-            if (acquired) _sendLock.Release();
-            Interlocked.Decrement(ref _inFlight);
-        }
+        finally { if (acquired) _sendLock.Release(); Interlocked.Decrement(ref _inFlight); }
     }
 
     internal async Task DrainAsync(CancellationToken ct)
     {
-        if (!_intake.IsSuspended)
-            throw new InvalidOperationException("Phải khóa nhận lượt gửi mới trước khi chờ bàn giao cập nhật.");
-        // Bao gồm cả ghi trạng thái trả về vào SQLite sau khi HTTP đã hoàn tất.
-        while (Volatile.Read(ref _inFlight) != 0)
-            await Task.Delay(25, ct).ConfigureAwait(false);
+        if (!_intake.IsSuspended) throw new InvalidOperationException("Phải khóa nhận lượt gửi mới trước khi chờ bàn giao cập nhật.");
+        while (Volatile.Read(ref _inFlight) != 0) await Task.Delay(25, ct).ConfigureAwait(false);
     }
+
+    private static bool MatchesCode(ScanRecordEntity record, string gtin) =>
+        PoCodeParser.TryGetGtin(record.CodeContent, out var parsed) && parsed == gtin;
 
     private async Task<int> SendPendingCoreAsync(CancellationToken ct)
     {
-        // Đẩy bản ghi đang chờ ghi xuống DB để không bỏ sót mã vừa quét.
+        if (!SendingEnabled) return 0;
+        if (!_opt.IsConfigured) { _state.SetStatus("Chưa cấu hình kết nối Checkee (BaseUrl / ApiKey / ClientId).", true); return 0; }
+        var session=ObserveRunningOrder(); // before Flush can auto-complete final PO
+        if (session is null) { _state.SetStatus("Chưa có PO đang chạy được nhận vào phiên gửi; không gửi lịch sử cũ.", false); return 0; }
+        if (!PoCodeParser.TryNormalizeGtin(session.Gtin, out var gtin))
+        { _state.SetStatus("PO thiếu GTIN hợp lệ; giữ nguyên các mã chờ gửi.", true); return 0; }
+        await _scanWriter.FlushAsync(ct).ConfigureAwait(false);
+        if (!SameOrder(session, ObserveRunningOrder()) || !SendingEnabled) return 0;
+        var pending=await _sendStore.GetPendingForOrderAsync(session.OrderNo, session.CreatedUtc,
+            gtin, _opt.BatchSize, ct).ConfigureAwait(false);
+        var records=new List<ScanRecordEntity>();
+        foreach (var record in pending)
+        {
+            if (record.Status == ScanStatuses.Pass && record.PoAccepted && record.OrderNo == session.OrderNo
+                && record.OrderCreatedUtc == session.CreatedUtc && MatchesCode(record, gtin)) records.Add(record);
+            else await _sendStore.MarkPendingAsync(record.Id, "Mã không cùng GTIN/identity PO; chưa gửi Checkee.", ct).ConfigureAwait(false);
+        }
+        if (records.Count == 0)
+        {
+            _state.SetStatus(pending.Count == 0 ? "Không có mã Pass cùng GTIN của phiên PO chờ gửi." : "Có mã sai GTIN/identity; giữ chờ đối soát.", pending.Count > 0);
+            return 0;
+        }
+        if (!SameOrder(session, ObserveRunningOrder()) || !SendingEnabled) return 0;
+        var batch=ResolveBatch(session);
+        var attempt=await _sendStore.BeginSendAttemptAsync(records, gtin, batch, _opt.SerialType, ct).ConfigureAwait(false);
+        CheckeeSendResult result;
         try
         {
-            await _scanWriter.FlushAsync(ct).ConfigureAwait(false);
+            // Fail closed if durable file audit cannot be written before network dispatch.
+            WriteAudit(attempt, "Started", session, gtin, batch, records, 0, "");
+            if (!SendingEnabled || !SameOrder(session, ObserveRunningOrder()))
+                result=new() { IsTransient=true, Message="Đã tắt gửi hoặc thay PO trước HTTP; giữ hàng đợi." };
+            else result=await _client.ActivateAsync(gtin, batch, _opt.SerialType,
+                records.Select(r => r.CodeContent).Distinct(StringComparer.Ordinal).ToArray(), ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
+            const string message="Lượt gửi bị hủy trước xác nhận; cần đối soát trước khi gửi lại.";
+            await _sendStore.CompleteSendAttemptAsync(attempt, CheckeeSendAttemptStatuses.Unknown, 0, message, CancellationToken.None).ConfigureAwait(false);
+            TryWriteAudit(attempt, CheckeeSendAttemptStatuses.Unknown, session, gtin, batch, records, 0, message);
             throw;
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Không đồng bộ được bản ghi quét mã trước khi gửi Checkee.");
+            // Unexpected/audit errors are not proof the request was rejected.
+            result=new() { IsUnknown=true, Message="Không xác nhận được lượt gửi: " + ex.GetType().Name };
         }
-
-        var pending = await _sendStore
-            .GetPendingAsync(_opt.OnlyPassCodes, _opt.BatchSize, ct)
-            .ConfigureAwait(false);
-
-        if (pending.Count == 0)
-        {
-            _state.SetStatus("Không có mã nào chờ gửi lên Checkee.", isError: false);
-            return 0;
-        }
-
-        _state.SetStatus(
-            $"Đang gửi {pending.Count} mã lên Checkee...",
-            isError: false);
-
-        // GTIN là metadata của giao thức Checkee. Worker giữ nguyên CodeContent
-        // để đối chiếu bản ghi; client tách serial sau /21/ khi tạo payload gửi.
-        var groups = pending
-            .GroupBy(r => (Gtin: ResolveProductGtin(r), Batch: NormalizeBatch(r)))
-            .ToList();
-
-        var sentCount = 0;
-        var failedCount = 0;
-        var blockedCount = 0;
-        var transientCount = 0;
-        var blockedReasons = new HashSet<string>(StringComparer.Ordinal);
-
-        foreach (var group in groups)
-        {
-            var gtin = group.Key.Gtin;
-            var batchCode = group.Key.Batch;
-
-            // Thiếu metadata cấu hình không phải server từ chối mã. Giữ Pending
-            // để gửi lại sau khi bổ sung mà không mất bản ghi Pass.
-            if (string.IsNullOrWhiteSpace(gtin)
-                || string.IsNullOrWhiteSpace(batchCode))
-            {
-                var missing = new List<string>();
-                if (string.IsNullOrWhiteSpace(gtin)) missing.Add("Checkee:ProductGtin (GTIN sản phẩm)");
-                if (string.IsNullOrWhiteSpace(batchCode)) missing.Add("mã lô Checkee:BatchCode hoặc mã PO");
-                var message = "Đang chờ bổ sung " + string.Join(" và ", missing) + ". Mã quét vẫn được giữ lại.";
-                blockedReasons.Add(message);
-                foreach (var record in group)
-                {
-                    await _sendStore.MarkPendingAsync(record.Id, message, ct).ConfigureAwait(false);
-                    blockedCount++;
-                }
-
-                continue;
-            }
-
-            // Không được đánh dấu Sent cho bản ghi không có nội dung chỉ vì
-            // cùng nhóm metadata với một bản ghi gửi được.
-            var recordsToSend = new List<ScanRecordEntity>();
-            foreach (var record in group)
-            {
-                if (string.IsNullOrWhiteSpace(record.CodeContent))
-                {
-                    const string message = "Đang chờ đối soát: bản ghi không có CodeContent. Mã quét vẫn được giữ lại.";
-                    await _sendStore.MarkPendingAsync(record.Id, message, ct).ConfigureAwait(false);
-                    blockedReasons.Add(message);
-                    blockedCount++;
-                }
-                else recordsToSend.Add(record);
-            }
-            if (recordsToSend.Count == 0) continue;
-
-            var codeContents = recordsToSend.Select(record => record.CodeContent)
-                .Distinct(StringComparer.Ordinal).ToList();
-
-            var attemptId = await _sendStore.BeginSendAttemptAsync(
-                recordsToSend, gtin, batchCode, _opt.SerialType, ct).ConfigureAwait(false);
-            CheckeeSendResult result;
-            try
-            {
-                result = await _client
-                    .ActivateAsync(gtin, batchCode, _opt.SerialType, codeContents, ct)
-                    .ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (ct.IsCancellationRequested)
-            {
-                // HTTP có thể đã đến máy chủ. Lưu trạng thái chưa xác định,
-                // không đánh dấu Sent và không tự gửi lại khi khởi động tiếp.
-                await _sendStore.CompleteSendAttemptAsync(attemptId, CheckeeSendAttemptStatuses.Unknown, 0,
-                    "Lượt gửi bị hủy trước khi xác nhận kết quả; cần đối soát trước khi gửi lại.", CancellationToken.None)
-                    .ConfigureAwait(false);
-                throw;
-            }
-            catch (Exception ex)
-            {
-                // Lỗi không lường trước -> coi như lỗi tạm thời, giữ mã chờ gửi.
-                _logger.LogError(ex, "Lỗi khi gọi API kích hoạt mã trên Checkee.");
-                result = new CheckeeSendResult { Message = ex.Message, IsTransient = true };
-            }
-
-            var attemptStatus = result.IsUnknown ? CheckeeSendAttemptStatuses.Unknown
-                : result.Ok ? CheckeeSendAttemptStatuses.Sent
-                : result.IsTransient ? CheckeeSendAttemptStatuses.RetryPending : CheckeeSendAttemptStatuses.Failed;
-            // Sau khi server trả lời, hoàn tất SQLite độc lập token của caller.
-            // History và trạng thái từng mã được commit chung một transaction.
-            await _sendStore.CompleteSendAttemptAsync(attemptId, attemptStatus,
-                result.StatusCode, result.Message, CancellationToken.None).ConfigureAwait(false);
-
-            if (result.Ok)
-            {
-                sentCount += recordsToSend.Count;
-
-                _logger.LogInformation(
-                    "Đã gửi {Count} mã (GTIN {Gtin}, lô {Batch}) lên Checkee.",
-                    recordsToSend.Count,
-                    gtin,
-                    batchCode);
-            }
-            else if (result.IsTransient)
-            {
-                // Server không phản hồi -> giữ mã ở trạng thái chờ gửi.
-                transientCount += recordsToSend.Count;
-
-                _logger.LogWarning(
-                    "Checkee không phản hồi, giữ {Count} mã để thử lại ở chu kỳ sau: {Message}",
-                    recordsToSend.Count,
-                    result.Message);
-            }
-            else
-            {
-                // Server đã trả lỗi -> đánh dấu Failed, KHÔNG tự thử lại.
-                failedCount += recordsToSend.Count;
-
-                _logger.LogWarning(
-                    "Checkee từ chối {Count} mã (HTTP {Code}): {Message}",
-                    recordsToSend.Count,
-                    result.StatusCode,
-                    result.Message);
-            }
-        }
-
-        var status = $"Đã gửi {sentCount} mã thành công, {failedCount} mã lỗi.";
-        if (transientCount > 0) status += $" {transientCount} mã chờ thử lại khi Checkee phản hồi.";
-        if (blockedCount > 0) status += $" {blockedCount} mã đang chờ xử lý. " + string.Join(" ", blockedReasons);
-        _state.SetStatus(status, isError: failedCount > 0 || blockedCount > 0 || transientCount > 0);
-
+        var status=result.IsUnknown ? CheckeeSendAttemptStatuses.Unknown : result.Ok ? CheckeeSendAttemptStatuses.Sent
+            : result.IsTransient ? CheckeeSendAttemptStatuses.RetryPending : CheckeeSendAttemptStatuses.Failed;
+        var safeMessage=Redact(result.Message);
+        // Write network result first: survives a subsequent SQLite failure.
+        var audited=TryWriteAudit(attempt, status, session, gtin, batch, records, result.StatusCode, safeMessage, result.RawMessage);
+        await _sendStore.CompleteSendAttemptAsync(attempt, status, result.StatusCode, safeMessage, CancellationToken.None).ConfigureAwait(false);
         _state.SetLastRunUtc(DateTime.UtcNow);
-
-        return sentCount;
+        _state.SetStatus(audited ? $"PO {session.OrderNo}: {records.Count} mã · {status}. {safeMessage}"
+            : "Đã lưu SQLite nhưng không ghi được audit kết quả; cần kiểm tra ổ đĩa.", !result.Ok || !audited);
+        return result.Ok ? records.Count : 0;
     }
 
-    /// <summary>
-    /// Metadata GTIN của request: ưu tiên cấu hình sản phẩm, chỉ fallback
-    /// metadata đã lưu trong bản ghi cũ. Tuyệt đối không phân tích CodeContent.
-    /// </summary>
-    private string ResolveProductGtin(ScanRecordEntity record) =>
-        !string.IsNullOrWhiteSpace(_outbound.ProductGtin)
-            ? _outbound.ProductGtin.Trim()
-            : record.Gtin?.Trim() ?? string.Empty;
-
-    /// <summary>
-    /// Mã lô dùng cho request: ưu tiên mã lô của bản ghi, sau đó tới mã lô
-    /// cấu hình trong tab Cấu hình, cuối cùng là mã PO của bản ghi.
-    /// </summary>
-    private string NormalizeBatch(ScanRecordEntity record)
+    private static string ResolveBatch(ProductionOrder order)
     {
-        if (!string.IsNullOrWhiteSpace(record.BatchNo)
-            && !string.Equals(record.BatchNo, ScanBatchDefaults.NoBatch, StringComparison.Ordinal))
-        {
-            return record.BatchNo.Trim();
-        }
+        foreach (var key in new[] { "lot", "lotNo", "batchCode", "batchNo" })
+            foreach (var item in order.Additional)
+                if (string.Equals(key, item.Key, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(item.Value)) return item.Value.Trim();
+        return order.OrderNo;
+    }
 
-        if (!string.IsNullOrWhiteSpace(_opt.BatchCode))
-        {
-            return _opt.BatchCode.Trim();
-        }
+    private string Redact(string message, int maxLength = 1000)
+    {
+        foreach (var secret in new[] { _opt.ApiKey, _opt.ClientId })
+            if (!string.IsNullOrEmpty(secret)) message=message.Replace(secret, "[REDACTED]", StringComparison.Ordinal);
+        message=Regex.Replace(message, @"(?i)(Bearer\s+|accessToken[=:]\s*|(?:api[-_]?key|client[-_]?id)[\""']?\s*[:=]\s*[\""']?)[^\s,;\""'}]+", "$1[REDACTED]");
+        return message.Length > maxLength ? message[..maxLength] : message;
+    }
 
-        return record.OrderNo?.Trim() ?? string.Empty;
+    private bool TryWriteAudit(long attempt, string status, ProductionOrder order, string gtin,
+        string batch, IReadOnlyList<ScanRecordEntity> records, int http, string message, string response = "")
+    {
+        try { WriteAudit(attempt, status, order, gtin, batch, records, http, message, response); return true; }
+        catch (Exception ex) { _logger.LogError("Không ghi được audit Checkee ({ErrorType}).", ex.GetType().Name); return false; }
+    }
+
+    private void WriteAudit(long attempt, string status, ProductionOrder order, string gtin,
+        string batch, IReadOnlyList<ScanRecordEntity> records, int http, string message, string response = "")
+    {
+        var path=Path.GetFullPath(_outbound.AuditLogPath, AppContext.BaseDirectory);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        using var json=new MemoryStream();
+        using (var writer=new Utf8JsonWriter(json))
+        {
+            writer.WriteStartObject(); writer.WriteString("utc", DateTime.UtcNow);
+            writer.WriteNumber("attemptId", attempt); writer.WriteString("status", status);
+            writer.WriteString("orderNo", order.OrderNo); writer.WriteString("orderCreatedUtc", order.CreatedUtc);
+            writer.WriteString("gtin", gtin); writer.WriteString("lot", batch);
+            writer.WriteNumber("httpStatus", http); writer.WriteString("message", Redact(message));
+            writer.WriteString("response", Redact(response));
+            writer.WriteStartArray("recordIds"); foreach(var record in records) writer.WriteNumberValue(record.Id); writer.WriteEndArray();
+            writer.WriteStartArray("codes");
+            foreach (var record in records)
+            {
+                writer.WriteStartObject(); writer.WriteNumber("recordId", record.Id);
+                writer.WriteString("codeContent", Redact(record.CodeContent, int.MaxValue));
+                writer.WriteString("serial", Redact(CheckeeClient.ExtractSerialNumber(record.CodeContent), int.MaxValue));
+                writer.WriteEndObject();
+            }
+            writer.WriteEndArray();
+            writer.WriteEndObject(); writer.Flush();
+        }
+        using var file=new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read, 4096, FileOptions.WriteThrough);
+        file.Write(json.GetBuffer().AsSpan(0, (int)json.Length)); file.WriteByte(10); file.Flush(flushToDisk:true);
+    }
+
+    public override void Dispose()
+    {
+        _po.Changed -= OnPoChanged;
+        base.Dispose();
     }
 }
 
-/// <summary>
-/// Trạng thái hiện tại của <see cref="CheckeeSendWorker"/> — dùng cho UI.
-///
-/// <para>
-/// Các thuộc tính được cập nhật từ luồng worker nên UI đọc qua
-/// <see cref="Status"/> / <see cref="LastRunUtc"/>; dùng
-/// <see cref="System.Threading.Volatile"/> để đọc nhất quán.
-/// </para>
-/// </summary>
 public sealed class CheckeeSendState
 {
+    public event Action? Changed;
     private readonly object _gate = new();
     private string _status = "Chưa chạy.";
     private bool _isError;
@@ -427,8 +295,10 @@ public sealed class CheckeeSendState
     /// <param name="isError">True nếu là thông báo lỗi.</param>
     public void SetStatus(string message, bool isError)
     {
+        if (Status == message && IsError == isError) return;
         Volatile.Write(ref _status, message ?? string.Empty);
         Volatile.Write(ref _isError, isError);
+        Changed?.Invoke();
     }
 
     /// <summary>

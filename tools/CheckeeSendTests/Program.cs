@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using ClassLibraryMT.Checkee;
+using ClassLibraryMT.Po;
 using ClassLibraryMT.Scans;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
@@ -10,523 +11,302 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using TanTienQR.Services;
 
-var checks = 0;
-void Check(bool condition, string description)
+var checks=0;
+void Check(bool ok, string message) { if (!ok) throw new InvalidOperationException("[FAIL] " + message); checks++; Console.WriteLine("[OK] " + message); }
+const string gtin="08935348800215";
+static string Code(string serial, string product=gtin) => $"https://resolver.invalid/01/{product}/21/{serial}";
+
+await using (var f=await SendTestSession.CreateAsync())
 {
-    if (!condition) throw new InvalidOperationException("[FAIL] " + description);
-    checks++;
-    Console.WriteLine("[OK] " + description);
+    f.Options.BatchSize=1;
+    f.Options.OnlyPassCodes=false; // legacy settings cannot weaken the invariant
+    for(var i=0;i<8;i++) await f.AddAsync(Code("old"+i), order:"OLD-PO");
+    await f.AddAsync(Code("reuse"), created:f.Order.CreatedUtc.AddDays(-1));
+    await f.AddAsync(Code("other", "09506000134352"));
+    await f.AddAsync(Code("bad"), status:ScanStatuses.InvalidForOrder);
+    await f.AddAsync(Code("legacy"), accepted:false);
+    await f.AddAsync(Code("unready"), complete:false);
+    await f.AddAsync(Code("eligible"));
+    Check(await f.Worker.SendPendingAsync()==1, "SQL lọc Pass/accepted/PO/CreatedUtc/GTIN trước LIMIT, backlog cũ không gây đói batch");
+    Check(f.Http.Payloads.Single().GetProperty("serialNumbers")[0].GetString()=="eligible", "Chỉ serial cùng GTIN của PO hiện hành nằm trong request");
+    var rows=await f.RowsAsync();
+    Check(rows.Count(r=>r.SendStatus==ScanSendStatuses.Sent)==1 && rows.Single(r=>r.CodeContent==Code("eligible")).PoAccepted,
+        "Không đánh dấu Sent cho mã khác GTIN, PO cũ, PO reuse, non-Pass, legacy hoặc outbox chưa xong");
+    Check(await f.Worker.SendPendingAsync()==0 && f.Http.Payloads.Count==1, "Chu kỳ sau không gửi lại mã đã ACK");
 }
 
-static ScanRecordEntity Pass(string code, string order = "TEST-ASYNC-PO-20261127-CHECKEE-DEFAULT") => new()
+await using (var f=await SendTestSession.CreateAsync(new() { ["LoTnO"]="  LOT-FROM-PO  " }))
 {
-    CodeContent = code, Raw = code, Status = ScanStatuses.Pass,
-    OrderNo = order, ReceivedUtc = DateTime.UtcNow,
-};
-
-var fullCode = "  hàng Việt/01/08934567890123/21/SAME\u001d?key=VALUE  " + new string('x', 700);
-await using (var test = new SendTestSession(" 08934567890123 "))
-{
-    var first = Pass(fullCode);
-    first.Serial = "SAME";
-    first.Gtin = "LEGACY-GTIN-MUST-NOT-OVERRIDE-CONFIG";
-    var second = Pass("different/21/SAME");
-    second.Serial = "SAME";
-    var caseVariant = Pass("DIFFERENT/21/SAME");
-    var failure = Pass("NOT-A-PASS");
-    failure.Status = ScanStatuses.InvalidForOrder;
-    test.Writer.Enqueue(first);
-    test.Writer.Enqueue(second);
-    test.Writer.Enqueue(caseVariant);
-    test.Writer.Enqueue(failure);
-    Check(await test.Worker.SendPendingAsync() == 3, "Gửi tất cả mã Pass, bỏ qua InvalidForOrder");
-    var payload = test.Http.Payloads.Single();
-    var codes = payload.GetProperty("serialNumbers").EnumerateArray().Select(value => value.GetString()).ToArray();
-    Check(codes.SequenceEqual(new[] { fullCode, second.CodeContent, caseVariant.CodeContent }),
-        "Nội dung legacy không phải HTTP/HTTPS URL giữ nguyên Unicode, GS, khoảng trắng và hoa thường; không lấy Serial cũ");
-    Check(payload.GetProperty("GTIN").GetString() == "08934567890123"
-        && payload.GetProperty("batchCode").GetString() == "TEST-ASYNC-PO-20261127-CHECKEE-DEFAULT"
-        && payload.GetProperty("type").GetString() == "DECLARE", "Giao thức Checkee giữ GTIN/batchCode/type; GTIN ưu tiên cấu hình sản phẩm");
-    Check(payload.TryGetProperty("fromIndex", out var fromIndex)
-        && fromIndex.ValueKind == JsonValueKind.Number && fromIndex.GetInt32() == 0
-        && payload.TryGetProperty("toIndex", out var toIndex)
-        && toIndex.ValueKind == JsonValueKind.Number && toIndex.GetInt32() == 0,
-        "Payload kích hoạt luôn gửi fromIndex và toIndex dưới dạng số 0 cùng serialNumbers");
-    var rows = await test.RowsAsync();
-    Check(rows.Count(row => row.SendStatus == ScanSendStatuses.Sent) == 3
-        && rows.All(row => row.CodeContent == failure.CodeContent || row.Status == ScanStatuses.Pass),
-        "Thành công chỉ đổi trạng thái gửi, giữ outcome quét Pass");
-    Check(await test.Worker.SendPendingAsync() == 0 && test.Http.Payloads.Count == 1,
-        "Không gửi lại mã đã Sent trong chu kỳ sau");
+    await f.AddAsync(Code("metadata"));
+    Check(await f.Worker.SendPendingAsync()==1, "Gửi mã Pass có metadata PO");
+    var payload=f.Http.Payloads.Single();
+    Check(payload.GetProperty("GTIN").GetString()==gtin && payload.GetProperty("batchCode").GetString()=="LOT-FROM-PO",
+        "GTIN và Lot lấy từ snapshot PO; khóa Lot không phân biệt hoa thường");
+    Check(payload.GetProperty("fromIndex").GetInt32()==0 && payload.GetProperty("toIndex").GetInt32()==0,
+        "Payload giữ hai chỉ số số 0 và serialType");
+    var audit=await File.ReadAllTextAsync(f.AuditPath);
+    Check(audit.Split('\n',StringSplitOptions.RemoveEmptyEntries).Length==2 && audit.Contains("Started") && audit.Contains("Sent"),
+        "File audit riêng ghi bền intent và kết quả HTTP");
+    Check(!audit.Contains(f.Options.ApiKey) && !audit.Contains("test-only-token") && audit.Contains("orderCreatedUtc") && audit.Contains("recordIds"),
+        "Audit truy vết attempt/PO/recordIds, không ghi ApiKey/token");
+    using var reopened=f.OpenAnotherStore();
+    var history=(await reopened.GetRequiredService<IScanSendStatusStore>().GetRecentSendAttemptsAsync()).Single();
+    Check(history.OkCount==1 && history.CompletedUtc.HasValue,
+        "Mở lại SQLite còn snapshot OK và thời điểm kết quả độc lập audit file");
 }
 
-const string sampleUrl1 = "https://beta-elink.checkee.vn/01/8935348800215/21/UhtX8gAftf";
-const string sampleUrl2 = "https://beta-elink.checkee.vn/01/8935348800215/21/UlZLEdojrQ";
-await using (var test = new SendTestSession("8935348800215"))
+await using (var f=await SendTestSession.CreateAsync())
 {
-    test.Options.BatchCode = "TEST-ASYNC-PO-20261127-CHECKEE";
-    test.Options.SerialType = "RANDOM";
-    var first = Pass(sampleUrl1, "TEST-ASYNC-PO-20261127-CHECKEE");
-    var second = Pass(sampleUrl2, "TEST-ASYNC-PO-20261127-CHECKEE");
-    first.Serial = "LEGACY-SERIAL-MUST-NOT-OVERRIDE-URL";
-    second.Serial = "ANOTHER-LEGACY-SERIAL";
-    test.Writer.Enqueue(first);
-    test.Writer.Enqueue(second);
-
-    Check(await test.Worker.SendPendingAsync() == 2, "Hai URL mẫu được gửi qua worker Checkee");
-    var payload = test.Http.Payloads.Single();
-    Check(payload.GetProperty("serialNumbers").EnumerateArray().Select(value => value.GetString())
-        .SequenceEqual(new[] { "UhtX8gAftf", "UlZLEdojrQ" }),
-        "Payload chỉ chứa hai serial sau /21/ theo mẫu TEST-ASYNC-PO-20261127-CHECKEE, không dùng URL hoặc Serial legacy");
-    Check(payload.GetProperty("GTIN").GetString() == "8935348800215"
-        && payload.GetProperty("batchCode").GetString() == "TEST-ASYNC-PO-20261127-CHECKEE"
-        && payload.GetProperty("type").GetString() == "RANDOM"
-        && payload.GetProperty("fromIndex").ValueKind == JsonValueKind.Number
-        && payload.GetProperty("fromIndex").GetInt32() == 0
-        && payload.GetProperty("toIndex").ValueKind == JsonValueKind.Number
-        && payload.GetProperty("toIndex").GetInt32() == 0,
-        "Payload mẫu TEST-ASYNC-PO-20261127-CHECKEE giữ đúng GTIN, batchCode, RANDOM và hai chỉ số số 0");
-    var rows = await test.RowsAsync();
-    Check(rows.Count == 2 && rows.All(row => row.Status == ScanStatuses.Pass
-        && row.SendStatus == ScanSendStatuses.Sent)
-        && rows.Select(row => row.CodeContent).ToHashSet(StringComparer.Ordinal)
-            .SetEquals(new[] { sampleUrl1, sampleUrl2 })
-        && rows.All(row => row.Raw == row.CodeContent),
-        "Sau gửi, DB vẫn giữ nguyên hai URL trong CodeContent/Raw và kết quả Pass");
+    await f.AddAsync(Code("fallback"));
+    await f.Worker.SendPendingAsync();
+    Check(f.Http.Payloads.Single().GetProperty("batchCode").GetString()==f.Order.OrderNo, "Không có Lot rõ ràng thì fallback OrderNo");
 }
 
-using (var handler = new RecordingHttpHandler())
-using (var http = new HttpClient(handler) { BaseAddress = new Uri("https://checkee.invalid/") })
-using (var client = new CheckeeClient(http, new CheckeeOptions
+await using (var f=await SendTestSession.CreateAsync(enabled:false))
 {
-    BaseUrl = "https://checkee.invalid", ApiKey = "test-only-key", ClientId = "test-only-client",
-}))
+    await f.AddAsync(Code("disabled"));
+    Check(await f.Worker.SendPendingAsync()==0 && f.Http.RequestCount==0, "Tắt gửi chặn manual và HTTP");
+    await f.Worker.StartAsync(CancellationToken.None);
+    f.Worker.SendingEnabled=true;
+    using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(10));
+    while(f.Http.Payloads.Count==0) await Task.Delay(20,timeout.Token);
+    await f.Worker.StopAsync(timeout.Token);
+    Check((await f.RowsAsync()).Single().SendStatus==ScanSendStatuses.Sent, "Bật runtime đánh thức worker khởi động disabled, không restart");
+}
+
+await using (var f=await SendTestSession.CreateAsync(enabled:false, codes:[Code("last")]))
 {
-    var inputs = new List<string>
+    // Exactly mirror the coordinator: accept -> durable scan/outbox -> PO batch -> mark ready -> auto-complete.
+    var eventId=Guid.NewGuid().ToString("N");
+    var accepted=f.Po.AcceptManualCode(Code("last"),DateTime.UtcNow,eventId);
+    Check(accepted.Mutation is not null, "Mã cuối được PO thật accept và cấp immutable mutation");
+    var record=f.Record(Code("last"));
+    await f.Persistence.PersistBatchAsync([new(eventId,record,f.Order.CreatedUtc,true)]);
+    await f.PoStore.MarkScannedBatchAsync([accepted.Mutation!]);
+    await f.Persistence.CompleteAsync([eventId]);
+    Check(await f.Po.CompletePendingAsync() && f.Po.CurrentOrder is null, "Persistence auto-complete PO trước lần gửi kế tiếp");
+    f.Worker.SendingEnabled=true;
+    Check(await f.Worker.SendPendingAsync()==1, "Sending session đã quan sát Running kể cả disabled vẫn drain được mã cuối sau auto-complete");
+    await f.AddAsync(Code("post-complete-fixture"));
+    using var freshWorker=f.NewWorker();
+    Check(await freshWorker.SendPendingAsync()==0, "Worker mới startup không tự chọn historical completed PO");
+}
+
+await using (var f=await SendTestSession.CreateAsync(codes:[Code("first")]))
+{
+    var eventId=Guid.NewGuid().ToString("N");
+    var result=f.Po.AcceptManualCode(Code("first"),DateTime.UtcNow,eventId);
+    await f.Persistence.PersistBatchAsync([new(eventId,f.Record(Code("first")),f.Order.CreatedUtc,true)]);
+    await f.PoStore.MarkScannedBatchAsync([result.Mutation!]); await f.Persistence.CompleteAsync([eventId]);
+    await f.Po.CompletePendingAsync();
+    var next=new ProductionOrder { OrderNo="NEXT-PO", CreatedUtc=f.Order.CreatedUtc.AddDays(1), Gtin=gtin, OrderQty=1 };
+    await f.PoStore.EnsurePoDbAsync(next,[new PoCode {CodeContent=Code("next")}]);
+    Check(await f.Po.StartProductionAsync(next.OrderNo), "PO mới bắt đầu sau auto-complete");
+    await f.AddAsync(Code("next"),order:next.OrderNo,created:next.CreatedUtc);
+    Check(await f.Worker.SendPendingAsync()==1 && f.Http.Payloads.Single().GetProperty("serialNumbers")[0].GetString()=="next",
+        "PO mới thay sending-session; backlog PO cũ không lẫn sang batch mới");
+    Check((await f.RowsAsync()).Single(r=>r.OrderNo==f.Order.OrderNo).SendStatus!=ScanSendStatuses.Sent, "Backlog session cũ giữ nguyên trạng thái chưa gửi");
+}
+
+await using (var f=await SendTestSession.CreateAsync())
+{
+    await f.AddAsync(Code("cancelled")); await f.Po.CancelProductionAsync();
+    Check(await f.Worker.SendPendingAsync()==0 && f.Http.RequestCount==0, "Huỷ PO chặn drain session bị huỷ");
+}
+
+await using (var f=await SendTestSession.CreateAsync())
+{
+    f.Http.ActivateStatus=HttpStatusCode.BadRequest; await f.AddAsync(Code("retry"));
+    Check(await f.Worker.SendPendingAsync()==0, "HTTP từ chối không tính Sent");
+    var row=(await f.RowsAsync()).Single(); var first=(await f.Store.GetRecentSendAttemptsAsync()).Single();
+    Check(row.SendStatus==ScanSendStatuses.Failed && first.FailCount==1, "Lưu Failed và snapshot lỗi tách scan Pass");
+    f.Worker.SendingEnabled=false;
+    Check(await f.Worker.ResendFailedAsync([row.Id])==(0,0) && (await f.RowsAsync()).Single().SendStatus==ScanSendStatuses.Failed,
+        "Runtime disable chặn resend trước reset Failed");
+    f.Worker.SendingEnabled=true; f.Http.ActivateStatus=HttpStatusCode.OK;
+    Check(await f.Worker.ResendFailedAsync([row.Id])==(1,1), "Retry hợp lệ đi qua cùng gate");
+    Check((await f.Store.GetSendAttemptItemsAsync(first.Id)).Single().Status==CheckeeSendAttemptStatuses.Failed
+        && (await f.Store.GetRecentSendAttemptsAsync()).Count==2, "Retry tạo snapshot mới và giữ kết quả lần cũ");
+}
+
+await using (var f=await SendTestSession.CreateAsync())
+{
+    f.Http.ThrowNetwork=true; await f.AddAsync(Code("offline"));
+    Check(await f.Worker.SendPendingAsync()==0 && (await f.RowsAsync()).Single().SendStatus==ScanSendStatuses.Pending,
+        "Lỗi transport giữ Pending và audit retry outcome");
+    f.Http.ThrowNetwork=false;
+    Check(await f.Worker.SendPendingAsync()==1, "Mạng hồi phục gửi lại Pending");
+}
+
+foreach(var body in new[]{"not-json","{}","{\"data\":{}}"})
+{
+    await using var f=await SendTestSession.CreateAsync(); await f.AddAsync(Code("unknown")); f.Http.ActivateBody=body;
+    Check(await f.Worker.SendPendingAsync()==0 && (await f.Store.GetRecentSendAttemptsAsync()).Single().UnknownCount==1,
+        "HTTP200 thiếu ACK lưu Unknown, không đánh dấu Sent: "+body);
+    await f.Worker.SendPendingAsync(); Check(f.Http.Payloads.Count==1,"Unknown không auto-retry");
+}
+
+await using (var f=await SendTestSession.CreateAsync())
+{
+    await f.AddAsync(Code("mismatch"), metadataGtin:gtin, contentOverride:Code("mismatch","09506000134352"));
+    Check(await f.Worker.SendPendingAsync()==0 && f.Http.RequestCount==0 && (await f.RowsAsync()).Single().SendStatus==ScanSendStatuses.Pending,
+        "GTIN trong nội dung khác PO dù metadata giả khớp vẫn bị loại request, không Sent");
+}
+
+await using (var f=await SendTestSession.CreateAsync())
+{
+    await f.AddAsync(Code("audit-failure")); f.Outbound.AuditLogPath=f.Root; // directory cannot be opened as append file
+    Check(await f.Worker.SendPendingAsync()==0 && f.Http.RequestCount==0
+        && (await f.Store.GetRecentSendAttemptsAsync()).Single().UnknownCount==1,
+        "Audit file lỗi thì fail closed trước HTTP và giữ SQLite Unknown để đối soát");
+}
+
+await using (var f=await SendTestSession.CreateAsync())
+{
+    await f.AddAsync(Code("cancel-http")); f.Http.ActivationStarted=new(); f.Http.AllowActivation=new();
+    using var ct=new CancellationTokenSource(); using var deadline=new CancellationTokenSource(TimeSpan.FromSeconds(10));
+    var send=f.Worker.SendPendingAsync(ct.Token); await f.Http.ActivationStarted.Task.WaitAsync(deadline.Token); ct.Cancel();
+    try { await send; throw new InvalidOperationException("Cancellation expected"); } catch(OperationCanceledException) { }
+    Check((await f.Store.GetRecentSendAttemptsAsync()).Single().UnknownCount==1
+        && File.ReadAllText(f.AuditPath).Contains("Unknown"), "Hủy HTTP vẫn lưu Unknown vào SQLite và audit với token độc lập");
+}
+
+await using (var f=await SendTestSession.CreateAsync())
+{
+    await f.AddAsync(Code("retention"));
+    for(var i=0;i<65;i++)
     {
-        "https://resolver.invalid/prefix/21/ignored/01/8935348800215/21/CaseAb?next=/21/QUERY#x/21/FRAGMENT",
-        "http://resolver.invalid/01/8935348800215/21/AbC%2FDef%3FQ%23Z",
-        "https://resolver.invalid/01/8935348800215/21/Once%252FOnly",
-        "https://resolver.invalid/lookup?next=/21/KEEP#x/21/KEEP",
-        "PlainSerialAbC",
-        "plainserialabc",
-        "https://resolver.invalid/01/8935348800215/21/",
-        "https://resolver.invalid/01/8935348800215/21/AbC/extra",
-        "ftp://resolver.invalid/01/8935348800215/21/Legacy",
-    };
-    var original = inputs.ToArray();
-    var result = await client.ActivateAsync("8935348800215", "TEST-ASYNC-PO-20261127-CHECKEE", "RANDOM", inputs);
-    Check(result.Ok && handler.Payloads.Count == 1, "Client tạo được payload từ URL và serial legacy qua HTTP giả");
-    var serials = handler.Payloads.Single().GetProperty("serialNumbers").EnumerateArray()
-        .Select(value => value.GetString()).ToArray();
-    Check(serials.Length == inputs.Count, "Các serial khác nhau không bị loại nhầm khi chuyển đổi payload");
-    Check(serials[0] == "CaseAb", "Chỉ lấy serial cuối của path, bỏ query/fragment kể cả khi chứa /21/");
-    Check(serials[1] == "AbC/Def?Q#Z" && serials[2] == "Once%2FOnly",
-        "Percent escape trong segment serial được giải mã đúng một lần sau khi tách");
-    Check(serials[3] == original[3], "Không lấy /21/ chỉ xuất hiện trong query hoặc fragment làm serial");
-    Check(serials[4] == "PlainSerialAbC" && serials[5] == "plainserialabc",
-        "Serial thuần legacy giữ nguyên nội dung và phân biệt chữ hoa thường");
-    Check(serials.Skip(6).SequenceEqual(original.Skip(6)),
-        "Path thiếu serial, có segment thừa hoặc scheme không phải HTTP/HTTPS giữ nguyên tương thích");
-    Check(inputs.SequenceEqual(original), "Chuyển đổi payload không sửa danh sách nội dung đầu vào của caller");
-}
-
-await using (var test = new SendTestSession("8935348800215"))
-{
-    var alternateUrl = "https://other-resolver.invalid/01/8935348800215/21/UhtX8gAftf";
-    test.Writer.Enqueue(Pass(sampleUrl1));
-    test.Writer.Enqueue(Pass(alternateUrl));
-    Check(await test.Worker.SendPendingAsync() == 2, "Hai bản ghi khác URL cùng serial đều được cập nhật gửi thành công");
-    var serials = test.Http.Payloads.Single().GetProperty("serialNumbers").EnumerateArray()
-        .Select(value => value.GetString()).ToArray();
-    Check(serials.SequenceEqual(new[] { "UhtX8gAftf" }),
-        "Hai URL khác host cùng serial chỉ gửi một serial trong request Checkee");
-    var rows = await test.RowsAsync();
-    Check(rows.Count == 2 && rows.All(row => row.Status == ScanStatuses.Pass
-        && row.SendStatus == ScanSendStatuses.Sent)
-        && rows.Select(row => row.CodeContent).ToHashSet(StringComparer.Ordinal)
-            .SetEquals(new[] { sampleUrl1, alternateUrl })
-        && rows.All(row => row.Raw == row.CodeContent),
-        "Loại serial trùng ở outbound vẫn giữ hai URL và trạng thái riêng của từng bản ghi local");
-}
-
-await using (var test = new SendTestSession(""))
-{
-    test.Writer.Enqueue(Pass("arbitrary code: no GS1 format"));
-    Check(await test.Worker.SendPendingAsync() == 0 && test.Http.RequestCount == 0,
-        "Thiếu ProductGtin không gọi mạng hoặc loại mã không có định dạng GS1");
-    var row = (await test.RowsAsync()).Single();
-    Check(row.Status == ScanStatuses.Pass && row.SendStatus == ScanSendStatuses.Pending
-        && row.SendMessage.Contains("Checkee:ProductGtin"), "Thiếu metadata giữ Pass/Pending với hướng dẫn cấu hình");
-    Check(test.Worker.State.IsError && test.Worker.State.Status.Contains("Checkee:ProductGtin")
-        && test.Worker.State.LastRunUtc.HasValue, "Trạng thái worker hiển thị mã đang bị chặn và lý do thiếu metadata");
-    test.Outbound.ProductGtin = "CONFIGURED-PRODUCT";
-    Check(await test.Worker.SendPendingAsync() == 1 && (await test.RowsAsync()).Single().SendStatus == ScanSendStatuses.Sent,
-        "Bổ sung ProductGtin cho phép gửi lại mã Pending, không cần reset Failed");
-}
-
-await using (var test = new SendTestSession("PRODUCT"))
-{
-    test.Writer.Enqueue(Pass("unstructured/content", order: ""));
-    Check(await test.Worker.SendPendingAsync() == 0 && test.Http.RequestCount == 0,
-        "Thiếu mã lô và PO không gửi payload thiếu metadata");
-    var row = (await test.RowsAsync()).Single();
-    Check(row.SendStatus == ScanSendStatuses.Pending && row.SendMessage.Contains("Checkee:BatchCode")
-        && row.Status == ScanStatuses.Pass, "Thiếu mã lô vẫn giữ Pass/Pending và thông báo rõ");
-    test.Options.BatchCode = " BATCH-CONFIG ";
-    Check(await test.Worker.SendPendingAsync() == 1
-        && test.Http.Payloads.Single().GetProperty("batchCode").GetString() == "BATCH-CONFIG",
-        "Mã lô cấu hình bổ sung giúp mã chờ được gửi lại");
-}
-
-await using (var test = new SendTestSession("PRODUCT"))
-{
-    var empty = Pass("");
-    empty.Serial = "LEGACY-SERIAL-MUST-NOT-BE-SENT";
-    empty.BatchNo = "RECORD-BATCH";
-    var valid = Pass("valid arbitrary code");
-    valid.BatchNo = "RECORD-BATCH";
-    test.Options.BatchCode = "FALLBACK-BATCH";
-    test.Writer.Enqueue(empty);
-    test.Writer.Enqueue(valid);
-    Check(await test.Worker.SendPendingAsync() == 1, "Bản ghi không có CodeContent không ngăn gửi mã hợp lệ");
-    var rows = await test.RowsAsync();
-    Check(rows.Single(row => row.CodeContent.Length == 0).SendStatus == ScanSendStatuses.Pending
-        && rows.Single(row => row.CodeContent == valid.CodeContent).SendStatus == ScanSendStatuses.Sent,
-        "Không đánh dấu Sent hoặc dùng Serial thay cho bản ghi thiếu CodeContent");
-    Check(test.Http.Payloads.Single().GetProperty("batchCode").GetString() == "RECORD-BATCH",
-        "Mã lô trên bản ghi ưu tiên trước cấu hình fallback");
-}
-
-await using (var test = new SendTestSession(""))
-{
-    var legacy = Pass("LEGACY-FULL/21/SAME");
-    legacy.Gtin = " LEGACY-PRODUCT ";
-    legacy.Serial = "SAME";
-    test.Writer.Enqueue(legacy);
-    Check(await test.Worker.SendPendingAsync() == 1
-        && test.Http.Payloads.Single().GetProperty("GTIN").GetString() == "LEGACY-PRODUCT"
-        && test.Http.Payloads.Single().GetProperty("serialNumbers")[0].GetString() == legacy.CodeContent,
-        "Fallback metadata GTIN cũ vẫn gửi toàn bộ CodeContent");
-}
-
-await using (var test = new SendTestSession("PRODUCT"))
-{
-    test.Options.BatchSize = 2;
-    var missingBatch = Pass("blocked until batch is configured", order: "");
-    var missingContent = Pass("");
-    var valid = Pass("valid code behind a full blocked batch");
-    var received = new DateTime(2026, 11, 26, 0, 0, 0, DateTimeKind.Utc);
-    missingBatch.ReceivedUtc = received;
-    missingContent.ReceivedUtc = received.AddSeconds(1);
-    valid.ReceivedUtc = received.AddSeconds(2);
-    test.Writer.Enqueue(missingBatch);
-    test.Writer.Enqueue(missingContent);
-    test.Writer.Enqueue(valid);
-
-    Check(await test.Worker.SendPendingAsync() == 0 && test.Http.RequestCount == 0,
-        "Batch đầu đầy bản ghi thiếu metadata/nội dung được giữ lại mà không gọi HTTP");
-    var blocked = (await test.RowsAsync()).Where(row => row.CodeContent != valid.CodeContent).ToArray();
-    Check(blocked.Length == 2 && blocked.All(row => row.SendStatus == ScanSendStatuses.Pending
-        && row.Status == ScanStatuses.Pass && row.SendAttemptUtc.HasValue),
-        "Mọi bản ghi blocked vẫn Pass/Pending và lưu lần thử để nhường lượt batch sau");
-    Check(await test.Worker.SendPendingAsync() == 1
-        && test.Http.Payloads.Single().GetProperty("serialNumbers")[0].GetString() == valid.CodeContent,
-        "Mã hợp lệ sau một batch toàn blocked vẫn được gửi ở chu kỳ kế tiếp");
-
-    test.Options.BatchCode = "REPAIRED-BATCH";
-    Check(await test.Worker.SendPendingAsync() == 1,
-        "Bổ sung metadata vẫn tự gửi lại mã Pending sau khi hàng đợi nhường lượt");
-    var rows = await test.RowsAsync();
-    Check(rows.Single(row => row.CodeContent == missingBatch.CodeContent).SendStatus == ScanSendStatuses.Sent
-        && rows.Single(row => row.CodeContent.Length == 0).SendStatus == ScanSendStatuses.Pending
-        && rows.Single(row => row.CodeContent == valid.CodeContent).SendStatus == ScanSendStatuses.Sent,
-        "Metadata repair chỉ giải phóng mã đã đủ dữ liệu, giữ bản ghi thiếu CodeContent chờ đối soát");
-}
-
-await using (var test = new SendTestSession("PRODUCT"))
-{
-    test.Http.ActivateStatus = HttpStatusCode.BadRequest;
-    test.Writer.Enqueue(Pass("server-rejected arbitrary code"));
-    Check(await test.Worker.SendPendingAsync() == 0, "Server từ chối không tính mã đã gửi thành công");
-    var row = (await test.RowsAsync()).Single();
-    Check(row.Status == ScanStatuses.Pass && row.SendStatus == ScanSendStatuses.Failed && row.SendStatusCode == 400,
-        "HTTP từ chối chỉ làm Failed trạng thái gửi, không đổi scan Pass");
-    Check(await test.Worker.SendPendingAsync() == 0 && test.Http.Payloads.Count == 1,
-        "Server từ chối không tự gửi lại mã Failed");
-    test.Http.ActivateStatus = HttpStatusCode.OK;
-    var retry = await test.Worker.ResendFailedAsync(new[] { row.Id });
-    Check(retry == (1, 1) && (await test.RowsAsync()).Single().Status == ScanStatuses.Pass,
-        "Gửi lại thủ công phục hồi trạng thái gửi mà không đổi outcome quét");
-    test.Http.BusinessFailure = true;
-    test.Writer.Enqueue(Pass("business-rejected full code"));
-    Check(await test.Worker.SendPendingAsync() == 0
-        && (await test.RowsAsync()).Single(item => item.CodeContent == "business-rejected full code") is
-            { Status: ScanStatuses.Pass, SendStatus: ScanSendStatuses.Failed, SendStatusCode: 200 },
-        "HTTP 200 nhưng nghiệp vụ từ chối cũng chỉ đổi trạng thái gửi Failed");
-}
-
-await using (var test = new SendTestSession("PRODUCT"))
-{
-    test.Http.ThrowNetwork = true;
-    test.Writer.Enqueue(Pass("network retry full content"));
-    Check(await test.Worker.SendPendingAsync() == 0, "Lỗi mạng không mất bản ghi hoặc ném lỗi ra caller");
-    var row = (await test.RowsAsync()).Single();
-    Check(row.SendStatus == ScanSendStatuses.Pending && row.Status == ScanStatuses.Pass
-        && test.Worker.State.Status.Contains("chờ thử lại"), "Lỗi mạng giữ Pending và hiện trạng thái chờ thử lại");
-    test.Http.ThrowNetwork = false;
-    Check(await test.Worker.SendPendingAsync() == 1, "Chu kỳ kế tiếp gửi lại mã sau khi mạng hồi phục");
-}
-
-await using (var test = new SendTestSession("PRODUCT"))
-{
-    test.Writer.Enqueue(Pass("maintenance held code"));
-    test.Gate.SetSuspended(true);
-    Check(await test.Worker.SendPendingAsync() == 0 && test.Http.RequestCount == 0,
-        "Cổng bảo trì chặn gửi thủ công như timer");
-    test.Gate.SetSuspended(false);
-    Check(await test.Worker.SendPendingAsync() == 1, "Kết thúc bảo trì vẫn gửi mã đã giữ trong hàng đợi");
-}
-
-// Lịch sử ghi từng batch thực tế, giữ snapshot kể cả khi gửi lại đổi trạng thái hiện tại.
-await using (var test = new SendTestSession("PRODUCT"))
-{
-    test.Http.ActivationStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    test.Http.AllowActivation = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    test.Writer.Enqueue(Pass("inflight-resend-must-not-duplicate"));
-    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-    var original = test.Worker.SendPendingAsync(timeout.Token);
-    await test.Http.ActivationStarted.Task.WaitAsync(timeout.Token);
-    var captured = await test.Store.GetBySendStatusAsync(new ScanSendFilter { SendStatus = ScanSendStatuses.Failed });
-    Check(captured.Count == 1, "Intent giữ mã trong flight ngoài hàng đợi tự retry");
-    var queuedRetry = test.Worker.ResendFailedAsync(captured.Select(row => row.Id).ToArray(), timeout.Token);
-    test.Http.AllowActivation.TrySetResult();
-    Check(await original == 1 && await queuedRetry == (0, 0) && test.Http.Payloads.Count == 1,
-        "Gửi lại xếp hàng recheck Failed sau gate, không reset/gửi lặp mã original vừa được ACK Sent");
-    Check((await test.Store.GetRecentSendAttemptsAsync()).Count == 1
-        && (await test.RowsAsync()).Single().SendStatus == ScanSendStatuses.Sent,
-        "Race resend không tạo lần gửi thứ hai hoặc ghi đè trạng thái Sent");
-}
-
-await using (var test = new SendTestSession("PRODUCT"))
-{
-    test.Http.ActivateStatus = HttpStatusCode.BadRequest;
-    test.Writer.Enqueue(Pass(fullCode));
-    await test.Worker.SendPendingAsync();
-    var failed = (await test.Store.GetRecentSendAttemptsAsync()).Single();
-    Check(failed.TotalCount == 1 && failed.FailCount == 1 && failed.OkCount == 0
-        && failed.StatusCode == 400 && failed.CompletedUtc.HasValue, "Lần HTTP từ chối được lưu đúng tổng/OK/Fail/HTTP và thời điểm hoàn tất");
-    var detail = (await test.Store.GetSendAttemptItemsAsync(failed.Id)).Single();
-    Check(detail.CodeContent == fullCode && detail.Status == CheckeeSendAttemptStatuses.Failed
-        && detail.Message.Length > 0, "Chi tiết lưu nguyên CodeContent Unicode dài, kết quả và thông điệp của đúng lần gửi");
-    test.Http.ActivateStatus = HttpStatusCode.OK;
-    await test.Worker.ResendFailedAsync([(await test.RowsAsync()).Single().Id]);
-    var attempts = await test.Store.GetRecentSendAttemptsAsync();
-    Check(attempts.Count == 2 && attempts[0].Id > failed.Id && attempts[0].OkCount == 1
-        && attempts[1].FailCount == 1 && (await test.Store.GetSendAttemptItemsAsync(failed.Id)).Single().Status == CheckeeSendAttemptStatuses.Failed,
-        "Retry tạo lần gửi mới, mới nhất đứng trước và không ghi đè snapshot lỗi cũ");
-    Check((await test.RowsAsync()).Single().SendAttempts == 2, "Mỗi lần gửi thực tế chỉ tăng SendAttempts một lần");
-    await test.Worker.SendPendingAsync();
-    Check((await test.Store.GetRecentSendAttemptsAsync()).Count == 2, "Chu kỳ không có mã không tạo lịch sử giả");
-}
-
-await using (var test = new SendTestSession(""))
-{
-    test.Writer.Enqueue(Pass("missing-product"));
-    await test.Worker.SendPendingAsync();
-    Check((await test.Store.GetRecentSendAttemptsAsync()).Count == 0,
-        "Thiếu metadata, chưa gửi HTTP thì không tạo lần gửi giả");
-}
-
-await using (var test = new SendTestSession("PRODUCT"))
-{
-    test.Http.ThrowNetwork = true;
-    test.Writer.Enqueue(Pass("offline-then-online"));
-    await test.Worker.SendPendingAsync();
-    var attempt = (await test.Store.GetRecentSendAttemptsAsync()).Single();
-    Check(attempt.FailCount == 1 && attempt.Status == CheckeeSendAttemptStatuses.RetryPending
-        && (await test.RowsAsync()).Single().SendStatus == ScanSendStatuses.Pending,
-        "Lỗi mạng hiện Fail/chờ thử lại trong lần cũ và vẫn Pending để gửi lại");
-    test.Http.ThrowNetwork = false;
-    await test.Worker.SendPendingAsync();
-    Check((await test.Store.GetRecentSendAttemptsAsync()).Count == 2
-        && (await test.Store.GetSendAttemptItemsAsync(attempt.Id)).Single().Status == CheckeeSendAttemptStatuses.RetryPending,
-        "Mạng hồi phục tạo lần OK mới, giữ nguyên chi tiết lỗi mạng trước");
-}
-
-foreach (var body in new[] { "not-json", "{}", "{\"data\":{}}" })
-{
-    await using var test = new SendTestSession("PRODUCT");
-    test.Http.ActivateBody = body;
-    test.Writer.Enqueue(Pass("unconfirmed-" + body));
-    Check(await test.Worker.SendPendingAsync() == 0, "HTTP200 thiếu ACK không được tính gửi thành công: " + body);
-    var attempt = (await test.Store.GetRecentSendAttemptsAsync()).Single();
-    Check(attempt.OkCount == 0 && attempt.FailCount == 0 && attempt.UnknownCount == 1
-        && attempt.Status == CheckeeSendAttemptStatuses.Unknown && (await test.RowsAsync()).Single().SendStatus == ScanSendStatuses.Failed,
-        "History Unknown tách riêng khỏi OK/Fail; trạng thái gửi cần đối soát, không tự retry");
-    await test.Worker.SendPendingAsync();
-    Check(test.Http.Payloads.Count == 1, "Lượt chưa xác nhận không tự gửi lại");
-}
-
-await using (var test = new SendTestSession("PRODUCT"))
-{
-    test.Http.ActivateBody = """{"code":200,"status":false,"data":null}""";
-    test.Writer.Enqueue(Pass("explicit-false-no-message"));
-    await test.Worker.SendPendingAsync();
-    Check((await test.Store.GetRecentSendAttemptsAsync()).Single().FailCount == 1,
-        "status=false không có message vẫn là Fail, không gán OK vì HTTP200");
-}
-
-await using (var test = new SendTestSession("PRODUCT"))
-{
-    test.Http.ActivateBody = """{"code":200,"status":true,"data":{"activeSerials":0,"quantityInBatch":1000}}""";
-    test.Writer.Enqueue(Pass("batch-ack-A"));
-    test.Writer.Enqueue(Pass("batch-ack-B"));
-    Check(await test.Worker.SendPendingAsync() == 2 && (await test.Store.GetRecentSendAttemptsAsync()).Single().OkCount == 2,
-        "status=true là ACK batch; không suy activeSerials là số chấp nhận riêng request hoặc gán mã ngẫu nhiên khi số khác");
-}
-
-await using (var test = new SendTestSession("PRODUCT"))
-{
-    test.Writer.Enqueue(Pass("durable-intent"));
-    var row = (await test.RowsAsync()).Single();
-    var id = await test.Store.BeginSendAttemptAsync([row], "PRODUCT", "BATCH", "RANDOM");
-    using var restarted = test.OpenAnotherStore();
-    var reopened = restarted.GetRequiredService<IScanSendStatusStore>();
-    var attempt = (await reopened.GetRecentSendAttemptsAsync()).Single();
-    Check(attempt.Id == id && attempt.CompletedUtc is null && attempt.UnknownCount == 1
-        && (await reopened.GetSendAttemptItemsAsync(id)).Single().CodeContent == row.CodeContent,
-        "Mở store mới vẫn thấy intent/chi tiết chưa hoàn tất, không dựng OK giả sau crash");
-    Check(await test.Worker.SendPendingAsync() == 0 && test.Http.RequestCount == 0,
-        "Intent chưa xác nhận chặn tự retry sau khi process bị gián đoạn");
-}
-
-await using (var test = new SendTestSession("PRODUCT"))
-{
-    test.Http.ActivationStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    test.Http.AllowActivation = new(TaskCreationOptions.RunContinuationsAsynchronously);
-    test.Writer.Enqueue(Pass("cancel-after-http-start"));
-    using var cancellation = new CancellationTokenSource();
-    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-    var sending = test.Worker.SendPendingAsync(cancellation.Token);
-    await test.Http.ActivationStarted.Task.WaitAsync(timeout.Token);
-    cancellation.Cancel();
-    try { await sending; throw new InvalidOperationException("Expected caller cancellation"); }
-    catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
-    var attempt = (await test.Store.GetRecentSendAttemptsAsync()).Single();
-    Check(attempt.CompletedUtc.HasValue && attempt.UnknownCount == 1 && attempt.OkCount == 0
-        && (await test.RowsAsync()).Single().SendStatus == ScanSendStatuses.Failed,
-        "Hủy sau khi bắt đầu HTTP vẫn lưu Unknown bền vững bằng token độc lập; không gán OK hoặc tự retry");
-}
-
-await using (var test = new SendTestSession("PRODUCT"))
-{
-    test.Writer.Enqueue(Pass("retention-preserves-source"));
-    var row = (await test.RowsAsync()).Single();
-    for (var index = 0; index < 65; index++)
-    {
-        var id = await test.Store.BeginSendAttemptAsync([row], "PRODUCT", "BATCH-" + index, "RANDOM");
-        await test.Store.CompleteSendAttemptAsync(id, CheckeeSendAttemptStatuses.Sent, 200, "ACK");
+        await f.SqlAsync("UPDATE ScanRecords SET SendStatus='Pending';");
+        Check(await f.Worker.SendPendingAsync()==1,"Retention HTTP attempt "+i);
     }
-    using var restarted = test.OpenAnotherStore();
-    var reopened = restarted.GetRequiredService<IScanSendStatusStore>();
-    var attempts = await reopened.GetRecentSendAttemptsAsync(5000);
-    Check(attempts.Count == 60 && attempts[0].BatchCode == "BATCH-64" && attempts[^1].BatchCode == "BATCH-5",
-        "Lưu bền đúng 60 lần mới nhất qua restart và cap cả query yêu cầu quá lớn");
-    await using var connection = new SqliteConnection("Data Source=" + test.DbPath);
-    await connection.OpenAsync();
-    await using var cmd = connection.CreateCommand();
-    cmd.CommandText = "SELECT COUNT(*) FROM CheckeeSendAttemptItems WHERE AttemptId NOT IN (SELECT Id FROM CheckeeSendAttempts);";
-    Check(Convert.ToInt32(await cmd.ExecuteScalarAsync()) == 0
-        && (await test.RowsAsync()).Single().CodeContent == row.CodeContent,
-        "Retention cascade chi tiết cũ và giữ nguyên bản ghi quét nguồn");
+    var history=await f.Store.GetRecentSendAttemptsAsync(5000);
+    Check(history.Count==60 && history[0].Id==65 && history[^1].Id==6, "SQLite giữ đúng 60 snapshots mới nhất");
+    var audit=File.ReadLines(f.AuditPath).Select(line=>JsonDocument.Parse(line)).ToArray();
+    Check(audit.Length==130 && audit[0].RootElement.GetProperty("attemptId").GetInt64()==1
+        && audit[0].RootElement.GetProperty("codes")[0].GetProperty("codeContent").GetString()==Code("retention")
+        && audit[0].RootElement.GetProperty("codes")[0].GetProperty("serial").GetString()=="retention"
+        && (await f.Store.GetSendAttemptItemsAsync(1)).Count==0,
+        "Audit độc lập vẫn truy nguyên CodeContent/serial của attempt1 sau retention60 SQLite");
+    foreach(var json in audit) json.Dispose();
+    var sent=(await f.RowsAsync()).Single();
+    try { await f.Store.BeginSendAttemptAsync([sent],gtin,"wrong","DECLARE"); throw new Exception("Stale begin accepted"); }
+    catch(InvalidOperationException) { Check(true,"Transaction intent recheck chặn bản ghi đã Sent"); }
 }
 
-Console.WriteLine($"Đã qua {checks} kiểm thử Checkee CodeContent, lịch sử gửi, HTTP giả và SQLite tạm; không build UI/PO backend.");
+await using (var f=await SendTestSession.CreateAsync())
+{
+    await f.AddAsync(Code("redact"));
+    f.Http.ActivateBody="{\"status\":false,\"message\":\"test-only-key test-only-client Bearer sensitive-token accessToken=sensitive-access\"}";
+    await f.Worker.SendPendingAsync(); var audit=File.ReadAllText(f.AuditPath);
+    Check(!audit.Contains("test-only-key") && !audit.Contains("test-only-client") && !audit.Contains("sensitive-token") && !audit.Contains("sensitive-access"),
+        "Audit redact cả credential và Bearer/accessToken bị server echo trong response/error");
+}
+
+Check(CheckeeClient.ExtractSerialNumber("(01)"+gtin+"(21)AbC123")=="AbC123"
+    && CheckeeClient.ExtractSerialNumber("]d201"+gtin+"21Gs1Serial\u001d")=="Gs1Serial",
+    "Outbound tách serial GS1 parenthesized và element string, giữ hoa thường");
+
+await using (var f=await SendTestSession.CreateAsync())
+{
+    var relative="/01/"+gtin+"/21/RelativeCase?next=/21/QUERY#fragment/21/IGNORE";
+    Check(PoCodeParser.TryGetGtin(relative,out var parsed) && parsed==gtin,"Relative GS1 có query/fragment được PO parser chấp nhận");
+    await f.AddAsync(relative);
+    Check(await f.Worker.SendPendingAsync()==1
+        && f.Http.Payloads.Single().GetProperty("serialNumbers")[0].GetString()=="RelativeCase"
+        && (await f.RowsAsync()).Single().CodeContent==relative,
+        "Request relative GS1 chỉ chứa serial path, giữ nguyên query/fragment trong identity local");
+}
+
+await using (var f=await SendTestSession.CreateAsync(enabled:false,codes:[Code("A-final")]))
+{
+    var eventId=Guid.NewGuid().ToString("N"); var accepted=f.Po.AcceptManualCode(Code("A-final"),DateTime.UtcNow,eventId);
+    await f.Persistence.PersistBatchAsync([new(eventId,f.Record(Code("A-final")),f.Order.CreatedUtc,true)]);
+    await f.PoStore.MarkScannedBatchAsync([accepted.Mutation!]); await f.Persistence.CompleteAsync([eventId]);
+    Check(await f.Po.CompletePendingAsync(),"Session A auto-complete khi sending disabled");
+    var b=new ProductionOrder { OrderNo="B-ALREADY-PROCESSED",CreatedUtc=f.Order.CreatedUtc.AddDays(1),Gtin=gtin,OrderQty=1 };
+    await f.PoStore.EnsurePoDbAsync(b,[new PoCode {CodeContent=Code("B-processed")}]);
+    await f.PoStore.MarkScannedBatchAsync([new(Guid.NewGuid().ToString("N"),b.OrderNo,b.CreatedUtc,Code("B-processed"),DateTime.UtcNow)]);
+    Check(await f.Po.StartProductionAsync(b.OrderNo) && f.Po.CurrentOrder is null
+        && f.Po.LastFinishedOrder?.OrderNo==b.OrderNo,"B đã processed auto-complete ngay Start trước RaiseChanged Running");
+    f.Worker.SendingEnabled=true;
+    Check(await f.Worker.SendPendingAsync()==0 && f.Http.RequestCount==0,
+        "LastFinished khác identity vô hiệu sticky A; không tự chọn historical B và không drain nhầm A");
+}
+
+Console.WriteLine($"Đạt {checks} assertions Checkee PO identity, runtime, audit, outbox, lịch sử và HTTP giả; chỉ DB sandbox.");
 
 sealed class SendTestSession : IAsyncDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), "TEST-ASYNC-PO-20261127-Checkee-" + Guid.NewGuid().ToString("N"));
+    public const string Gtin="08935348800215";
+    public string Root {get;}=Path.Combine(Path.GetTempPath(),"TEST-ASYNC-PO-20261127-Checkee-"+Guid.NewGuid().ToString("N"));
     private readonly ServiceProvider _services;
-    private readonly HttpClient _httpClient;
+    private readonly HttpClient _http;
     private readonly CheckeeClient _client;
-    public readonly RecordingHttpHandler Http = new();
-    public readonly CheckeeOutboundOptions Outbound;
-    public readonly CheckeeOptions Options = new()
+    public RecordingHttpHandler Http {get;}=new();
+    public CheckeeOptions Options {get;}=new() { BaseUrl="https://checkee.invalid", ApiKey="test-only-key", ClientId="test-only-client", SendIntervalMs=86400000 };
+    public CheckeeOutboundOptions Outbound {get;}
+    public ScanIntakeGate Gate {get;}=new();
+    public ProductionOrder Order {get;}=new() { OrderNo="TEST-ASYNC-PO-20261127-CHECKEE", CreatedUtc=new(2026,11,27,0,0,0,DateTimeKind.Utc), Gtin=Gtin, OrderQty=10 };
+    public ProductionOrderService Po {get;}
+    public PoStore PoStore {get;}
+    public IScanPersistenceStore Persistence=>_services.GetRequiredService<IScanPersistenceStore>();
+    public IScanSendStatusStore Store=>_services.GetRequiredService<IScanSendStatusStore>();
+    public CheckeeSendWorker Worker {get;}
+    public string DbPath=>Path.Combine(Root,"scans.db");
+    public string AuditPath=>Path.Combine(Root,"checkee-audit.jsonl");
+    private SendTestSession(bool enabled, Dictionary<string,string>? additional, string[] codes)
     {
-        ApiKey = "test-only-key", ClientId = "test-only-client", BaseUrl = "https://checkee.invalid",
-        OnlyPassCodes = true,
-    };
-    public readonly ScanIntakeGate Gate = new();
-    public readonly IScanRecordWriter Writer;
-    public readonly CheckeeSendWorker Worker;
-    private readonly IScanRecordQuery _query;
-    public IScanSendStatusStore Store => _services.GetRequiredService<IScanSendStatusStore>();
-    public string DbPath => Path.Combine(_root, "scans.db");
+        Directory.CreateDirectory(Root);
+        var services=new ServiceCollection(); var config=Configuration();
+        services.AddSingleton<IConfiguration>(config); services.AddScanStore(config); _services=services.BuildServiceProvider();
+        PoStore=new(Path.Combine(Root,"po")); Po=new(new EmptyPoClient(),PoStore,new PoHistoryStore(PoStore.DbRoot),new PoCodeCache());
+        Order.Additional=additional ?? []; Order.OrderQty=codes.Length;
+        _http=new(Http) { BaseAddress=new Uri("https://checkee.invalid/") }; _client=new(_http,Options);
+        Outbound=new() { AuditLogPath=AuditPath }; Options.Enabled=enabled; Worker=NewWorker();
+    }
+    public static async Task<SendTestSession> CreateAsync(Dictionary<string,string>? additional=null,bool enabled=true,string[]? codes=null)
+    {
+        codes ??= Enumerable.Range(0,10).Select(i=>$"https://resolver.invalid/01/{Gtin}/21/fixture{i}").ToArray();
+        var f=new SendTestSession(enabled,additional,codes);
+        await f.PoStore.EnsurePoDbAsync(f.Order,codes.Select(c=>new PoCode { CodeContent=c }).ToArray());
+        if(!await f.Po.StartProductionAsync(f.Order.OrderNo)) throw new InvalidOperationException("Fixture failed to start PO");
+        return f;
+    }
+    public CheckeeSendWorker NewWorker()=>new(_client,Store,_services.GetRequiredService<IScanRecordWriter>(),
+        Microsoft.Extensions.Options.Options.Create(Options),Microsoft.Extensions.Options.Options.Create(Outbound),Gate,Po,NullLogger<CheckeeSendWorker>.Instance);
+    private IConfiguration Configuration()=>new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string,string?> { ["Scans:DbPath"]=DbPath }).Build();
     public ServiceProvider OpenAnotherStore()
     {
-        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
-            { ["Scans:DbPath"] = DbPath }).Build();
-        var services = new ServiceCollection();
-        services.AddSingleton<IConfiguration>(configuration);
-        services.AddScanStore(configuration);
-        return services.BuildServiceProvider();
+        var services=new ServiceCollection();var config=Configuration();services.AddSingleton(config);services.AddScanStore(config);return services.BuildServiceProvider();
     }
-
-    public SendTestSession(string productGtin)
+    public ScanRecordEntity Record(string code)=>new() { CodeContent=code,Raw=code,Gtin=Gtin,Status=ScanStatuses.Pass,OrderNo=Order.OrderNo,ReceivedUtc=DateTime.UtcNow };
+    public async Task AddAsync(string code,string? order=null,DateTime? created=null,string status=ScanStatuses.Pass,bool accepted=true,bool complete=true,string? metadataGtin=null,string? contentOverride=null)
     {
-        Directory.CreateDirectory(_root);
-        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
-        {
-            ["Scans:DbPath"] = Path.Combine(_root, "scans.db"), ["Scans:FlushIntervalMs"] = "10",
-        }).Build();
-        var services = new ServiceCollection();
-        services.AddSingleton<IConfiguration>(configuration);
-        services.AddScanStore(configuration);
-        _services = services.BuildServiceProvider();
-        Writer = _services.GetRequiredService<IScanRecordWriter>();
-        _query = _services.GetRequiredService<IScanRecordQuery>();
-        _httpClient = new HttpClient(Http) { BaseAddress = new Uri("https://checkee.invalid/") };
-        _client = new CheckeeClient(_httpClient, Options);
-        Outbound = new CheckeeOutboundOptions { ProductGtin = productGtin };
-        Worker = new CheckeeSendWorker(_client, _services.GetRequiredService<IScanSendStatusStore>(), Writer,
-            Microsoft.Extensions.Options.Options.Create(Options), Microsoft.Extensions.Options.Options.Create(Outbound),
-            Gate, NullLogger<CheckeeSendWorker>.Instance);
+        var record=Record(contentOverride??code); record.OrderNo=order??Order.OrderNo;record.Status=status;
+        if(metadataGtin is not null) record.Gtin=metadataGtin;
+        else if(PoCodeParser.TryGetGtin(record.CodeContent,out var parsed)) record.Gtin=parsed;
+        var id=Guid.NewGuid().ToString("N");
+        await Persistence.PersistBatchAsync([new(id,record,accepted ? created??Order.CreatedUtc : null,accepted)]);
+        if(accepted && complete) await Persistence.CompleteAsync([id]);
     }
-
-    public async Task<IReadOnlyList<ScanRecordEntity>> RowsAsync()
+    public Task<IReadOnlyList<ScanRecordEntity>> RowsAsync()=>Store.GetBySendStatusAsync(new() {Limit=5000});
+    public async Task SqlAsync(string sql)
     {
-        await Writer.FlushAsync();
-        return (await _query.GetAsync(pageSize: 100)).Items;
+        await using var db=new SqliteConnection("Data Source="+DbPath);await db.OpenAsync();await using var cmd=db.CreateCommand();cmd.CommandText=sql;await cmd.ExecuteNonQueryAsync();
     }
-
     public async ValueTask DisposeAsync()
     {
-        Worker.Dispose();
-        _client.Dispose();
-        _httpClient.Dispose();
-        await _services.DisposeAsync();
-        var expectedParent = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.GetTempPath()));
-        if (!string.Equals(Path.GetDirectoryName(Path.GetFullPath(_root)), expectedParent, StringComparison.OrdinalIgnoreCase)
-            || !Path.GetFileName(_root).StartsWith("TEST-ASYNC-PO-20261127-Checkee-", StringComparison.Ordinal))
-            throw new InvalidOperationException("Refusing cleanup outside the uniquely created Checkee sandbox.");
-        for (var attempt = 0; ; attempt++)
-        {
-            try
-            {
-                SqliteConnection.ClearAllPools();
-                Directory.Delete(_root, recursive: true);
-                break;
-            }
-            catch (IOException) when (attempt < 4)
-            {
-                // Windows có thể còn giữ handle SQLite của tác vụ khởi tạo nền.
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-                await Task.Delay(100);
-            }
-        }
+        Worker.Dispose();_client.Dispose();_http.Dispose();await _services.DisposeAsync();SqliteConnection.ClearAllPools();
+        var target=Path.GetFullPath(Root);var parent=Path.GetFullPath(Path.GetTempPath()).TrimEnd(Path.DirectorySeparatorChar);
+        if(!string.Equals(Path.GetDirectoryName(target),parent,StringComparison.OrdinalIgnoreCase)||!Path.GetFileName(target).StartsWith("TEST-ASYNC-PO-20261127-Checkee-")) throw new Exception("Unsafe sandbox cleanup");
+        Directory.Delete(target,true);
     }
+}
+sealed class EmptyPoClient : IPoClient
+{
+    public Task<IReadOnlyList<ProductionOrder>> GetOrdersAsync(bool includeCompleted=false,CancellationToken ct=default)=>Task.FromResult<IReadOnlyList<ProductionOrder>>([]);
+    public Task<IReadOnlyList<PoCode>> GetCodesAsync(string orderNo,CancellationToken ct=default)=>Task.FromResult<IReadOnlyList<PoCode>>([]);
+    public Task<ProductionOrder?> CreateOrderAsync(string orderNo,int orderQty,CancellationToken ct=default)=>Task.FromResult<ProductionOrder?>(null);
 }
 
 sealed class RecordingHttpHandler : HttpMessageHandler
