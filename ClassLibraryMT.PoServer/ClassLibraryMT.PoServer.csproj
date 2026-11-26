@@ -24,4 +24,10 @@
     <ProjectReference Include="..\ClassLibraryMT.Po\ClassLibraryMT.Po.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Đóng gói đúng hai tài nguyên demo, không phục vụ file từ đĩa. -->
+    <EmbeddedResource Include="..\docs\po-demo\index.html" LogicalName="ClassLibraryMT.PoServer.PoDemo.index.html" />
+    <EmbeddedResource Include="..\docs\po-demo\validation.js" LogicalName="ClassLibraryMT.PoServer.PoDemo.validation.js" />
+  </ItemGroup>
+
 </Project>

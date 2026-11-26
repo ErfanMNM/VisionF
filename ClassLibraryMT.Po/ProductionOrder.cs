@@ -19,9 +19,12 @@ public sealed class ProductionOrder
     public string OrderNo { get; set; } = "";
 
     /// <summary>
-    /// Số lượng mã của đơn (số mã được phép sản xuất trong PO này).
+    /// Số lượng kế hoạch của đơn, độc lập với số mã thực nhận sau lọc.
     /// </summary>
     public int OrderQty { get; set; }
+
+    /// <summary>GTIN duy nhất áp dụng cho PO; lưu chuẩn 14 chữ số sau xác thực.</summary>
+    public string Gtin { get; set; } = "";
 
     /// <summary>Thời điểm tạo PO trên server (UTC).</summary>
     public DateTime CreatedUtc { get; set; }

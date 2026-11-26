@@ -35,8 +35,8 @@ var order = new ProductionOrder
 };
 var codes = new List<PoCode>
 {
-    new() { CodeContent = "/01/G/21/A1" },
-    new() { CodeContent = "/01/G/21/A2" },
+    new() { CodeContent = "/01/09506000134352/21/A1" },
+    new() { CodeContent = "/01/09506000134352/21/A2" },
 };
 
 await store.EnsurePoDbAsync(order, codes);
@@ -66,12 +66,12 @@ var doneOrder = new ProductionOrder
 };
 await store.EnsurePoDbAsync(doneOrder, new List<PoCode>
 {
-    new() { CodeContent = "/01/G/21/D1" },
+    new() { CodeContent = "/01/09506000134352/21/D1" },
 });
 
 // Chay het 1 ma -> tu dong hoan thanh.
 Check("Start PO moi thanh cong", await svc.StartProductionAsync("PO-DONE-001"));
-await svc.ProcessCodeAsync("/01/G/21/D1", _ => Task.FromResult(true));
+await svc.ProcessCodeAsync("/01/09506000134352/21/D1", _ => Task.FromResult(true));
 Check("PO da hoan thanh khong con chay", !svc.IsProductionRunning);
 Check("LastFinishedOrder ghi nho PO vua hoan thanh",
     svc.LastFinishedOrder?.OrderNo == "PO-DONE-001");
@@ -95,7 +95,7 @@ var freshOrder = new ProductionOrder
 };
 await store.EnsurePoDbAsync(freshOrder, new List<PoCode>
 {
-    new() { CodeContent = "/01/G/21/F1" },
+    new() { CodeContent = "/01/09506000134352/21/F1" },
 });
 Check("PO chua chay: StartProductionAsync thanh cong",
     await svc.StartProductionAsync("PO-FRESH-001"));
@@ -118,7 +118,7 @@ var extraOrder = new ProductionOrder
 };
 await store.EnsurePoDbAsync(extraOrder, new List<PoCode>
 {
-    new() { CodeContent = "/01/G/21/E1" },
+    new() { CodeContent = "/01/09506000134352/21/E1" },
 });
 
 var locals = await store.ListLocalOrdersAsync();
@@ -148,15 +148,15 @@ Console.WriteLine("\n[5] Tải PO từ server cũng lọc trùng, giữ PO đã 
 await svc.CancelProductionAsync();
 client.Orders =
 [
-    new() { OrderNo = "PO-SYNC-NEW", OrderQty = 3, CreatedUtc = DateTime.UtcNow },
-    new() { OrderNo = "PO-KEEP-001", OrderQty = 3, CreatedUtc = DateTime.UtcNow },
-    new() { OrderNo = "PO-DONE-001", OrderQty = 3, CreatedUtc = DateTime.UtcNow },
+    new() { OrderNo = "PO-SYNC-NEW", OrderQty = 3, Gtin = "09506000134352", CreatedUtc = DateTime.UtcNow },
+    new() { OrderNo = "PO-KEEP-001", OrderQty = 3, Gtin = "09506000134352", CreatedUtc = DateTime.UtcNow },
+    new() { OrderNo = "PO-DONE-001", OrderQty = 3, Gtin = "09506000134352", CreatedUtc = DateTime.UtcNow },
 ];
 client.Codes =
 [
-    new() { CodeContent = "/01/G/21/A1" },
-    new() { CodeContent = "/01/G/21/SYNC-1" },
-    new() { CodeContent = "/01/G/21/SYNC-1" },
+    new() { CodeContent = "/01/09506000134352/21/A1" },
+    new() { CodeContent = "/01/09506000134352/21/SYNC-1" },
+    new() { CodeContent = "/01/09506000134352/21/SYNC-1" },
 ];
 var syncFirst = await svc.SyncFromServerAsync();
 Check("Tải lần đầu giữ mã của PO khác, chỉ lọc trùng bên trong PO mới",
@@ -164,8 +164,9 @@ Check("Tải lần đầu giữ mã của PO khác, chỉ lọc trùng bên tron
 var syncAgain = await svc.SyncFromServerAsync();
 Check("Tải lại không thêm mã hoặc PO", syncAgain.NewPoCount == 0 && syncAgain.NewCodeCount == 0);
 var syncedOrders = await store.ListLocalOrdersAsync();
-Check("Repeated server snapshots keep the exact per-PO quantity",
-    syncedOrders.Single(p => p.OrderNo == "PO-SYNC-NEW").OrderQty == 2);
+Check("Tải lặp giữ planned=3 độc lập với actual=2",
+    syncedOrders.Single(p => p.OrderNo == "PO-SYNC-NEW").OrderQty == 3
+    && syncedOrders.Single(p => p.OrderNo == "PO-SYNC-NEW").TotalCodes == 2);
 Check("PO đã huỷ không được bổ sung", syncedOrders.Single(p => p.OrderNo == "PO-KEEP-001").TotalCodes == 2);
 Check("PO hoàn tất không được bổ sung", syncedOrders.Single(p => p.OrderNo == "PO-DONE-001").TotalCodes == 1);
 Check("Bắt đầu PO vừa tải", await svc.StartProductionAsync("PO-SYNC-NEW"));
@@ -189,7 +190,7 @@ Check("Rời bảo trì bắt đầu PO được", await svc.StartProductionAsyn
 Check("Cancel another PO preserves the current PO and full-code cache",
     await svc.CancelProductionAsync("PO-SYNC-NEW")
         && svc.CurrentOrder?.OrderNo == "PO-EXTRA-001"
-        && svc.ValidateCode("/01/G/21/E1") == PoCodeValidation.Valid);
+        && svc.ValidateCode("/01/09506000134352/21/E1") == PoCodeValidation.Valid);
 var completion = typeof(ProductionOrderService).GetMethod("CompleteProductionCoreAsync",
     System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
 using (var heldMutation = await store.AcquireMutationLockAsync(CancellationToken.None))
@@ -199,7 +200,7 @@ using (var heldMutation = await store.AcquireMutationLockAsync(CancellationToken
     heldMutation.Dispose();
     Check("Delayed old-PO completion cannot complete the newly active PO",
         !await delayedCompletion && svc.CurrentOrder?.OrderNo == "PO-EXTRA-001"
-        && svc.ValidateCode("/01/G/21/E1") == PoCodeValidation.Valid);
+        && svc.ValidateCode("/01/09506000134352/21/E1") == PoCodeValidation.Valid);
 }
 Check("PO đang chạy không được vào bảo trì", !await svc.TryEnterUpdateMaintenanceAsync(CancellationToken.None));
 var reloaded = new ProductionOrderService(client, store, history, new PoCodeCache());
@@ -215,12 +216,12 @@ var diskRoot = Path.Combine(workDir, "maintenance-disk");
 var diskStore = new PoStore(diskRoot);
 var diskService = new ProductionOrderService(client, diskStore, new PoHistoryStore(diskRoot), new PoCodeCache());
 var diskOrder = new ProductionOrder { OrderNo = "PO-DISK", OrderQty = 1, CreatedUtc = DateTime.UtcNow };
-await diskStore.EnsurePoDbAsync(diskOrder, [new PoCode { CodeContent = "/01/G/21/D1" }]);
+await diskStore.EnsurePoDbAsync(diskOrder, [new PoCode { CodeContent = "/01/09506000134352/21/D1" }]);
 await diskStore.SetMetaAsync(diskOrder.OrderNo, diskOrder.CreatedUtc, PoStore.MetaStatus, ProductionOrderStatus.Running.ToString());
 Check("PO Running trong file local vẫn chặn khi RAM và lịch sử chưa khôi phục",
     !await diskService.TryEnterUpdateMaintenanceAsync(CancellationToken.None));
 await diskStore.SetMetaAsync(diskOrder.OrderNo, diskOrder.CreatedUtc, PoStore.MetaStatus, ProductionOrderStatus.Downloaded.ToString());
-await diskStore.MarkScannedAsync(diskOrder.OrderNo, diskOrder.CreatedUtc, "/01/G/21/D1");
+await diskStore.MarkScannedAsync(diskOrder.OrderNo, diskOrder.CreatedUtc, "/01/09506000134352/21/D1");
 Check("PO đã quét dở cũng chặn bảo trì dù chưa có trạng thái Running",
     !await diskService.TryEnterUpdateMaintenanceAsync(CancellationToken.None));
 
@@ -233,13 +234,15 @@ for (var iteration = 0; iteration < 12; iteration++)
     await raceStore.EnsurePoDbAsync(new ProductionOrder
     {
         OrderNo = "PO-RACE", OrderQty = 1, CreatedUtc = DateTime.UtcNow
-    }, [new PoCode { CodeContent = "/01/G/21/R1" }]);
+    }, [new PoCode { CodeContent = "/01/09506000134352/21/R1" }]);
     var start = Task.Run(() => race.StartProductionAsync("PO-RACE"));
     var maintenance = Task.Run(() => race.TryEnterUpdateMaintenanceAsync(CancellationToken.None));
     await Task.WhenAll(start, maintenance);
     Check($"Bắt đầu và bảo trì cạnh tranh #{iteration + 1}: chỉ một thao tác thành công",
         start.Result != maintenance.Result);
 }
+
+await PoDownloadContractChecks.RunAsync(Path.Combine(workDir, "download-contract"), Check);
 
 Console.WriteLine($"\nKet qua: {checks - failures} PASS, {failures} FAIL");
 return failures == 0 ? 0 : 1;

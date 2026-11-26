@@ -42,6 +42,7 @@ public sealed class PoServerStore
                 CREATE TABLE IF NOT EXISTS Orders (
                     OrderNo TEXT NOT NULL PRIMARY KEY,
                     OrderQty INTEGER NOT NULL DEFAULT 0,
+                    Gtin TEXT NOT NULL DEFAULT '',
                     CreatedUtc TEXT NOT NULL,
                     IssuedUtc TEXT NULL,
                     CompletedUtc TEXT NULL,
@@ -62,12 +63,24 @@ public sealed class PoServerStore
         }
 
         bool hasAdditional;
+        bool hasGtin;
         using (var columns = db.CreateCommand())
         {
             columns.CommandText = "PRAGMA table_info(Orders);";
             using var reader = columns.ExecuteReader();
             hasAdditional = false;
-            while (reader.Read()) hasAdditional |= reader.GetString(1) == "Additional";
+            hasGtin = false;
+            while (reader.Read())
+            {
+                hasAdditional |= reader.GetString(1) == "Additional";
+                hasGtin |= reader.GetString(1) == "Gtin";
+            }
+        }
+        if (!hasGtin)
+        {
+            using var add = db.CreateCommand();
+            add.CommandText = "ALTER TABLE Orders ADD COLUMN Gtin TEXT NOT NULL DEFAULT '';";
+            add.ExecuteNonQuery();
         }
         if (!hasAdditional)
         {
@@ -112,30 +125,39 @@ public sealed class PoServerStore
     }
 
     public PoPushResponse ImportOrder(string orderNo, int orderQty, IReadOnlyList<string> codeContents,
-        IReadOnlyDictionary<string, string>? additional = null)
+        IReadOnlyDictionary<string, string>? additional = null, string? gtin = null)
     {
         orderNo = (orderNo ?? string.Empty).Trim();
         if (orderNo.Length is 0 or > 200)
-            throw new ArgumentException("poName phải có 1-200 ký tự.");
+            throw new ArgumentException("orderNo phải có 1-200 ký tự.");
         ArgumentNullException.ThrowIfNull(codeContents);
         if (orderQty <= 0 || orderQty != codeContents.Count || codeContents.Any(string.IsNullOrWhiteSpace))
-            throw new ArgumentException("orderQty phải bằng số dòng CodeContent không rỗng trước lọc trùng.");
+            throw new ArgumentException("orderQty planned phải bằng số record CodeContent không rỗng trước lọc mã.");
+        if (!PoCodeParser.TryNormalizeGtin(gtin, out var normalizedGtin))
+            return Rejected("Cần đúng một GTIN 8/12/13/14 chữ số có checksum hợp lệ.");
+
+        PoPushResponse Rejected(string message) => new()
+        {
+            Success = false, OrderNo = orderNo, PoName = orderNo, PlannedCount = orderQty, Message = message,
+        };
 
         using var db = Open();
         using var tx = db.BeginTransaction(deferred: false);
         string? canonical = null;
         string? status = null;
+        string? existingGtin = null;
         var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         using (var existing = db.CreateCommand())
         {
             existing.Transaction = tx;
-            existing.CommandText = "SELECT OrderNo,Status,Additional FROM Orders WHERE OrderNo=$order COLLATE NOCASE;";
+            existing.CommandText = "SELECT OrderNo,Status,Additional,Gtin FROM Orders WHERE OrderNo=$order COLLATE NOCASE;";
             existing.Parameters.AddWithValue("$order", orderNo);
             using var reader = existing.ExecuteReader();
             if (reader.Read())
             {
                 canonical = reader.GetString(0);
                 status = reader.GetString(1);
+                existingGtin = reader.GetString(3);
                 var old = JsonSerializer.Deserialize(reader.GetString(2), PoServerJsonContext.Default.DictionaryStringString);
                 if (old is not null) foreach (var pair in old) metadata[pair.Key] = pair.Value;
                 if (reader.Read()) throw new InvalidOperationException("Có nhiều PO khác nhau chỉ bởi hoa thường; hãy đối soát DB thử nghiệm.");
@@ -144,8 +166,65 @@ public sealed class PoServerStore
         if (status is "Completed" or "Closed" or "Cancelled")
             throw new InvalidOperationException($"PO '{canonical}' đã kết thúc; không nhận thêm mã.");
         orderNo = canonical ?? orderNo;
+        var existingCodes = new HashSet<string>(StringComparer.Ordinal);
+        using (var readCodes = db.CreateCommand())
+        {
+            readCodes.Transaction = tx;
+            readCodes.CommandText = "SELECT Code FROM Codes WHERE OrderNo=$order;";
+            readCodes.Parameters.AddWithValue("$order", orderNo);
+            using var reader = readCodes.ExecuteReader();
+            while (reader.Read()) existingCodes.Add(reader.GetString(0));
+        }
+        if (canonical is not null)
+        {
+            // Chỉ suy GTIN legacy khi tất cả mã cũ chứng minh cùng định danh.
+            var verifiedCodes = existingCodes.Count > 0 && existingCodes.All(raw =>
+                PoCodeParser.TryGetGtin(raw, out var parsed) && parsed == normalizedGtin);
+            var verifiedMetadata = PoCodeParser.TryNormalizeGtin(existingGtin, out var storedGtin)
+                && storedGtin == normalizedGtin;
+            if ((!verifiedMetadata && !(string.IsNullOrEmpty(existingGtin) && verifiedCodes))
+                || existingCodes.Any(raw => !PoCodeParser.TryGetGtin(raw, out var parsed) || parsed != normalizedGtin))
+                return Rejected("PO đã gắn GTIN khác hoặc chứa mã legacy không xác minh được; không thể trộn GTIN.");
+        }
+        var acceptedCodes = new List<string>();
+        var duplicates = new List<string>();
+        var invalid = new List<PoRejectedCode>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var raw in codeContents)
+        {
+            if (!PoCodeParser.TryGetGtin(raw, out var parsed))
+                invalid.Add(new PoRejectedCode { Code = raw, Reason = "invalidStructure" });
+            else if (parsed != normalizedGtin)
+                invalid.Add(new PoRejectedCode { Code = raw, Reason = "gtinMismatch" });
+            else if (!seen.Add(raw) || existingCodes.Contains(raw)) duplicates.Add(raw);
+            else acceptedCodes.Add(raw);
+        }
+        var outcome = new PoPushResponse
+        {
+            Success = acceptedCodes.Count > 0 || (duplicates.Count > 0 && invalid.Count == 0),
+            OrderNo = orderNo, PoName = orderNo, Accepted = acceptedCodes.Count, AcceptedCount = acceptedCodes.Count,
+            PlannedCount = orderQty, IgnoredDuplicates = duplicates.Count, DuplicateCodes = duplicates, InvalidCodes = invalid,
+            Message = $"Đã nhận {acceptedCodes.Count}/{orderQty} mã theo kế hoạch; loại {invalid.Count} mã sai và {duplicates.Count} mã trùng.",
+        };
+        if (acceptedCodes.Count == 0)
+        {
+            // All-duplicate vẫn cập nhật planned lớn nhất, không chạm mã hay trạng thái kích hoạt.
+            if (outcome.Success)
+            {
+                using var planned = db.CreateCommand();
+                planned.Transaction = tx;
+                planned.CommandText = "UPDATE Orders SET OrderQty=MAX(OrderQty,$planned) WHERE OrderNo=$order;";
+                planned.Parameters.AddWithValue("$planned", orderQty);
+                planned.Parameters.AddWithValue("$order", orderNo);
+                planned.ExecuteNonQuery();
+                tx.Commit();
+            }
+            return outcome;
+        }
         if (additional is not null)
             foreach (var pair in additional) if (!string.IsNullOrWhiteSpace(pair.Value)) metadata[pair.Key] = pair.Value;
+        metadata.Remove("serial");
+        metadata["gtin"] = normalizedGtin;
 
         if (canonical is null)
         {
@@ -156,46 +235,40 @@ public sealed class PoServerStore
             create.Parameters.AddWithValue("$utc", DateTime.UtcNow.ToString("O"));
             create.ExecuteNonQuery();
         }
-        var accepted = 0;
-        var seen = new HashSet<string>(StringComparer.Ordinal);
         using (var insert = db.CreateCommand())
         {
             insert.Transaction = tx;
             insert.CommandText = "INSERT OR IGNORE INTO Codes(OrderNo,Code) VALUES($order,$code);";
             insert.Parameters.AddWithValue("$order", orderNo);
             var value = insert.Parameters.Add("$code", SqliteType.Text);
-            foreach (var code in codeContents)
+            foreach (var code in acceptedCodes)
             {
-                if (!seen.Add(code)) continue;
                 value.Value = code;
-                accepted += insert.ExecuteNonQuery();
+                insert.ExecuteNonQuery();
             }
         }
         using (var update = db.CreateCommand())
         {
             update.Transaction = tx;
             update.CommandText = """
-                UPDATE Orders SET OrderQty=(SELECT COUNT(*) FROM Codes WHERE OrderNo=$order),Additional=$additional
+                UPDATE Orders SET OrderQty=MAX(OrderQty,$planned),Gtin=$gtin,Additional=$additional
                 WHERE OrderNo=$order;
                 """;
             update.Parameters.AddWithValue("$order", orderNo);
+            update.Parameters.AddWithValue("$planned", orderQty);
+            update.Parameters.AddWithValue("$gtin", normalizedGtin);
             update.Parameters.AddWithValue("$additional", JsonSerializer.Serialize(metadata, PoServerJsonContext.Default.DictionaryStringString));
             update.ExecuteNonQuery();
         }
         tx.Commit();
-        return new PoPushResponse
-        {
-            Success = true, PoName = orderNo, Accepted = accepted,
-            IgnoredDuplicates = codeContents.Count - accepted,
-            Message = $"Đã nhận {accepted} mã mới vào PO {orderNo}.",
-        };
+        return outcome;
     }
 
     public List<ProductionOrder> ListOrders(bool includeCompleted = false)
     {
         using var db = Open();
         using var command = db.CreateCommand();
-        command.CommandText = "SELECT OrderNo,OrderQty,CreatedUtc,Additional FROM Orders"
+        command.CommandText = "SELECT OrderNo,OrderQty,CreatedUtc,Additional,Gtin FROM Orders"
             + (includeCompleted ? "" : " WHERE Status NOT IN ('Completed','Closed','Cancelled')")
             + " ORDER BY CreatedUtc DESC;";
         var result = new List<ProductionOrder>();
@@ -203,8 +276,22 @@ public sealed class PoServerStore
         while (reader.Read()) result.Add(new ProductionOrder
         {
             OrderNo = reader.GetString(0), OrderQty = reader.GetInt32(1), CreatedUtc = ParseUtc(reader.GetString(2)),
+            Gtin = reader.GetString(4),
             Additional = JsonSerializer.Deserialize(reader.GetString(3), PoServerJsonContext.Default.DictionaryStringString) ?? [],
         });
+        reader.Close();
+        foreach (var order in result)
+        {
+            if (PoCodeParser.TryNormalizeGtin(order.Gtin, out var normalized)) order.Gtin = normalized;
+            else if (string.IsNullOrEmpty(order.Gtin))
+            {
+                // Không gán GTIN tùy đoán cho dữ liệu cũ có raw opaque hoặc GTIN trộn.
+                var codes = GetCodes(order.OrderNo);
+                if (codes.Count > 0 && PoCodeParser.TryGetGtin(codes[0].CodeContent, out var inferred)
+                    && codes.All(code => PoCodeParser.TryGetGtin(code.CodeContent, out var parsed) && parsed == inferred))
+                    order.Gtin = inferred;
+            }
+        }
         return result;
     }
 

@@ -14,13 +14,16 @@ public sealed class MesSimulatorOptions
     /// <summary>API key gửi ở header x-api-key (có thể để trống).</summary>
     public string ApiKey { get; set; } = string.Empty;
 
-    /// <summary>Legacy setting retained for configuration compatibility; file uploads are one-shot.</summary>
+    /// <summary>Cấu hình cũ được giữ để tương thích; file chỉ được gửi một lần.</summary>
     public int IntervalSeconds { get; set; } = 30;
 
-    /// <summary>Số dòng mã của file trước lọc trùng.</summary>
+    /// <summary>Số lượng kế hoạch, phải bằng số record file trước lọc mã.</summary>
     public int OrderQty { get; set; } = 10;
 
-    /// <summary>Legacy setting retained for configuration compatibility; codes are never generated.</summary>
+    /// <summary>Một GTIN có checksum hợp lệ cho toàn bộ PO, dài 8/12/13/14 chữ số.</summary>
+    public string Gtin { get; set; } = string.Empty;
+
+    /// <summary>Cấu hình cũ được giữ để tương thích; simulator không tự sinh mã.</summary>
     public string PoPrefix { get; set; } = "MES-TEST";
 
     /// <summary>File CSV/JSON/XLSX một cột CodeContent; bắt buộc khi bật worker.</summary>
@@ -28,6 +31,9 @@ public sealed class MesSimulatorOptions
 
     /// <summary>Tên PO dùng khi tải file custom.</summary>
     public string CustomPoName { get; set; } = string.Empty;
+
+    /// <summary>Mã PO mới; nếu trống dùng CustomPoName cũ rồi tên file.</summary>
+    public string CustomOrderNo { get; set; } = string.Empty;
 
     /// <summary>Timeout một request upload.</summary>
     public int TimeoutSeconds { get; set; } = 30;

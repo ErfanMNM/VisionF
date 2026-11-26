@@ -141,6 +141,9 @@ public sealed class PoHttpServer : IDisposable
     /// <summary>Cờ đã bắt đầu chưa.</summary>
     private bool _started;
 
+    /// <summary>Chốt từ prefix đã bind, không dựa cấu hình có thể đổi sau Start.</summary>
+    private bool _boundToLoopback;
+
     /// <summary>Lock bảo vệ cờ <see cref="_started"/>.</summary>
     private readonly Lock _startGate = new();
 
@@ -224,6 +227,7 @@ public sealed class PoHttpServer : IDisposable
         {
             _listener!.Prefixes.Add(prefix);
             _listener.Start();
+            _boundToLoopback = Uri.TryCreate(prefix, UriKind.Absolute, out var uri) && uri.IsLoopback;
         }
         catch (HttpListenerException ex)
         {
@@ -417,6 +421,22 @@ public sealed class PoHttpServer : IDisposable
         var response = context.Response;
         var path = request.Url?.AbsolutePath.TrimEnd('/') ?? string.Empty;
 
+        // Listener không có endpoint HEAD; trả status mà không ghi body HEAD.
+        if (string.Equals(request.HttpMethod, "HEAD", StringComparison.Ordinal))
+        {
+            response.StatusCode = CheckApiKey(request) ? 404 : 401;
+            response.ContentLength64 = 0;
+            return;
+        }
+
+        // Chỉ route GET nguyên dạng được phục vụ; không giải mã đường dẫn thành file.
+        var staticResource = ResolveDemoResource(request);
+        if (staticResource is not null && IsLoopbackListener())
+        {
+            await WriteDemoResourceAsync(response, staticResource.Value).ConfigureAwait(false);
+            return;
+        }
+
         // ---- Kiểm tra API key (nếu có cấu hình) ----
         if (!CheckApiKey(request))
         {
@@ -428,6 +448,12 @@ public sealed class PoHttpServer : IDisposable
                     Success = false,
                     Message = "Thiếu hoặc sai API key (header x-api-key).",
                 }).ConfigureAwait(false);
+            return;
+        }
+
+        if (staticResource is not null)
+        {
+            await WriteDemoResourceAsync(response, staticResource.Value).ConfigureAwait(false);
             return;
         }
 
@@ -511,6 +537,33 @@ public sealed class PoHttpServer : IDisposable
         return string.Equals(provided, expected, StringComparison.Ordinal);
     }
 
+    private bool IsLoopbackListener() => _boundToLoopback;
+
+    private static (string Name, string ContentType)? ResolveDemoResource(HttpListenerRequest request)
+    {
+        if (!string.Equals(request.HttpMethod, "GET", StringComparison.Ordinal)) return null;
+        // RawUrl ngăn alias percent-encode, dot-segment hoặc backslash vượt route cố định.
+        var rawPath = (request.RawUrl ?? string.Empty).Split('?', 2)[0];
+        return rawPath switch
+        {
+            "/po-demo/" => ("ClassLibraryMT.PoServer.PoDemo.index.html", "text/html; charset=utf-8"),
+            "/po-demo/validation.js" => ("ClassLibraryMT.PoServer.PoDemo.validation.js", "text/javascript; charset=utf-8"),
+            _ => null,
+        };
+    }
+
+    private static async Task WriteDemoResourceAsync(HttpListenerResponse response, (string Name, string ContentType) resource)
+    {
+        await using var stream = typeof(PoHttpServer).Assembly.GetManifestResourceStream(resource.Name)
+            ?? throw new InvalidOperationException("Thiếu tài nguyên demo được đóng gói: " + resource.Name);
+        response.StatusCode = 200;
+        response.ContentType = resource.ContentType;
+        response.ContentLength64 = stream.Length;
+        response.Headers["X-Content-Type-Options"] = "nosniff";
+        response.Headers["Cache-Control"] = "no-store";
+        await stream.CopyToAsync(response.OutputStream).ConfigureAwait(false);
+    }
+
     /// <summary>
     /// Xử lý body của <c>POST /api/po</c>: đọc, kiểm tra và lưu PO.
     ///
@@ -571,7 +624,7 @@ public sealed class PoHttpServer : IDisposable
         IReadOnlyList<string> rawCodes,
         CancellationToken ct)
     {
-        var poName = (payload.PoName ?? string.Empty).Trim();
+        var poName = (payload.OrderNo ?? string.Empty).Trim();
 
         if (poName.Length == 0)
         {
@@ -580,7 +633,7 @@ public sealed class PoHttpServer : IDisposable
                 new PoPushResponse
                 {
                     Success = false,
-                    Message = "Thiếu trường poName (tên/mã lệnh sản xuất).",
+                    Message = "Thiếu trường orderNo (LOT/tên lệnh sản xuất).",
                 });
         }
 
@@ -591,7 +644,7 @@ public sealed class PoHttpServer : IDisposable
                 new PoPushResponse
                 {
                     Success = false,
-                    Message = $"poName quá dài (tối đa {MaxPoNameLength} ký tự).",
+                    Message = $"orderNo quá dài (tối đa {MaxPoNameLength} ký tự).",
                 });
         }
 
@@ -604,20 +657,35 @@ public sealed class PoHttpServer : IDisposable
                     Success = false,
                     Message = "Trường orderQty phải lớn hơn 0.",
                     PoName = poName,
+                    OrderNo = poName,
+                    PlannedCount = payload.OrderQty,
                 });
         }
 
-        // Parser validates every file row before any database mutation.
+        if (!PoCodeParser.TryNormalizeGtin(payload.Gtin, out var gtin))
+        {
+            return new PoPushOutcome(422, new PoPushResponse
+            {
+                Success = false,
+                Message = "Trường gtin phải là đúng một GTIN hợp lệ (8, 12, 13 hoặc 14 chữ số có checksum).",
+                PoName = poName,
+                OrderNo = poName,
+                PlannedCount = payload.OrderQty,
+            });
+        }
+
+        // Kiểm tra schema và số record gốc trước khi lọc từng mã hoặc ghi DB.
         if (rawCodes.Count == 0 || rawCodes.Any(string.IsNullOrWhiteSpace))
             return new PoPushOutcome(400, new PoPushResponse
             {
-                Message = "File phải chứa các giá trị CodeContent không rỗng.", PoName = poName,
+                    Message = "File phải chứa các giá trị CodeContent không rỗng.", PoName = poName,
+                    OrderNo = poName, PlannedCount = payload.OrderQty,
             });
         if (rawCodes.Count != payload.OrderQty)
             return new PoPushOutcome(400, new PoPushResponse
             {
-                Message = $"Số dòng CodeContent ({rawCodes.Count}) phải bằng orderQty ({payload.OrderQty}) trước lọc trùng.",
-                PoName = poName,
+                Message = $"Số dòng CodeContent ({rawCodes.Count}) phải bằng planned orderQty ({payload.OrderQty}) trước lọc.",
+                PoName = poName, OrderNo = poName, PlannedCount = payload.OrderQty,
             });
         var localOrders = await _store.ListLocalOrdersAsync(ct, strict: true).ConfigureAwait(false);
         var existingOrder = localOrders.FirstOrDefault(order =>
@@ -631,7 +699,7 @@ public sealed class PoHttpServer : IDisposable
                 {
                     Success = false,
                     Message = $"PO '{poName}' đã kết thúc (hoàn tất, huỷ hoặc đóng); không thể nhận thêm mã.",
-                    PoName = poName,
+                    PoName = poName, OrderNo = poName, PlannedCount = payload.OrderQty,
                 });
         }
 
@@ -641,41 +709,74 @@ public sealed class PoHttpServer : IDisposable
             return new PoPushOutcome(409, new PoPushResponse
             {
                 Message = "Tên PO sau chuẩn hoá trùng với file PO khác; hãy dùng tên PO khác.",
-                PoName = poName,
+                PoName = poName, OrderNo = poName, PlannedCount = payload.OrderQty,
             });
         }
 
-        // PO databases own their code sets independently. Only repeated rows and
-        // codes already present in this PO are ignored, using exact full content.
+        // Mỗi PO sở hữu tập mã độc lập, so sánh toàn bộ CodeContent bằng ordinal.
         var existingCodes = existingOrder is null
             ? new HashSet<string>(StringComparer.Ordinal)
             : (await _store.GetCodesAsync(existingOrder.OrderNo, existingOrder.CreatedUtc, ct).ConfigureAwait(false))
                 .Select(code => code.CodeContent).ToHashSet(StringComparer.Ordinal);
+        // Store suy GTIN legacy chỉ khi toàn bộ mã cũ chứng minh cùng định danh.
+        if (existingOrder is not null
+            && ((!PoCodeParser.TryNormalizeGtin(existingOrder.Gtin, out var storedGtin)
+                    || !string.Equals(storedGtin, gtin, StringComparison.Ordinal))
+                || existingCodes.Any(raw => !PoCodeParser.TryGetGtin(raw, out var parsedGtin)
+                    || !string.Equals(parsedGtin, gtin, StringComparison.Ordinal))))
+        {
+            return new PoPushOutcome(422, new PoPushResponse
+            {
+                Message = $"PO '{poName}' đã gắn GTIN khác hoặc chứa mã legacy không xác minh được; không thể trộn GTIN.",
+                PoName = poName, OrderNo = poName, PlannedCount = payload.OrderQty,
+            });
+        }
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var codes = new List<PoCode>(rawCodes.Count);
         var duplicateCount = 0;
+        var duplicateCodes = new List<string>();
+        var invalidCodes = new List<PoRejectedCode>();
         foreach (var raw in rawCodes)
         {
             ct.ThrowIfCancellationRequested();
+            if (!PoCodeParser.TryGetGtin(raw, out var codeGtin))
+            {
+                invalidCodes.Add(new PoRejectedCode { Code = raw, Reason = "invalidStructure" });
+                continue;
+            }
+            if (!string.Equals(codeGtin, gtin, StringComparison.Ordinal))
+            {
+                invalidCodes.Add(new PoRejectedCode { Code = raw, Reason = "gtinMismatch" });
+                continue;
+            }
             if (!seen.Add(raw) || existingCodes.Contains(raw))
             {
                 duplicateCount++;
+                duplicateCodes.Add(raw);
                 continue;
             }
             codes.Add(new PoCode { CodeContent = raw });
         }
-        if (codes.Count == 0)
+        var onlyDuplicates = codes.Count == 0 && duplicateCount > 0 && invalidCodes.Count == 0;
+        var growPlannedOnly = onlyDuplicates && existingOrder is not null
+            && payload.OrderQty > existingOrder.OrderQty;
+        if (codes.Count == 0 && !growPlannedOnly)
         {
-            var duplicateMessage = duplicateCount > 0
+            var duplicateMessage = onlyDuplicates
                 ? $"Không có mã mới cho PO {poName}; đã bỏ qua {duplicateCount} mã trùng."
-                : $"PO {poName} không có mã mới để nhận.";
-            return new PoPushOutcome(200, new PoPushResponse
+                : $"PO {poName} không có mã hợp lệ để nhận; loại {invalidCodes.Count} mã sai và {duplicateCount} mã trùng.";
+            return new PoPushOutcome(onlyDuplicates ? 200 : 422, new PoPushResponse
             {
-                Success = true,
+                Success = onlyDuplicates,
                 Message = duplicateMessage,
                 PoName = poName,
+                OrderNo = poName,
                 Accepted = 0,
+                AcceptedCount = 0,
+                PlannedCount = payload.OrderQty,
                 IgnoredDuplicates = duplicateCount,
+                InvalidCodes = invalidCodes,
+                DuplicateCodes = duplicateCodes,
             });
         }
 
@@ -683,16 +784,22 @@ public sealed class PoHttpServer : IDisposable
         var additional = existingOrder is null
             ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             : new Dictionary<string, string>(existingOrder.Additional, StringComparer.OrdinalIgnoreCase);
-        additional.Remove("gtin");
-        additional.Remove("serial");
-        AddIfNotEmpty(additional, "batchCode", payload.BatchCode);
-        AddIfNotEmpty(additional, "productName", payload.ProductName);
-        AddIfNotEmpty(additional, "customer", payload.Customer);
+        // Toàn duplicate chỉ tăng planned max, giữ các metadata mô tả và mã/scan cũ.
+        if (!growPlannedOnly)
+        {
+            additional.Remove("gtin");
+            additional.Remove("serial");
+            additional["gtin"] = gtin;
+            AddIfNotEmpty(additional, "batchCode", payload.BatchCode);
+            AddIfNotEmpty(additional, "productName", payload.ProductName);
+            AddIfNotEmpty(additional, "customer", payload.Customer);
+        }
 
         var order = new ProductionOrder
         {
             OrderNo = existingOrder?.OrderNo ?? poName,
-            OrderQty = (existingOrder?.TotalCodes ?? 0) + codes.Count,
+            OrderQty = payload.OrderQty,
+            Gtin = gtin,
             CreatedUtc = existingOrder?.CreatedUtc ?? DateTime.UtcNow,
             Additional = additional,
         };
@@ -711,6 +818,8 @@ public sealed class PoHttpServer : IDisposable
                     Success = false,
                     Message = "Yêu cầu bị hủy khi đang lưu PO.",
                     PoName = poName,
+                    OrderNo = poName,
+                    PlannedCount = payload.OrderQty,
                 });
         }
         catch (Exception ex)
@@ -723,10 +832,12 @@ public sealed class PoHttpServer : IDisposable
                     Success = false,
                     Message = "Lỗi khi lưu PO: " + ex.Message,
                     PoName = poName,
+                    OrderNo = poName,
+                    PlannedCount = payload.OrderQty,
                 });
         }
 
-        _state.IncrementReceived();
+        if (codes.Count > 0) _state.IncrementReceived();
 
         _logger.LogInformation(
             "Đã nhận PO {PoName} từ MES: thêm {Count} mã mới, bỏ qua {Duplicates} mã trùng.",
@@ -747,12 +858,15 @@ public sealed class PoHttpServer : IDisposable
             new PoPushResponse
             {
                 Success = true,
-                Message = duplicateCount > 0
-                    ? $"Đã nhận thêm {codes.Count} mã mới vào PO {poName}; bỏ qua {duplicateCount} mã trùng."
-                    : $"Đã nhận PO {poName} với {codes.Count} mã mới.",
+                Message = $"Đã nhận {codes.Count}/{payload.OrderQty} mã từ file cho PO {poName}; loại {invalidCodes.Count} mã sai và {duplicateCount} mã trùng.",
                 PoName = poName,
+                OrderNo = poName,
                 Accepted = codes.Count,
+                AcceptedCount = codes.Count,
+                PlannedCount = payload.OrderQty,
                 IgnoredDuplicates = duplicateCount,
+                InvalidCodes = invalidCodes,
+                DuplicateCodes = duplicateCodes,
             });
     }
 

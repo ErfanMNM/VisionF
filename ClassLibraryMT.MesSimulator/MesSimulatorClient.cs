@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using ClassLibraryMT.Po;
 using ClassLibraryMT.PoServer;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -23,7 +24,7 @@ public sealed class MesSimulatorClient
 
     /// <summary>Gửi những CodeContent được cung cấp rõ ràng; không tự sinh hoặc phân tích mã.</summary>
     public async Task<MesSimulatorResult> UploadTestOrderAsync(
-        string poName, IReadOnlyList<string> codeContents, CancellationToken ct = default)
+        string poName, IReadOnlyList<string> codeContents, CancellationToken ct = default, string? gtin = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(poName);
         ArgumentNullException.ThrowIfNull(codeContents);
@@ -33,22 +34,23 @@ public sealed class MesSimulatorClient
         var csv = new StringBuilder("CodeContent\r\n");
         foreach (var code in codeContents)
         {
-            // Quote every cell: commas, quotes, embedded CR/LF and whitespace remain exact.
+            // Quote mỗi ô để giữ chính xác nội dung raw khi truyền CSV.
             csv.Append('"').Append(code.Replace("\"", "\"\"", StringComparison.Ordinal)).Append("\"\r\n");
         }
 
-        using var form = CreateForm(poName, codeContents.Count);
+        using var form = CreateForm(poName, codeContents.Count, ResolveGtin(gtin));
         form.Add(new StringContent(csv.ToString(), Encoding.UTF8, "text/csv"), "file", "codes.csv");
         return await SendMultipartAsync(poName, form, ct).ConfigureAwait(false);
     }
 
     /// <summary>Kiểm tra rồi gửi nguyên file CodeContent CSV/JSON/XLSX.</summary>
     public async Task<MesSimulatorResult> UploadExistingFileAsync(
-        string poName, int orderQty, string filePath, CancellationToken ct = default)
+        string poName, int orderQty, string filePath, CancellationToken ct = default, string? gtin = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(poName);
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
         if (orderQty <= 0) throw new ArgumentOutOfRangeException(nameof(orderQty));
+        var normalizedGtin = ResolveGtin(gtin);
         var fullPath = Path.GetFullPath(filePath);
         var fileName = Path.GetFileName(fullPath);
         var kind = PoUploadStore.DetectKind(fileName);
@@ -60,26 +62,34 @@ public sealed class MesSimulatorClient
             _ => throw new ArgumentException("Chỉ hỗ trợ file CodeContent .csv, .json hoặc .xlsx.", nameof(filePath)),
         };
 
-        // Hold a read-only file handle through validation and HTTP transfer so a writer
-        // cannot replace its contents between the row-count check and the upload.
+        // Giữ handle chỉ đọc xuyên suốt kiểm tra và gửi HTTP để file không bị thay đổi.
         await using var stream = new FileStream(fullPath, FileMode.Open, FileAccess.Read, FileShare.Read,
             81920, FileOptions.Asynchronous | FileOptions.SequentialScan);
         var codes = await PoUploadHandler.ParseFileAsync(fullPath, kind, ct).ConfigureAwait(false);
         if (codes.Count == 0 || codes.Count != orderQty)
-            throw new ArgumentException($"orderQty ({orderQty}) phải bằng số dòng CodeContent ({codes.Count}) trước lọc trùng.", nameof(orderQty));
+            throw new ArgumentException($"orderQty ({orderQty}) phải bằng số record CodeContent ({codes.Count}) trước lọc mã.", nameof(orderQty));
 
-        using var form = CreateForm(poName, orderQty);
+        using var form = CreateForm(poName, orderQty, normalizedGtin);
         var file = new StreamContent(stream);
         file.Headers.ContentType = new(contentType);
         form.Add(file, "file", fileName);
         return await SendMultipartAsync(poName, form, ct).ConfigureAwait(false);
     }
 
-    private static MultipartFormDataContent CreateForm(string poName, int orderQty)
+    private string ResolveGtin(string? gtin)
+    {
+        var value = gtin ?? _options.Gtin;
+        if (!PoCodeParser.TryNormalizeGtin(value, out var normalized))
+            throw new ArgumentException("Cần đúng một GTIN 8/12/13/14 chữ số có checksum hợp lệ qua tham số gtin hoặc MesSimulator:Gtin.", nameof(gtin));
+        return normalized;
+    }
+
+    private static MultipartFormDataContent CreateForm(string poName, int orderQty, string gtin)
     {
         var form = new MultipartFormDataContent();
-        form.Add(new StringContent(poName, Encoding.UTF8), "poName");
+        form.Add(new StringContent(poName, Encoding.UTF8), "orderNo");
         form.Add(new StringContent(orderQty.ToString(CultureInfo.InvariantCulture)), "orderQty");
+        form.Add(new StringContent(gtin), "gtin");
         form.Add(new StringContent("MES simulator", Encoding.UTF8), "productName");
         return form;
     }

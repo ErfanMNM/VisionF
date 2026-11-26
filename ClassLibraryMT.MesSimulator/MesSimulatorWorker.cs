@@ -47,10 +47,11 @@ public sealed class MesSimulatorWorker : BackgroundService
         var filePath = _options.ResolveCustomFilePath();
         if (filePath.Length == 0)
             throw new InvalidOperationException("Cần cung cấp CustomFilePath trỏ tới file một cột CodeContent; simulator không tự sinh mã.");
-        var poName = _options.CustomPoName.Trim();
+        var poName = (_options.CustomOrderNo ?? string.Empty).Trim();
+        if (poName.Length == 0) poName = (_options.CustomPoName ?? string.Empty).Trim();
         if (poName.Length == 0) poName = Path.GetFileNameWithoutExtension(filePath);
         _state.SetStatus($"Đang upload file {Path.GetFileName(filePath)}...", false);
-        var result = await _client.UploadExistingFileAsync(poName, _options.OrderQty, filePath, ct)
+        var result = await _client.UploadExistingFileAsync(poName, _options.OrderQty, filePath, ct, _options.Gtin)
             .ConfigureAwait(false);
         _state.Record(result);
         _logger.LogInformation("MES simulator gửi PO {PoName}: success={Success}, HTTP {StatusCode}.",

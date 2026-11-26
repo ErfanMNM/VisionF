@@ -39,6 +39,8 @@ void Check(bool condition, string message)
 
 async Task<(HttpStatusCode Status, string Body)> SendAsync(string uri, HttpContent content, bool authenticate = true)
 {
+    if (uri.Contains("?", StringComparison.Ordinal) && !uri.Contains("&gtin=", StringComparison.Ordinal))
+        uri += "&gtin=09506000134352";
     using var request = new HttpRequestMessage(HttpMethod.Post, uri) { Content = content };
     if (authenticate) request.Headers.Add("x-api-key", "e2e-test-key");
     using var response = await http.SendAsync(request);
@@ -79,37 +81,44 @@ try
     Check(unauthorized.Status == HttpStatusCode.Unauthorized && store.FindExistingDbPath("NO-KEY") is null,
         "Thiếu API key bị từ chối trước khi tạo PO");
 
-    string[] csvCodes = ["  opaque content  ", "comma,value", "line1\r\nline2", "Case", "case"];
-    const string csv = "CodeContent\r\n\"  opaque content  \"\r\n\"comma,value\"\r\n\"line1\r\nline2\"\r\nCase\r\ncase\r\nCase\r\n";
-    var csvResponse = await SendAsync("/api/po?poName=PO-E2E-CSV&orderQty=6&productName=Opaque%20codes",
+    string[] csvCodes = ["(01)09506000134352(21)comma,value", "(01)09506000134352(21)Case", "(01)09506000134352(21)case"];
+    const string csv = "CodeContent\r\n\"  opaque content  \"\r\n\"(01)09506000134352(21)comma,value\"\r\n\"line1\r\nline2\"\r\n(01)09506000134352(21)Case\r\n(01)09506000134352(21)case\r\n(01)09506000134352(21)Case\r\n";
+    var csvResponse = await SendAsync("/api/po?orderNo=PO-E2E-CSV&orderQty=6&productName=GS1",
         FileContent(csv, "text/csv"));
-    Check(csvResponse.Status == HttpStatusCode.OK && ResultNumber(csvResponse.Body, "accepted") == 5
-        && ResultNumber(csvResponse.Body, "ignoredDuplicates") == 1, "CSV đếm số dòng trước khi lọc trùng");
+    Check(csvResponse.Status == HttpStatusCode.OK && ResultNumber(csvResponse.Body, "acceptedCount") == 3
+        && ResultNumber(csvResponse.Body, "plannedCount") == 6 && ResultNumber(csvResponse.Body, "ignoredDuplicates") == 1,
+        "CSV đếm planned trước lọc cấu trúc và trùng");
     Check((await ReadCodesAsync("PO-E2E-CSV")).Select(code => code.CodeContent)
-            .ToHashSet(StringComparer.Ordinal).SetEquals(csvCodes),
-        "CSV giữ nguyên khoảng trắng, dấu phẩy, xuống dòng và phân biệt hoa thường");
-
+            .ToHashSet(StringComparer.Ordinal).SetEquals(csvCodes), "CSV giữ nguyên raw hợp lệ và phân biệt hoa thường");
+    using (var rejected = JsonDocument.Parse(csvResponse.Body))
+    {
+        var items = rejected.RootElement.GetProperty("invalidCodes");
+        Check(items.GetArrayLength() == 2 && items[0].GetProperty("code").GetString() == "  opaque content  "
+            && items[1].GetProperty("code").GetString() == "line1\r\nline2", "CSV báo mã sai nguyên khoảng trắng và xuống dòng");
+    }
     var samePo = await SendAsync("/api/po?poName=PO-E2E-CSV&orderQty=6", FileContent(csv, "text/csv", "codes.csv"));
-    Check(samePo.Status == HttpStatusCode.OK && ResultNumber(samePo.Body, "accepted") == 0
-        && ResultNumber(samePo.Body, "ignoredDuplicates") == 6, "Upload lại cùng PO bỏ qua mã đã có");
+    Check(samePo.Status == HttpStatusCode.UnprocessableEntity && ResultNumber(samePo.Body, "accepted") == 0
+        && ResultNumber(samePo.Body, "ignoredDuplicates") == 4, "Upload lại file partial không thêm mã và báo mã sai");
     var differentPo = await SendAsync("/api/po?poName=PO-E2E-INDEPENDENT&orderQty=6", FileContent(csv, "text/csv"));
-    Check(differentPo.Status == HttpStatusCode.OK && ResultNumber(differentPo.Body, "accepted") == 5,
+    Check(differentPo.Status == HttpStatusCode.OK && ResultNumber(differentPo.Body, "accepted") == 3,
         "Hai PO lưu tập CodeContent độc lập");
 
-    const string json = """[{"CodeContent":"https://first/21/SAME"},{"CodeContent":"https://second/21/SAME"},{"CodeContent":" mã nguyên vẹn ? & | \" "}]""";
+    const string json = """[{"CodeContent":"https://first/01/09506000134352/21/SAME"},{"CodeContent":"https://second/01/09506000134352/21/SAME"},{"CodeContent":" mã nguyên vẹn ? & | \" "}]""";
     var jsonResponse = await SendAsync("/api/po?poName=PO-E2E-JSON&orderQty=3", FileContent(json, "application/json", "codes.json"));
-    Check(jsonResponse.Status == HttpStatusCode.OK && ResultNumber(jsonResponse.Body, "accepted") == 3,
-        "JSON nhận duy nhất thuộc tính CodeContent, không diễn giải hậu tố serial");
-    var jsonCodes = await ReadCodesAsync("PO-E2E-JSON");
-    Check(jsonCodes.Any(code => code.CodeContent == " mã nguyên vẹn ? & | \" "), "JSON lưu nguyên Unicode và ký tự đặc biệt");
+    Check(jsonResponse.Status == HttpStatusCode.OK && ResultNumber(jsonResponse.Body, "accepted") == 2,
+        "JSON so sánh raw URL đầy đủ, không dùng riêng hậu tố serial");
+    using (var rejected = JsonDocument.Parse(jsonResponse.Body))
+        Check(rejected.RootElement.GetProperty("invalidCodes")[0].GetProperty("code").GetString() == " mã nguyên vẹn ? & | \" ",
+            "JSON báo mã Unicode sai cấu trúc nguyên vẹn");
 
     var xlsxPath = Path.Combine(workDir, "codes.xlsx");
-    string[] excelCodes = ["XLSX:001", "xlsx:001", "  excel & raw <content>  "];
+    string[] excelCodes = ["(01)09506000134352(21)XLSX:001", "(01)09506000134352(21)xlsx:001", "(01)09506000134352(21)excel&raw<content>"];
     BuildXlsx(xlsxPath, ["CodeContent", .. excelCodes]);
     using (var multipart = new MultipartFormDataContent())
     {
         multipart.Add(new StringContent("PO-E2E-XLSX"), "poName");
         multipart.Add(new StringContent("3"), "orderQty");
+        multipart.Add(new StringContent("09506000134352"), "gtin");
         multipart.Add(new StringContent("LOT-E2E"), "batchCode");
         var file = new ByteArrayContent(await File.ReadAllBytesAsync(xlsxPath));
         file.Headers.ContentType = new MediaTypeHeaderValue("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
@@ -128,8 +137,9 @@ try
     var boundaryContent = FileContent(multipartBody, "multipart/form-data");
     boundaryContent.Headers.ContentType!.Parameters.Add(new NameValueHeaderValue("boundary", boundary));
     var boundaryResult = await SendAsync("/api/po?poName=PO-E2E-BOUNDARY&orderQty=1", boundaryContent);
-    Check(boundaryResult.Status == HttpStatusCode.OK
-            && (await ReadCodesAsync("PO-E2E-BOUNDARY")).Single().CodeContent == opaqueMultipartCode,
+    Check(boundaryResult.Status == HttpStatusCode.UnprocessableEntity
+            && JsonDocument.Parse(boundaryResult.Body).RootElement.GetProperty("invalidCodes")[0].GetProperty("code").GetString() == opaqueMultipartCode
+            && store.FindExistingDbPath("PO-E2E-BOUNDARY") is null,
         "Multipart giữ nguyên boundary nằm trong mã và prefix giống boundary ở đầu dòng");
 
     var validFilePrefix = filePart + $"CodeContent\r\nWOULD-BE-NEW\r\n\r\n--{boundary}\r\n";
@@ -174,11 +184,11 @@ try
     }
     var invalidMetadata = await SendAsync("/api/po?poName=PO-E2E-GTIN&orderQty=1&gtin=123",
         FileContent("CodeContent\none\n", "text/csv"));
-    Check(invalidMetadata.Status == HttpStatusCode.BadRequest && store.FindExistingDbPath("PO-E2E-GTIN") is null,
-        "GTIN không được dùng làm metadata nhập PO");
+    Check(invalidMetadata.Status == HttpStatusCode.UnprocessableEntity && store.FindExistingDbPath("PO-E2E-GTIN") is null,
+        "Metadata GTIN sai checksum/độ dài bị loại nguyên tử");
     var invalidAppend = await SendAsync("/api/po?poName=PO-E2E-CSV&orderQty=2",
         FileContent("CodeContent\nWOULD-BE-NEW\nbad,extra\n", "text/csv"));
-    Check(invalidAppend.Status == HttpStatusCode.BadRequest && (await ReadCodesAsync("PO-E2E-CSV")).Count == 5,
+    Check(invalidAppend.Status == HttpStatusCode.BadRequest && (await ReadCodesAsync("PO-E2E-CSV")).Count == 3,
         "File bổ sung lỗi không ghi một phần dữ liệu vào PO cũ");
     var xls = await SendAsync("/api/po?poName=PO-E2E-XLS&orderQty=1",
         FileContent("legacy workbook", "application/vnd.ms-excel", "codes.xls"));

@@ -22,9 +22,11 @@ public static class MesSimulatorServiceCollectionExtensions
                 o.ApiKey = GetString(cfg, "MesSimulator:ApiKey", o.ApiKey);
                 o.IntervalSeconds = GetInt(cfg, "MesSimulator:IntervalSeconds", o.IntervalSeconds);
                 o.OrderQty = GetInt(cfg, "MesSimulator:OrderQty", o.OrderQty);
+                o.Gtin = GetString(cfg, "MesSimulator:Gtin", o.Gtin);
                 o.PoPrefix = GetString(cfg, "MesSimulator:PoPrefix", o.PoPrefix);
                 o.CustomFilePath = GetString(cfg, "MesSimulator:CustomFilePath", o.CustomFilePath);
                 o.CustomPoName = GetString(cfg, "MesSimulator:CustomPoName", o.CustomPoName);
+                o.CustomOrderNo = GetString(cfg, "MesSimulator:CustomOrderNo", o.CustomOrderNo);
                 o.TimeoutSeconds = GetInt(cfg, "MesSimulator:TimeoutSeconds", o.TimeoutSeconds);
             })
             .Validate(o => o.IntervalSeconds > 0, "MesSimulator:IntervalSeconds phải lớn hơn 0.")

@@ -17,6 +17,8 @@ namespace ClassLibraryMT.PoServer;
 [JsonSerializable(typeof(PoPushRequest))]
 [JsonSerializable(typeof(PoPushResponse))]
 [JsonSerializable(typeof(PoHealthResponse))]
+[JsonSerializable(typeof(PoRejectedCode))]
+[JsonSerializable(typeof(List<PoRejectedCode>))]
 public sealed partial class PoServerJsonContext : JsonSerializerContext
 {
 }

@@ -210,25 +210,27 @@ public sealed class PoUploadHandler
 
     private static string CanonicalMetadataField(string? name) => (name ?? string.Empty).Trim().ToLowerInvariant() switch
     {
-        "poname" or "po" => "poName",
+        "orderno" or "poname" or "po" or "lot" => "orderNo",
         "orderqty" or "qty" => "orderQty",
+        "gtin" => "gtin",
         "batchcode" or "batch" => "batchCode",
         "productname" or "product" => "productName",
         "customer" => "customer",
-        _ => throw new PoFileFormatException($"Metadata '{name}' không được hỗ trợ. Mã chỉ được cung cấp trong file một cột CodeContent; không nhận GTIN/serial/codes/csv."),
+        _ => throw new PoFileFormatException($"Metadata '{name}' không được hỗ trợ. Mã chỉ được cung cấp trong file một cột CodeContent; không nhận serial/codes/csv."),
     };
 
     private static void ApplyMetadataField(PoPushRequest metadata, string field, string value)
     {
         switch (field)
         {
-            case "poName": metadata.PoName = value; break;
+            case "orderNo": metadata.OrderNo = value; break;
             case "orderQty":
                 if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var qty) || qty <= 0)
                     throw new PoFileFormatException("orderQty phải là số nguyên lớn hơn 0.");
                 metadata.OrderQty = qty;
                 break;
             case "batchCode": metadata.BatchCode = value; break;
+            case "gtin": metadata.Gtin = value; break;
             case "productName": metadata.ProductName = value; break;
             case "customer": metadata.Customer = value; break;
         }

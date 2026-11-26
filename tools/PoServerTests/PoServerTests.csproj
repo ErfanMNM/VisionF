@@ -17,6 +17,8 @@
   <ItemGroup>
     <Compile Include="Program.cs" />
     <Compile Include="CodeContentParserChecks.cs" />
+    <Compile Include="PoContractChecks.cs" />
+    <Compile Include="PoDemoTestHost.cs" />
   </ItemGroup>
 
   <ItemGroup>

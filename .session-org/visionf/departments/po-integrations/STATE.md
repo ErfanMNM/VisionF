@@ -1,0 +1,15 @@
+# Phòng Tích hợp PO
+- owner_thread_id: `01a21732-6f6f-7080-8837-7ba41e45516a`
+- Trạng thái vai trò: active — read-only/review; source do worker/CEO quản lý
+- CEO thread hiện tại: `01a21787-5ed2-7ac2-a73d-80c07b4996d0` (owner/ACK accepted)
+- STATE_ROOT: `C:\Users\THUC\source\repos\ErfanMNM\VisionF\.session-org\visionf`
+- Contract PO-01: `orderNo`/LOT (alias inbound `poName`), `orderQty` là planned quantity và receive phải khớp raw record count trước lọc; file CSV/JSON/XLSX đúng cột `CodeContent`, giữ raw; mỗi PO đúng một GTIN checksum, canonical 14 chữ số. Receive/download phân loại `invalidStructure`, `gtinMismatch`, duplicate exact ordinal; response có `acceptedCount`, `plannedCount`, `invalidCodes` (code + reason), `duplicateCodes`, alias `poName`/`accepted`/`ignoredDuplicates`.
+- Planned/actual: planned lưu độc lập actual; merge dùng `max(planned hiện có, orderQty lần này)`, kể cả all-duplicate; download accepted-only cho phép raw count không vượt planned; transport errors tách khỏi validation.
+- Auth/hosting: embedded exact `GET /po-demo/` và `GET /po-demo/validation.js`, GET-only/read-only; chỉ bypass API key khi listener loopback thực; `/api/po` vẫn yêu cầu `x-api-key`; wildcard/LAN vẫn yêu cầu key; không disk fallback/CORS wildcard/path traversal.
+- Phạm vi đã review: `ClassLibraryMT.Po`, `ClassLibraryMT.PoServer`, `ClassLibraryMT.MesSimulator`, download service, console/mock caller, VM message, API docs và asset packaging; không sửa UI source PO-02.
+- Kết quả backend/callers: không phát hiện lỗi vật chất trong review read-only. Core build 0 warning/0 error; `PoTests` 142 pass; `PoFlowTests` 63 pass; B final build 0 warning/0 error, `PoServerTests` 121 pass, e2e 31 pass; CDELTA `MesSimulatorTests` 31 pass, console 40 pass; `TanTienQR` 0 error/1 warning `AVLN3001` ngoài scope.
+- Kết quả browser/acceptance cuối do CEO: UI browser 18 assertion sau rebuild; planned 1→4→1 giữ DB planned=4/actual=1; hash hai asset embedded khớp source; host stopped/process=0/listener=0. `PoAcceptanceTests` Release 154 assertion, 0 nhóm lỗi, exit 0; Node 18/18 pass.
+- PO-05-DOCS: chỉ sửa `docs/production-order.md` và `tools/PoAcceptanceTests/README.md`; diffcheck `docs/production-order.md` sạch, README đã kiểm tra trailing whitespace riêng; không sửa source/test và không chạy suite.
+- Trạng thái task: backend/browser/acceptance đã khép; hồ sơ docs đã cập nhật. CEO được phép stage đúng scope, commit/push `codex/po-gtin-demo`, không merge.
+- Budget session phòng snapshot gần nhất: `46/100`, còn `54`, `normal`, `exact=true`; file `.session-org\visionf\sessions\01a21732-6f6f-7080-8837-7ba41e45516a\budget.json`.
+- Bước tiếp theo: CEO kiểm tra/stage hồ sơ và docs đúng phạm vi rồi commit/push; phòng không sửa source hoặc Git.

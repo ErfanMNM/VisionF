@@ -1,0 +1,17 @@
+# Công việc VisionF
+
+CEO hiện tại: `01a21787-5ed2-7ac2-a73d-80c07b4996d0`. Nhánh tích hợp: `codex/po-gtin-demo`; chỉ CEO commit/push, chờ người dùng duyệt mới gộp.
+
+| Task ID | Kết quả và tiêu chí hoàn tất | Owner | Phạm vi | Trạng thái | Chứng cứ / bước tiếp theo |
+| --- | --- | --- | --- | --- | --- |
+| PO-00 / PO-00-ROUTE | Khảo sát contract và hosting cùng origin | Các worker khảo sát đã dừng | Chỉ nhật ký khảo sát riêng | done | Các LOG khảo sát trong sessions; route chốt embedded `/po-demo/` và `/po-demo/validation.js`. |
+| PO-01 | Receive/download một GTIN, planned độc lập actual, lọc và trả chi tiết mã loại | Phòng `01a21732-6f6f-7080-8837-7ba41e45516a` | Backend/callers do A/B/C hoàn thiện; phòng review | done — đã nghiệm thu | Core142/flow63, server121/e2e31, MES31/console40 đạt. AcceptanceRelease cuối154/0lỗi, exit0. |
+| PO-01-A | Parser, persistence GTIN/planned, download validation/outcomes | `po_core_recovery` | ClassLibraryMT.Po, tools/PoTests, tools/PoFlowTests | done — source dừng | `sessions/po-core-recovery/LOG.md`: core build 0 warning/error, PoTests142/PoFlowTests63 đạt. |
+| PO-01-B | Receive/static auth/path, planned all-duplicate, API guide | `po_server_recovery` | ClassLibraryMT.PoServer, tools/PoServerTests, docs/MES-PO-API.md | done — source dừng | `sessions/po-server-recovery/LOG.md`: final build0warning/error, server121/e2e31; planned1→4→1 giữ4/actual1, trigger bảo toàn mã/scan. |
+| PO-01-C | MES DI/upload, console fixture và download VM | `po_callers_recovery` | MES library/tests, console server/tests/form, download VM, docs/MES-SIMULATOR.md | done — source dừng | `sessions/po-callers-recovery/LOG.md`: DI thật/MES31, console40 đạt; TanTienQR build0error/1warning AVLN3001 ngoài phạm vi. |
+| PO-02 | HTML tạo/gửi PO thật, phản hồi/error/key transient, hướng dẫn | Phòng `01a21779-c0fb-76a1-9c92-75207202dbd9` | docs/po-demo | done — đã nghiệm thu | Node18/18; browser success/partial/duplicate/401/400/422/409/network/double-send/key/layout đạt. Rebuilt final kiểm planned1→4→1, DBplanned4/actual1; host đã dừng. |
+| PO-03-REVIEW | Review độc lập backend/callers và UI | `po_acceptance_review`; `po02-submit-review` | Chỉ LOG riêng | done | DI/docs/planned duplicate đã sửa/test; cổng test/browser cuối đạt. Câu exception duplicate-only trong review lịch sử đã lỗi thời. |
+| PO-04-ACCEPTANCE | HTTP receive/static/persistence độc lập | CEO kế nhiệm nghiệm thu | Chạy tools/PoAcceptanceTests, không sửa backend | done | CEO kế nhiệm tự chạy Release sau B/C/UI final:154 assertion/0 nhóm lỗi, exit0; LOG session CEO. |
+| PO-05-PUBLISH-AUDIT | Review scope commit, output/bí mật/tài liệu | `/root/publish_scope_audit`; thread `01a21789-fd90-7fa0-ad39-bd14a4cf4607` | Chỉ sessions/publish-scope-audit/LOG.md | done | Không thấy credential thật theo mẫu trong71tệp; loại budget/output/temp, tám plan deleted và .playwright-cli khỏi stage. |
+| PO-05-DOCS | Đồng bộ hướng dẫn PO và giới hạn README acceptance với contract hiện tại | Phòng PO-01 | Chỉ docs/production-order.md và tools/PoAcceptanceTests/README.md | done | PO-01 sửa tối thiểu hai docs, diffcheck/readback đạt; không thay quy trình PLC hoặc source/test. |
+| PO-06-PUBLISH | Outcomes, stage đúng scope, commit/push nhánh riêng | CEO hiện tại | Source/test/docs PO và Markdown bàn giao liên quan | chuẩn bị commit/push | Các cổng backend/browser/acceptance đạt; kiểm staged diff và remote SHA bằng local trước bàn giao. Không merge/deploy. |

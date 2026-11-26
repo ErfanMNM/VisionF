@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f6f8">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='12' fill='%23173852'/%3E%3Ctext x='20' y='27' text-anchor='middle' font-family='sans-serif' font-size='23' font-weight='700' fill='white'%3ET%3C/text%3E%3C/svg%3E">
+  <title>Tạo PO · TanTienApp</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #182638;
+      background: #f4f6f8;
+      font-synthesis: none;
+      text-rendering: optimizeLegibility;
+      --muted: #637286;
+      --line: #ceddeb;
+      --navy: #173852;
+      --cobalt: #2864d7;
+      --teal: #087f79;
+      --soft-teal: #e4f4f1;
+      --amber: #94600b;
+      --soft-amber: #fff4db;
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; min-width: 320px; }
+    button, input { font: inherit; }
+
+    .shell { width: min(1080px, calc(100% - 40px)); margin: 0 auto; padding: 28px 0 56px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 42px; }
+    .brand { display: flex; align-items: center; gap: 11px; color: var(--navy); font-size: 14px; font-weight: 750; letter-spacing: .02em; }
+    .brand-mark { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 12px; background: var(--navy); color: white; font-size: 16px; }
+    .preview-tag { display: inline-flex; align-items: center; gap: 8px; border: 1px solid #f0d9a7; border-radius: 999px; background: #fffaf0; padding: 8px 12px; color: #80550e; font-size: 12px; font-weight: 700; }
+    .preview-tag::before { width: 7px; height: 7px; border-radius: 50%; background: #d69b2e; content: ""; }
+
+    .intro { max-width: 680px; margin-bottom: 28px; }
+    .eyebrow { margin: 0 0 10px; color: var(--teal); font-size: 12px; font-weight: 800; letter-spacing: .13em; text-transform: uppercase; }
+    h1 { margin: 0; color: var(--navy); font-size: clamp(32px, 5vw, 46px); letter-spacing: -.045em; line-height: 1.08; }
+    .lede { max-width: 590px; margin: 14px 0 0; color: var(--muted); font-size: 16px; line-height: 1.65; }
+
+    .layout { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(300px, .88fr); gap: 20px; align-items: start; }
+    .panel { border: 1px solid var(--line); border-radius: 18px; background: #fff; box-shadow: 0 12px 36px rgb(24 38 56 / 5%); }
+    .form-panel { padding: clamp(22px, 4vw, 34px); }
+    .panel-heading { margin: 0; color: var(--navy); font-size: 19px; letter-spacing: -.02em; }
+    .panel-copy { margin: 7px 0 25px; color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .field { margin-top: 20px; }
+    .field:first-of-type { margin-top: 0; }
+    label { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 8px; color: #293b4f; font-size: 13px; font-weight: 750; }
+    .field-key { color: #8a97a5; font-size: 11px; font-weight: 600; }
+    input { width: 100%; height: 48px; border: 1px solid #cbd5df; border-radius: 10px; outline: none; background: #fff; padding: 0 14px; color: #182638; transition: border-color .16s, box-shadow .16s; }
+    input::placeholder { color: #a0acb8; }
+    input:focus { border-color: #168b82; box-shadow: 0 0 0 3px rgb(8 127 121 / 12%); }
+    input[aria-invalid="true"] { border-color: #bd4545; }
+    .field-hint { margin: 7px 0 0; color: #738195; font-size: 12px; line-height: 1.5; }
+    input[type="file"] { height: auto; min-height: 48px; padding: 10px; color: #51647a; }
+    input[type="file"]::file-selector-button { margin-right: 10px; border: 0; border-radius: 7px; background: #e8f0ff; padding: 7px 10px; color: #2458bd; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
+    .button { min-height: 46px; border: 0; border-radius: 10px; padding: 0 17px; font-size: 13px; font-weight: 750; cursor: pointer; transition: transform .12s, background .12s; }
+    .button:active:not(:disabled) { transform: translateY(1px); }
+    .button-primary { background: var(--cobalt); color: #fff; }
+    .button-primary:hover { background: #1e55bd; }
+    .button-secondary { border: 1px solid #d5dee5; background: #f6f8fa; color: #647487; }
+    .button:disabled { cursor: not-allowed; opacity: .62; }
+    .locked-note { display: flex; gap: 10px; margin: 14px 0 0; border-radius: 10px; background: #f7f8fa; padding: 12px; color: #6d7886; font-size: 12px; line-height: 1.55; }
+    .lock-icon { flex: 0 0 auto; color: #8c6a32; }
+
+    .side-panel { overflow: hidden; }
+    .side-head { border-bottom: 1px solid #e9eef1; padding: 22px 24px 18px; }
+    .step-title { display: flex; align-items: center; gap: 10px; margin: 0; color: var(--navy); font-size: 16px; }
+    .step-number { display: grid; width: 26px; height: 26px; place-items: center; border-radius: 9px; background: var(--soft-teal); color: var(--teal); font-size: 12px; }
+    .side-body { padding: 22px 24px 24px; }
+    .status { display: flex; min-height: 160px; flex-direction: column; align-items: center; justify-content: center; border: 1px dashed #c6d7e8; border-radius: 13px; background: #f9fbfd; padding: 20px; text-align: center; }
+    .status-symbol { display: grid; width: 34px; height: 34px; place-items: center; margin-bottom: 10px; border-radius: 50%; background: #e8f0ff; color: var(--cobalt); font-size: 18px; font-weight: 600; }
+    .status h3 { margin: 0 0 7px; color: #34475b; font-size: 14px; }
+    .status p { max-width: 310px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+    .status.ready { border-style: solid; border-color: #b7dfd8; background: #f1faf8; }
+    .status.ready h3 { color: #087269; }
+    .summary { display: grid; gap: 0; margin: 16px 0 0; }
+    .summary[hidden] { display: none; }
+    .summary-row { display: flex; justify-content: space-between; gap: 18px; border-bottom: 1px solid #edf1f4; padding: 11px 0; font-size: 12px; }
+    .summary-row:last-child { border: 0; }
+    .summary-row dt { color: #718095; }
+    .summary-row dd { overflow-wrap: anywhere; margin: 0; color: #2b3d50; font-weight: 700; text-align: right; }
+    .result-heading { margin: 20px 0 10px; color: #42566c; font-size: 12px; font-weight: 800; }
+    .metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .metric { min-height: 64px; border: 1px solid #d9e4f0; border-radius: 10px; background: #fbfcfe; padding: 10px 12px; }
+    .metric-label { display: block; color: #748398; font-size: 10px; line-height: 1.4; }
+    .metric-value { display: block; margin-top: 3px; color: var(--navy); font-size: 18px; font-weight: 800; }
+    .count-warning { margin: 9px 0 0; color: #7a5b1e; font-size: 11px; line-height: 1.5; }
+    .honesty-note { margin: 16px 0 0; border-radius: 10px; background: var(--soft-amber); padding: 12px; color: #77520f; font-size: 11px; line-height: 1.55; }
+    .honesty-note strong { display: block; margin-bottom: 3px; font-size: 12px; }
+    .footnote { margin: 22px 2px 0; color: #8390a0; font-size: 11px; line-height: 1.5; }
+    .result-details { margin-top: 14px; color: #42566c; font-size: 12px; }
+    .result-details summary { cursor: pointer; font-weight: 700; }
+    .result-details ul { max-height: 260px; overflow: auto; padding-left: 20px; }
+    .result-details li { margin: 8px 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+    .status.failed { border-style: solid; border-color: #e4c7ae; background: #fff8ef; }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+
+    @media (max-width: 760px) {
+      .shell { width: min(100% - 28px, 560px); padding-top: 18px; }
+      .topbar { margin-bottom: 34px; }
+      .layout { grid-template-columns: 1fr; }
+      .side-panel { order: 2; }
+    }
+    @media (max-width: 420px) {
+      .brand { font-size: 12px; }
+      .brand-mark { width: 34px; height: 34px; }
+      .preview-tag { padding: 7px 9px; font-size: 10px; }
+      .actions { flex-direction: column; }
+      .button { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">T</span><span>TANTIENAPP <span style="color:#8a97a5;font-weight:600">/ PO WORKSPACE</span></span></div>
+      <span class="preview-tag" id="connection-tag">BẢN XEM TRƯỚC</span>
+    </header>
+
+    <section class="intro" aria-labelledby="page-title">
+      <p class="eyebrow">Sản xuất · Lệnh mới</p>
+      <h1 id="page-title">Tạo lệnh sản xuất</h1>
+      <p class="lede">Nhập thông tin lô hàng và chọn tệp CodeContent để chuẩn bị một PO gửi đến TanTienApp. Kiểm tra thông tin trước khi chuyển sang bước gửi.</p>
+    </section>
+
+    <div class="layout">
+      <section class="panel form-panel" aria-labelledby="form-title">
+        <h2 class="panel-heading" id="form-title">Thông tin PO</h2>
+        <p class="panel-copy">Các trường có dấu <strong>*</strong> là bắt buộc.</p>
+        <form id="po-form" novalidate>
+          <div class="field">
+            <label for="orderNo"><span>Mã đơn hàng / LOT <span aria-hidden="true">*</span></span><span class="field-key">orderNo</span></label>
+            <input id="orderNo" name="orderNo" type="text" required maxlength="200" autocomplete="off" placeholder="Ví dụ: LOT-2026-014" aria-describedby="orderNo-hint">
+            <p class="field-hint" id="orderNo-hint">Dùng mã LOT để nhận diện lệnh sản xuất.</p>
+          </div>
+          <div class="field">
+            <label for="orderQty"><span>Số lượng mã <span aria-hidden="true">*</span></span><span class="field-key">orderQty</span></label>
+            <input id="orderQty" name="orderQty" type="number" required min="1" max="2147483647" step="1" inputmode="numeric" placeholder="Ví dụ: 1200" aria-describedby="orderQty-hint">
+            <p class="field-hint" id="orderQty-hint">Số lượng kế hoạch phải bằng số dòng mã trong tệp trước khi lọc. Máy chủ sẽ báo số mã mới được nhận và chênh lệch.</p>
+          </div>
+          <div class="field">
+            <label for="gtin"><span>GTIN <span aria-hidden="true">*</span></span><span class="field-key">GTIN sản phẩm</span></label>
+            <input id="gtin" name="gtin" type="text" required inputmode="numeric" autocomplete="off" placeholder="Nhập GTIN" aria-describedby="gtin-hint">
+            <p class="field-hint" id="gtin-hint">Nhập 8, 12, 13 hoặc 14 chữ số; trang kiểm tra cả chữ số checksum.</p>
+          </div>
+          <div class="field">
+            <label for="codesFile"><span>Tệp mã CodeContent <span aria-hidden="true">*</span></span><span class="field-key">Nội dung mã</span></label>
+            <input id="codesFile" name="codesFile" type="file" required accept=".csv,.json,.xlsx" aria-describedby="codesFile-hint">
+            <p class="field-hint" id="codesFile-hint">Chọn CSV, JSON hoặc XLSX một cột CodeContent. Tệp sẽ được giữ nguyên, không tách hay viết lại nội dung mã.</p>
+          </div>
+          <div class="field">
+            <label for="api-key"><span>API key</span><span class="field-key">Không bắt buộc nếu máy không cấu hình key</span></label>
+            <input id="api-key" type="password" autocomplete="off" placeholder="Nhập key cho lần gửi này" aria-describedby="api-key-hint">
+            <p class="field-hint" id="api-key-hint">Key chỉ dùng tạm trong lần gửi, chỉ truyền qua header x-api-key và không được lưu vào trình duyệt. Nếu server trả 401, hãy kiểm tra hoặc nhập lại key.</p>
+          </div>
+          <p class="sr-only" id="form-error" role="alert"></p>
+          <div class="actions">
+            <button class="button button-primary" type="submit">Kiểm tra thông tin</button>
+            <button class="button button-secondary" id="send-button" type="button" disabled aria-describedby="send-locked">Gửi PO đến TanTienApp</button>
+          </div>
+          <p class="locked-note" id="send-locked">Mở trang tại /po-demo/ trên máy chủ nhận PO local để gửi; sau đó kiểm tra thông tin trước khi gửi.</p>
+        </form>
+      </section>
+
+      <aside class="panel side-panel" aria-labelledby="preview-title">
+        <div class="side-head"><h2 class="step-title" id="preview-title"><span class="step-number">1</span> Xem trước thông tin</h2></div>
+        <div class="side-body">
+          <div class="status" id="preview-status" role="status" aria-live="polite">
+            <span class="status-symbol" aria-hidden="true">＋</span>
+            <h3 id="status-title">Chưa kiểm tra thông tin</h3>
+            <p id="status-message">Hoàn thành các trường bên trái, sau đó chọn “Kiểm tra thông tin” để xem bản tóm tắt PO.</p>
+          </div>
+          <dl class="summary" id="summary" hidden>
+            <div class="summary-row"><dt>Mã đơn hàng / LOT</dt><dd id="summary-order"></dd></div>
+            <div class="summary-row"><dt>Số lượng mã</dt><dd id="summary-qty"></dd></div>
+            <div class="summary-row"><dt>GTIN</dt><dd id="summary-gtin"></dd></div>
+            <div class="summary-row"><dt>Tệp CodeContent</dt><dd id="summary-file"></dd></div>
+          </dl>
+          <h3 class="result-heading">Kết quả nhận PO</h3>
+          <div class="metrics" aria-label="Các nhóm kết quả nhận PO">
+            <div class="metric"><span class="metric-label">Mã mới được nhận</span><span class="metric-value" id="accepted-count">—</span></div>
+            <div class="metric"><span class="metric-label">Mã sai cấu trúc</span><span class="metric-value" id="invalid-count">—</span></div>
+            <div class="metric"><span class="metric-label">GTIN không khớp</span><span class="metric-value" id="gtin-mismatch-count">—</span></div>
+            <div class="metric"><span class="metric-label">Mã trùng</span><span class="metric-value" id="duplicate-count">—</span></div>
+          </div>
+          <p class="count-warning" id="count-warning" role="status" hidden></p>
+          <details class="result-details" id="result-details" hidden><summary id="details-heading">Chi tiết mã bị loại</summary><ul id="rejected-codes"></ul></details>
+          <p class="honesty-note" id="result-note"><strong>Chưa gửi đến TanTienApp</strong>Kiểm tra thông tin rồi chọn nút gửi. Chưa có PO nào được gửi từ trang này.</p>
+          <p class="footnote" id="connection-note">Trang gửi đến /api/po trên cùng máy chủ. API key chỉ dùng cho lần gửi hiện tại.</p>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <script src="./validation.js"></script>
+  <script>
+    (() => {
+      const { hasValidGtin, isReceiverLocation, uploadPo } = window.PoDemoValidation;
+      const form = document.querySelector('#po-form');
+      const fields = {
+        orderNo: document.querySelector('#orderNo'),
+        orderQty: document.querySelector('#orderQty'),
+        gtin: document.querySelector('#gtin'),
+        codesFile: document.querySelector('#codesFile')
+      };
+      const status = document.querySelector('#preview-status');
+      const title = document.querySelector('#status-title');
+      const message = document.querySelector('#status-message');
+      const summary = document.querySelector('#summary');
+      const error = document.querySelector('#form-error');
+      const send = document.querySelector('#send-button');
+      const key = document.querySelector('#api-key');
+      const note = document.querySelector('#result-note');
+      const warning = document.querySelector('#count-warning');
+      const details = document.querySelector('#result-details');
+      const rejected = document.querySelector('#rejected-codes');
+      const receiver = isReceiverLocation(window.location);
+      const number = value => new Intl.NumberFormat('vi-VN').format(value);
+      let checked = false;
+      let busy = false;
+
+      document.querySelector('#connection-tag').textContent = receiver ? 'MÁY CHỦ NHẬN PO LOCAL' : 'BẢN XEM TRƯỚC';
+      document.querySelector('#send-locked').textContent = receiver
+        ? 'Kiểm tra thông tin trước khi gửi. Một lần bấm sẽ gửi PO đến TanTienApp trên máy chủ này.'
+        : 'Chỉ xem trước. Mở đúng /po-demo/ trên máy chủ nhận PO local; trang này chưa cho phép gửi.';
+
+      function clearResult() {
+        for (const id of ['accepted-count', 'invalid-count', 'gtin-mismatch-count', 'duplicate-count']) {
+          document.getElementById(id).textContent = '—';
+        }
+        warning.hidden = true;
+        details.hidden = true;
+        details.open = false;
+        rejected.replaceChildren();
+      }
+
+      function showStatus(heading, text, ready = false) {
+        title.textContent = heading;
+        message.textContent = text;
+        status.classList.toggle('ready', ready);
+        status.classList.remove('failed');
+      }
+
+      function setValidity() {
+        fields.orderNo.setCustomValidity(fields.orderNo.value.trim() ? '' : 'Hãy nhập mã đơn hàng hoặc LOT.');
+        fields.gtin.setCustomValidity(hasValidGtin(fields.gtin.value) ? '' : 'GTIN phải gồm 8, 12, 13 hoặc 14 chữ số và có checksum hợp lệ.');
+        const file = fields.codesFile.files[0];
+        fields.codesFile.setCustomValidity(file && (!/\.(csv|json|xlsx)$/i.test(file.name) || file.size === 0)
+          ? 'Hãy chọn tệp CSV, JSON hoặc XLSX có dữ liệu.' : '');
+        for (const field of Object.values(fields)) {
+          field.setAttribute('aria-invalid', String(!field.validity.valid && field.value.length > 0));
+        }
+      }
+
+      for (const field of Object.values(fields)) {
+        const changed = () => {
+          if (busy) return;
+          checked = false;
+          send.disabled = true;
+          error.textContent = '';
+          setValidity();
+          summary.hidden = true;
+          clearResult();
+          showStatus('Chưa kiểm tra thông tin', 'Thông tin đã thay đổi. Chọn “Kiểm tra thông tin” để xác minh lại.');
+          note.textContent = 'Thông tin mới chưa được gửi. Kết quả lần trước (nếu có) không áp dụng cho thông tin vừa sửa.';
+        };
+        field.addEventListener('input', changed);
+        field.addEventListener('change', changed);
+      }
+
+      form.addEventListener('submit', event => {
+        event.preventDefault();
+        if (busy) return;
+        setValidity();
+        checked = false;
+        send.disabled = true;
+        clearResult();
+        if (!form.checkValidity()) {
+          error.textContent = 'Vui lòng kiểm tra các trường bắt buộc và nhập số lượng là số nguyên lớn hơn 0.';
+          form.reportValidity();
+          status.classList.remove('ready');
+          title.textContent = 'Cần kiểm tra lại thông tin';
+          message.textContent = 'Một hoặc nhiều trường chưa hợp lệ. Sửa các trường được đánh dấu rồi thử lại.';
+          summary.hidden = true;
+          return;
+        }
+
+        document.querySelector('#summary-order').textContent = fields.orderNo.value.trim();
+        document.querySelector('#summary-qty').textContent = number(Number(fields.orderQty.value));
+        document.querySelector('#summary-gtin').textContent = fields.gtin.value.trim();
+        document.querySelector('#summary-file').textContent = fields.codesFile.files[0].name;
+        summary.hidden = false;
+        checked = true;
+        send.disabled = !receiver;
+        showStatus('Thông tin đã qua kiểm tra cơ bản', receiver
+          ? 'Chọn “Gửi PO đến TanTienApp” để tải nguyên tệp lên máy chủ. Cấu trúc mã và số dòng sẽ được máy chủ kiểm tra.'
+          : 'Bản xem trước chỉ kiểm tra trường nhập. Hãy mở trang từ máy chủ nhận PO local để gửi.', true);
+        note.textContent = 'Chưa gửi thông tin vừa kiểm tra. Kiểm tra cơ bản không xác nhận nội dung tệp hợp lệ.';
+        error.textContent = '';
+      });
+
+      send.addEventListener('click', async () => {
+        if (busy || !checked || !receiver) return;
+        setValidity();
+        if (!form.reportValidity()) { checked = false; send.disabled = true; return; }
+        const metadata = { orderNo: fields.orderNo.value.trim(), orderQty: Number(fields.orderQty.value),
+          gtin: fields.gtin.value.trim(), file: fields.codesFile.files[0] };
+        let apiKey = key.value;
+        key.value = '';
+        busy = true;
+        checked = false;
+        clearResult();
+        const controls = [...form.querySelectorAll('input, button')];
+        controls.forEach(control => { control.disabled = true; });
+        form.setAttribute('aria-busy', 'true');
+        send.textContent = 'Đang gửi PO…';
+        showStatus('Đang gửi PO', 'Đang chờ máy chủ kiểm tra và trả kết quả.');
+        note.textContent = 'Đã bắt đầu gửi. Vui lòng chờ phản hồi; không gửi lại từ cửa sổ khác.';
+        try {
+          const request = uploadPo(metadata, apiKey);
+          apiKey = '';
+          const result = await request;
+          showStatus(result.title, result.message, result.ok);
+          status.classList.toggle('failed', !result.ok);
+          if (result.showCounts) {
+            document.querySelector('#accepted-count').textContent = number(result.accepted);
+            document.querySelector('#invalid-count').textContent = number(result.invalidCount);
+            document.querySelector('#gtin-mismatch-count').textContent = number(result.mismatchCount);
+            document.querySelector('#duplicate-count').textContent = number(result.duplicateCodes.length);
+            if (result.differs || result.planned !== metadata.orderQty) {
+              warning.textContent = `Máy chủ nhận mới ${number(result.accepted)}/${number(result.planned)} mã kế hoạch; form đã khai báo ${number(metadata.orderQty)}. Số nhận mới không phải tổng mã hiện có của PO. Hãy kiểm tra phần mã bị loại.`;
+              warning.hidden = false;
+            }
+          }
+          const reasons = { invalidStructure: 'Sai cấu trúc', gtinMismatch: 'GTIN không khớp' };
+          const rows = [...result.invalidCodes.map(item => ({ code: item.code, label: Object.hasOwn(reasons, item.reason) ? reasons[item.reason] : `Lý do khác (${item.reason})` })),
+            ...result.duplicateCodes.map(code => ({ code, label: 'Mã trùng' }))];
+          for (const row of rows.slice(0, 200)) {
+            const item = document.createElement('li');
+            item.textContent = `${row.label}: ${row.code}`;
+            rejected.append(item);
+          }
+          details.hidden = rows.length === 0;
+          document.querySelector('#details-heading').textContent = rows.length > 200
+            ? `Hiển thị 200/${number(rows.length)} mã bị loại đầu tiên`
+            : `Chi tiết ${number(rows.length)} mã bị loại`;
+          note.textContent = result.uncertain
+            ? 'Chưa xác định máy chủ đã lưu PO hay chưa. Hãy kiểm tra PO trong TanTienApp trước khi thử lại. Trang không tự gửi lại.'
+            : result.kind === 'unauthorized' ? 'Máy chủ yêu cầu API key hợp lệ. Nhập lại key, kiểm tra thông tin rồi gửi lại.'
+            : result.kind === 'duplicate' ? 'Máy chủ không lưu mã mới vì các mã đã tồn tại. Kiểm tra PO hiện có; không cần gửi lại cùng tệp.'
+            : result.ok ? 'Đã có phản hồi từ TanTienApp. Hãy kiểm tra số mã mới được nhận và các mã bị loại trước khi vận hành PO.'
+            : 'Yêu cầu chưa được chấp nhận. Kiểm tra thông báo máy chủ và sửa dữ liệu hoặc trạng thái PO trước khi thử lại.';
+        } finally {
+          apiKey = '';
+          key.value = '';
+          busy = false;
+          controls.forEach(control => { control.disabled = false; });
+          send.disabled = true;
+          send.textContent = 'Gửi PO đến TanTienApp';
+          form.removeAttribute('aria-busy');
+        }
+      });
+      window.addEventListener('pagehide', () => { key.value = ''; });
+    })();
+  </script>
+</body>
+</html>

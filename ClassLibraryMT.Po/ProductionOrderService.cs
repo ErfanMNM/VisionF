@@ -31,7 +31,28 @@ public enum PoCodeValidation
 /// <param name="PoCount">Tổng số PO trên server.</param>
 /// <param name="NewPoCount">Số PO mới (chưa có trong DB local).</param>
 /// <param name="NewCodeCount">Số mã mới được thêm vào DB local.</param>
-public sealed record PoSyncResult(int PoCount, int NewPoCount, int NewCodeCount);
+public sealed record PoSyncResult(int PoCount, int NewPoCount, int NewCodeCount)
+{
+    public IReadOnlyList<PoSyncOrderResult> Orders { get; init; } = [];
+    public int AcceptedCount => Orders.Sum(o => o.AcceptedCount);
+    public int PlannedCount => Orders.Sum(o => o.PlannedCount);
+    public IReadOnlyList<PoCodeRejection> InvalidCodes => Orders.SelectMany(o => o.InvalidCodes).ToArray();
+    public IReadOnlyList<string> DuplicateCodes => Orders.SelectMany(o => o.DuplicateCodes).ToArray();
+    public bool HasValidationErrors => Orders.Any(o => o.ValidationError is not null || o.InvalidCodes.Count > 0);
+}
+
+/// <summary>Mã bị loại vẫn mang nguyên CodeContent đầu vào.</summary>
+public sealed record PoCodeRejection(string CodeContent, string Reason);
+
+/// <summary>Kết quả validation của một snapshot tải xuống, tách khỏi lỗi vận chuyển.</summary>
+public sealed record PoSyncOrderResult(
+    string OrderNo,
+    int PlannedCount,
+    int InputCount,
+    int AcceptedCount,
+    IReadOnlyList<PoCodeRejection> InvalidCodes,
+    IReadOnlyList<string> DuplicateCodes,
+    string? ValidationError = null);
 
 /// <summary>
 /// Điều phối toàn bộ luồng quản lý Production Order.
@@ -200,53 +221,93 @@ public sealed class ProductionOrderService
 
         var newPoCount = 0;
         var newCodeCount = 0;
+        var outcomes = new List<PoSyncOrderResult>();
 
         foreach (var order in orders)
         {
             var local = await FindLocalOrderAsync(order.OrderNo, ct).ConfigureAwait(false);
             if (local?.IsFinished == true)
                 continue;
-            var existed = local is not null;
-            if (local is not null)
-                order.CreatedUtc = local.CreatedUtc;
-
             var codes = await _client.GetCodesAsync(order.OrderNo, ct).ConfigureAwait(false);
-            var seen = new HashSet<string>(StringComparer.Ordinal);
-            codes = codes.Where(code =>
-            {
-                var key = code.CodeContent;
-                return key.Length > 0 && seen.Add(key);
-            }).ToArray();
-            if (codes.Count == 0)
-                continue;
+            var invalid = new List<PoCodeRejection>();
+            var duplicates = new List<string>();
+            var accepted = new List<PoCode>();
+            var metadataGtin = order.Gtin;
+            if (string.IsNullOrEmpty(metadataGtin) && order.Additional is not null)
+                metadataGtin = order.Additional.FirstOrDefault(e => string.Equals(e.Key,
+                    PoStore.MetaGtin, StringComparison.OrdinalIgnoreCase)).Value;
+            var validGtin = PoCodeParser.TryNormalizeGtin(metadataGtin, out var gtin);
+            string? validationError = null;
+            if (string.IsNullOrWhiteSpace(order.OrderNo))
+                validationError = "PO thiếu orderNo.";
+            else if (!validGtin)
+                validationError = "PO phải có đúng một GTIN hợp lệ và đúng checksum.";
+            // Snapshot download có thể chỉ chứa phần accepted trên server.
+            // Planned vẫn là target, không bị hạ về số dòng thực nhận.
+            else if (order.OrderQty <= 0 || codes.Count == 0 || codes.Count > order.OrderQty)
+                validationError = "Số record tải xuống phải lớn hơn 0 và không vượt số lượng kế hoạch.";
+            else if (local is not null && (local.Gtin.Length == 0
+                || !string.Equals(local.Gtin, gtin, StringComparison.Ordinal)))
+                validationError = "GTIN không khớp PO local hoặc PO legacy chưa xác định được một GTIN duy nhất.";
 
-            order.OrderQty = (local?.TotalCodes ?? 0) + codes.Count;
+            if (validationError is not null)
+            {
+                outcomes.Add(new(order.OrderNo, order.OrderQty, codes.Count, 0, invalid, duplicates, validationError));
+                continue;
+            }
+
+            var seen = new HashSet<string>(StringComparer.Ordinal);
             if (local is not null)
             {
-                var additional = new Dictionary<string, string>(local.Additional, StringComparer.OrdinalIgnoreCase);
-                foreach (var entry in order.Additional)
-                    additional[entry.Key] = entry.Value;
-                order.Additional = additional;
+                var existingCodes = await _store.GetCodesWithFlagsAsync(local.OrderNo, local.CreatedUtc, ct)
+                    .ConfigureAwait(false);
+                if (existingCodes.Any(c => !PoCodeParser.TryGetGtin(c.Key, out var existingGtin)
+                    || !string.Equals(existingGtin, gtin, StringComparison.Ordinal)))
+                {
+                    outcomes.Add(new(order.OrderNo, order.OrderQty, codes.Count, 0, invalid, duplicates,
+                        "PO legacy chứa mã sai cấu trúc hoặc trộn GTIN; không thể bổ sung tự động."));
+                    continue;
+                }
+                seen.UnionWith(existingCodes.Select(c => c.Key));
             }
-
-            var before = await CountCodesAsync(order, ct).ConfigureAwait(false);
-            await _store.EnsurePoDbAsync(order, codes, ct).ConfigureAwait(false);
-            var after = await CountCodesAsync(order, ct).ConfigureAwait(false);
-            // Repeated snapshots can include existing rows; metadata follows the
-            // actual per-PO union rather than adding the snapshot size twice.
-            await _store.SetMetaAsync(order.OrderNo, order.CreatedUtc,
-                PoStore.MetaOrderQty, after.ToString(System.Globalization.CultureInfo.InvariantCulture), ct)
-                .ConfigureAwait(false);
-
-            if (!existed)
+            foreach (var code in codes)
             {
-                newPoCount++;
+                var raw = code.CodeContent ?? string.Empty;
+                if (!PoCodeParser.TryGetGtin(raw, out var codeGtin))
+                    invalid.Add(new(raw, "invalidStructure"));
+                else if (!string.Equals(gtin, codeGtin, StringComparison.Ordinal))
+                    invalid.Add(new(raw, "gtinMismatch"));
+                else if (!seen.Add(raw))
+                    duplicates.Add(raw);
+                else
+                    accepted.Add(code);
             }
 
-            if (after > before)
+            if (accepted.Count == 0 && duplicates.Count == 0)
             {
-                newCodeCount += after - before;
+                outcomes.Add(new(order.OrderNo, order.OrderQty, codes.Count, 0, invalid, duplicates,
+                    "Không có mã hợp lệ để nhận."));
+                continue;
             }
+
+            var additional = new Dictionary<string, string>(local?.Additional ?? [], StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in order.Additional ?? [])
+                additional[entry.Key] = entry.Value;
+            var saved = new ProductionOrder
+            {
+                OrderNo = order.OrderNo,
+                OrderQty = Math.Max(local?.OrderQty ?? 0, order.OrderQty),
+                Gtin = gtin,
+                CreatedUtc = local?.CreatedUtc ?? order.CreatedUtc,
+                Additional = additional,
+            };
+            var before = local?.TotalCodes ?? 0;
+            await _store.EnsurePoDbAsync(saved, accepted, ct).ConfigureAwait(false);
+            var after = await CountCodesAsync(saved, ct).ConfigureAwait(false);
+            if (local is null) newPoCount++;
+            newCodeCount += Math.Max(0, after - before);
+            outcomes.Add(new(order.OrderNo, saved.OrderQty, codes.Count,
+                Math.Max(0, after - before), invalid, duplicates));
         }
 
         _logger?.LogInformation(
@@ -254,7 +315,7 @@ public sealed class ProductionOrderService
             orders.Count, newPoCount, newCodeCount);
 
         RaiseChanged();
-        return new PoSyncResult(orders.Count, newPoCount, newCodeCount);
+        return new PoSyncResult(orders.Count, newPoCount, newCodeCount) { Orders = outcomes };
     }
 
     /// <summary>
@@ -275,7 +336,7 @@ public sealed class ProductionOrderService
                     running.OrderNo, local.OrderNo, StringComparison.OrdinalIgnoreCase))
             {
                 result.Add(new ProductionOrderSummary(
-                    running, ScannedCount, CurrentStatus));
+                    running, ScannedCount, CurrentStatus) { TotalCodes = TotalCount });
                 continue;
             }
 
@@ -284,6 +345,7 @@ public sealed class ProductionOrderService
                 {
                     OrderNo = local.OrderNo,
                     OrderQty = local.OrderQty,
+                    Gtin = local.Gtin,
                     CreatedUtc = local.CreatedUtc,
                     Additional = local.Additional,
                 },
@@ -291,7 +353,7 @@ public sealed class ProductionOrderService
                 local.Status,
                 local.StartedUtc,
                 local.CompletedUtc,
-                local.CancelledUtc));
+                local.CancelledUtc) { TotalCodes = local.TotalCodes });
         }
 
         return result;
@@ -379,8 +441,10 @@ public sealed class ProductionOrderService
         var order = new ProductionOrder
         {
             OrderNo = orderNo,
-            OrderQty = codes.Count,
+            OrderQty = local.OrderQty,
+            Gtin = local.Gtin,
             CreatedUtc = local.CreatedUtc,
+            Additional = local.Additional,
         };
 
         _cache.LoadOrder(orderNo, codes);
@@ -545,7 +609,9 @@ public sealed class ProductionOrderService
             {
                 OrderNo = local.OrderNo,
                 OrderQty = local.OrderQty,
+                Gtin = local.Gtin,
                 CreatedUtc = local.CreatedUtc,
+                Additional = local.Additional,
             };
         }
 
@@ -651,8 +717,10 @@ public sealed class ProductionOrderService
             _current = new ProductionOrder
             {
                 OrderNo = run.OrderNo,
-                OrderQty = codes.Count,
+                OrderQty = local.OrderQty,
+                Gtin = local.Gtin,
                 CreatedUtc = local.CreatedUtc,
+                Additional = local.Additional,
             };
             _currentStatus = ProductionOrderStatus.Running;
         }
@@ -1110,6 +1178,9 @@ public sealed record ProductionOrderSummary(
     DateTime? CompletedUtc = null,
     DateTime? CancelledUtc = null)
 {
+    /// <summary>Số mã thực nhận; tiến độ sản xuất dựa vào tập mã thực này.</summary>
+    public int TotalCodes { get; init; } = Order.OrderQty;
+
     /// <summary>Mã PO.</summary>
     public string OrderNo => Order.OrderNo;
 

@@ -12,14 +12,23 @@ public sealed class PoPushRequest
     /// Tên / mã lệnh sản xuất (bắt buộc). Dùng làm khoá duy nhất —
     /// PO chưa bắt đầu được bổ sung mã mới; PO đã kết thúc bị từ chối HTTP 409.
     /// </summary>
-    [JsonPropertyName("poName")]
-    public string PoName { get; set; } = string.Empty;
+    [JsonPropertyName("orderNo")]
+    public string OrderNo { get; set; } = string.Empty;
+
+    /// <summary>Alias legacy của <see cref="OrderNo"/> (query poName).</summary>
+    [JsonIgnore]
+    [Obsolete("Use OrderNo.")]
+    public string PoName { get => OrderNo; set => OrderNo = value ?? string.Empty; }
 
     /// <summary>
-    /// Số dòng mã hợp lệ trong lần gửi (bắt buộc, &gt; 0), kiểm tra trước lọc trùng.
+    /// Số lượng planned của lần gửi (bắt buộc, &gt; 0), khớp số record trước mọi bước lọc.
     /// </summary>
     [JsonPropertyName("orderQty")]
     public int OrderQty { get; set; }
+
+    /// <summary>GTIN duy nhất áp dụng cho toàn bộ PO.</summary>
+    [JsonPropertyName("gtin")]
+    public string Gtin { get; set; } = string.Empty;
 
     /// <summary>Mã lô / batch code — lưu vào trường mở rộng.</summary>
     [JsonPropertyName("batchCode")]
@@ -57,6 +66,10 @@ public sealed class PoPushResponse
     public string Message { get; set; } = string.Empty;
 
     /// <summary>Mã PO (có thể rỗng nếu không đọc được).</summary>
+    [JsonPropertyName("orderNo")]
+    public string OrderNo { get; set; } = string.Empty;
+
+    /// <summary>Alias response legacy, giữ cho caller cũ.</summary>
     [JsonPropertyName("poName")]
     public string PoName { get; set; } = string.Empty;
 
@@ -64,9 +77,35 @@ public sealed class PoPushResponse
     [JsonPropertyName("accepted")]
     public int Accepted { get; set; }
 
+    /// <summary>Số mã hợp lệ mới được lưu (tên rõ nghĩa cho caller mới).</summary>
+    [JsonPropertyName("acceptedCount")]
+    public int AcceptedCount { get; set; }
+
+    /// <summary>Số lượng planned vẫn giữ nguyên từ request.</summary>
+    [JsonPropertyName("plannedCount")]
+    public int PlannedCount { get; set; }
+
     /// <summary>Số mã trùng đã tự động bỏ qua.</summary>
     [JsonPropertyName("ignoredDuplicates")]
     public int IgnoredDuplicates { get; set; }
+
+    /// <summary>Mã bị loại do sai cấu trúc hoặc khác GTIN của PO.</summary>
+    [JsonPropertyName("invalidCodes")]
+    public List<PoRejectedCode> InvalidCodes { get; set; } = [];
+
+    /// <summary>Mã bị loại do trùng exact-string trong file/PO.</summary>
+    [JsonPropertyName("duplicateCodes")]
+    public List<string> DuplicateCodes { get; set; } = [];
+}
+
+/// <summary>Một mã bị loại và lý do để Client xử lý từng record.</summary>
+public sealed class PoRejectedCode
+{
+    [JsonPropertyName("code")]
+    public string Code { get; set; } = string.Empty;
+
+    [JsonPropertyName("reason")]
+    public string Reason { get; set; } = string.Empty;
 }
 
 /// <summary>

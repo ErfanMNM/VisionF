@@ -1,22 +1,22 @@
 # API nhận PO từ MES
 
-Cập nhật: 2026-11-26. Phiên bản này thay cơ chế mã GTIN/serial bằng nguyên nội dung `CodeContent` và chỉ nhận tập mã dưới dạng file CSV, JSON hoặc XLSX. Mỗi PO có một cơ sở dữ liệu riêng; mọi lần bổ sung, đối chiếu và lưu trạng thái dùng đúng chuỗi mã đầy đủ.
+Cập nhật: 2026-11-26. API nhận metadata PO và đúng một file CSV/JSON/XLSX có cột `CodeContent`. Mỗi PO dùng đúng một GTIN có checksum. Server giữ nguyên chuỗi mã gốc để lưu, đối chiếu trùng và báo lỗi; GTIN được tách riêng chỉ để xác thực cấu trúc và giới hạn sản phẩm.
 
 ## Endpoint và cấu hình
 
-Máy chạy TanTienQR mở hai endpoint:
-
 | Endpoint | Mục đích |
 |---|---|
-| `GET /api/health` | Kiểm tra listener và số lần nhận dữ liệu thành công. |
-| `POST /api/po` | Nhận một file tập mã, tạo PO mới hoặc bổ sung vào PO chưa bắt đầu. |
+| `GET /api/health` | Kiểm tra listener và số lần nhận có ghi dữ liệu thành công. |
+| `POST /api/po` | Nhận file, tạo PO hoặc bổ sung vào PO chưa bắt đầu. |
+| `GET /po-demo/` | Trang tạo PO demo được nhúng trong assembly. |
+| `GET /po-demo/validation.js` | Mã kiểm tra phía trình duyệt được nhúng trong assembly. |
 
-Base URL mặc định là `http://127.0.0.1:8085`. MES trên máy khác dùng IP LAN của máy chạy app sau khi cấu hình listener và firewall.
+Base URL mặc định: `http://127.0.0.1:8085`. Bật listener theo cấu hình:
 
 ```json
 {
   "PoServer": {
-    "Enabled": false,
+    "Enabled": true,
     "Port": 8085,
     "BindAddress": "127.0.0.1",
     "ApiKey": "",
@@ -29,177 +29,154 @@ Base URL mặc định là `http://127.0.0.1:8085`. MES trên máy khác dùng I
 }
 ```
 
-Đặt `Enabled` thành `true` để bật listener. `BindAddress` là `127.0.0.1` khi chỉ nhận từ máy cục bộ, hoặc địa chỉ LAN / `0.0.0.0` khi nhận trong mạng. Nếu `ApiKey` có giá trị, mọi request phải có header `x-api-key` khớp chính xác, kể cả health.
+Khi cấu hình `ApiKey`, tất cả API vẫn yêu cầu header `x-api-key` khớp chính xác, kể cả health. Chỉ hai route GET tĩnh nêu trên được mở không cần key khi **listener bind loopback**. Listener bind LAN/wildcard vẫn yêu cầu key cho cả tài nguyên tĩnh, kể cả request được gửi từ loopback. Không có CORS wildcard hoặc static file server trên đĩa; path khác, alias `/po-demo/index.html`, method khác và traversal không phục vụ tài nguyên nhúng. HTML và JS được đóng gói lúc build; sửa tài liệu nguồn UI cần build lại assembly.
 
-`MaxBodyMB` giới hạn toàn bộ request, `MaxFileMB` giới hạn file. File upload được ghi tạm xuống đĩa và dọn sau xử lý. Thư mục tạm mặc định lấy từ hệ điều hành. Request quá thời gian `RequestTimeoutSeconds` bị hủy; không công bố một PO nhập dở. Listener xử lý tối đa `MaxConcurrentRequests` request cùng lúc.
-
-## File có đúng một cột CodeContent
-
-Tên cột hoặc thuộc tính phải là **`CodeContent`**, đúng hoa thường. Không cần GTIN, serial hay định dạng QR cụ thể. Mã là chuỗi opaque: dấu câu, Unicode, khoảng trắng đầu/cuối và xuống dòng nằm trong một giá trị hợp lệ được giữ nguyên. Không dùng kết quả tách URL, GTIN hay serial để xác định mã.
-
-Hai mã `Case` và `case` là hai mã khác nhau. Hai URL có cùng hậu tố cũng là hai mã khác nhau. Giá trị rỗng hoặc chỉ có khoảng trắng bị từ chối.
-
-### CSV UTF-8
-
-Dòng tiêu đề có đúng một cột `CodeContent`. Mỗi bản ghi sau đó có đúng một giá trị. Dùng quy tắc CSV có dấu ngoặc kép khi mã chứa dấu phẩy, dấu ngoặc kép hoặc xuống dòng; dấu `"` bên trong ô được ghi thành `""`.
-
-```csv
-CodeContent
-BOX-001
-"https://example.invalid/code?value=a,b"
-"Mã có ""ngoặc kép"""
-"  giữ nguyên khoảng trắng  "
-```
-
-Dòng vật lý trống bên ngoài một ô có ngoặc kép được bỏ qua. Ô rỗng `""`, ô chỉ có khoảng trắng, dòng thiếu giá trị, cột thừa hoặc tiêu đề `code`, `serial`, `GTIN` đều không hợp lệ. Xuống dòng bên trong ô có ngoặc kép là một phần của mã và chỉ tính là **một** bản ghi.
-
-### JSON UTF-8
-
-File là một mảng object. Mỗi object chứa duy nhất một thuộc tính `CodeContent` có giá trị chuỗi:
-
-```json
-[
-  { "CodeContent": "BOX-001" },
-  { "CodeContent": "https://first.invalid/21/SAME" },
-  { "CodeContent": "https://second.invalid/21/SAME" }
-]
-```
-
-Các ví dụ sau bị từ chối:
-
-```json
-["BOX-001"]
-```
-
-```json
-[{ "CodeContent": "BOX-001", "serial": "001" }]
-```
-
-```json
-{ "poName": "PO-001", "orderQty": 1, "codes": ["BOX-001"] }
-```
-
-Object thiếu thuộc tính, thuộc tính sai hoa thường, thuộc tính trùng, giá trị `null`/số/object/array, mã trống và envelope `codes` hoặc `csv` đều không được nhận. Metadata PO phải nằm ngoài file.
-
-### XLSX
-
-Sheet đầu tiên là bảng có duy nhất cột A, ô A1 là `CodeContent`; các dòng tiếp theo chứa mã. Lưu mã bằng kiểu văn bản để giữ số 0 đầu và nội dung chính xác. Không thêm cột GTIN/serial/metadata hoặc dùng công thức làm mã.
-
-`.xls` BIFF legacy không được hỗ trợ trong contract mới. Hãy xuất CSV UTF-8, JSON hoặc XLSX một cột.
+`MaxBodyMB` giới hạn toàn request, `MaxFileMB` giới hạn file. Upload được stream xuống file tạm và dọn sau xử lý. API key chỉ gửi qua header, không đưa vào file, query, body, browser storage hay log. Trang demo gọi relative `/api/po` cùng origin và nhận key qua password input.
 
 ## Metadata PO
 
-Metadata nằm trong query string khi gửi file thuần, hoặc trong các field riêng khi dùng multipart. Body file chỉ chứa tập mã.
+Metadata nằm ở query khi gửi file thuần, hoặc ở các field multipart riêng. Không nhét metadata vào bảng mã.
 
 | Tên | Bắt buộc | Ý nghĩa |
 |---|---|---|
-| `poName` | Có | Mã PO không rỗng, tối đa 200 ký tự. |
-| `orderQty` | Có | Số bản ghi mã của **lần upload này**, số nguyên dương, phải khớp chính xác số bản ghi trước lọc trùng. |
-| `batchCode` | Không | Mô tả mã lô của PO. |
-| `productName` | Không | Mô tả tên sản phẩm. |
-| `customer` | Không | Mô tả khách hàng. |
+| `orderNo` | Có | Mã PO không rỗng, tối đa 200 ký tự. `poName` là alias legacy; `po`/`lot` cũng được hỗ trợ. |
+| `orderQty` | Có | Số lượng **planned**, nguyên dương. Phải khớp số record gốc trong file trước mọi bước lọc. Alias `qty` được hỗ trợ. |
+| `gtin` | Có | Đúng một GTIN gồm 8/12/13/14 chữ số ASCII và checksum đúng, không khoảng trắng hoặc danh sách. |
+| `batchCode` | Không | Mã lô; alias `batch`. |
+| `productName` | Không | Tên sản phẩm; alias `product`. |
+| `customer` | Không | Khách hàng. |
 
-Không gửi `gtin`, `serial`, `codes` hoặc `csv` trong metadata. Các trường này không thay thế cho file CodeContent. Multipart nhận đúng một file; không gửi nhiều file trong cùng request.
+Một trường và alias của nó chỉ được gửi **một lần** trên toàn query + multipart. Ví dụ cùng gửi `orderNo` và `poName`, hoặc lặp `gtin`, bị `400`. Metadata không hỗ trợ như `serial`, `codes`, `csv` cũng bị `400`. Multipart phải có đúng một file.
 
-Ví dụ file có 5 dòng mã, trong đó hai dòng giống hệt nhau: `orderQty=5`, `accepted=4`, `ignoredDuplicates=1`. Nếu gửi `orderQty=4` hoặc `6`, server trả `400` và không lưu dữ liệu.
+GTIN hợp lệ được chuẩn hóa riêng về 14 chữ số bằng cách thêm số 0 đầu để so sánh/lưu định danh PO: `4006381333931` khớp AI (01) `04006381333931`. Không chuẩn hóa, cắt, trim hoặc đổi hoa thường `CodeContent` để dedupe.
+
+`orderQty` không bị thay bằng accepted/actual sau khi lọc. Với request hợp lệ có mã mới hoặc toàn duplicate, planned đã lưu là `max(planned hiện có, orderQty lần này)`, không cộng lại target và không hạ target do batch nhỏ hơn. Actual là số mã thực trong DB; vì lọc hoặc bổ sung, actual và planned có thể khác nhau. Upload toàn duplicate vẫn tăng planned nếu cần, nhưng giữ metadata mô tả, các mã và lịch sử scan cũ.
+
+## File một cột CodeContent
+
+Tên cột/thuộc tính phải đúng **`CodeContent`**, phân biệt hoa thường. CSV UTF-8, JSON UTF-8 và sheet đầu của XLSX được hỗ trợ; `.xls` BIFF cũ không được hỗ trợ.
+
+```csv
+CodeContent
+(01)09506000134352(21)Case
+(01)09506000134352(21)case
+https://first.invalid/01/09506000134352/21/SAME
+https://second.invalid/01/09506000134352/21/SAME
+```
+
+Bốn mã trên khác nhau theo toàn bộ raw string. JSON dùng mảng object, mỗi object chỉ có một thuộc tính chuỗi:
+
+```json
+[
+  { "CodeContent": "(01)09506000134352(21)Case" },
+  { "CodeContent": "https://first.invalid/01/09506000134352/21/SAME" }
+]
+```
+
+CSV dùng quoting chuẩn cho dấu phẩy, dấu ngoặc kép hoặc xuống dòng trong một ô. Dòng vật lý trống ngoài ô có quote được bỏ qua; xuống dòng bên trong ô là một phần mã và chỉ tính một record. XLSX có ô A1 là `CodeContent`, các ô mã trong cột A phải là văn bản để giữ số 0 đầu; không nhận công thức hoặc cột thừa.
+
+Lỗi **schema/file** từ chối toàn request `400`: header sai, nhiều cột, object thừa/thiếu/trùng thuộc tính, array chuỗi, `null`/số thay chuỗi, ô rỗng/chỉ khoảng trắng, file rỗng/hỏng hoặc multipart thiếu phần kết thúc. Không ghi một phần file lỗi vào PO cũ.
+
+Sau khi file đúng schema, server xét từng mã theo `PoCodeParser`: Digital Link `/01/<GTIN>/21/<serial>` (có thể có host/prefix phù hợp), dạng `(01)<GTIN-14>(21)<serial>`, hoặc element string AI (01)/(21). Serial phải dài 1–20 ký tự trong tập ký tự parser hỗ trợ. Mã opaque text, khoảng trắng thừa, Unicode/xuống dòng không hợp grammar hoặc định danh AI lặp bị báo `invalidStructure`; raw vẫn được trả nguyên vẹn. Đây là các grammar cụ thể của parser, không phải cam kết nhận mọi biểu diễn GS1.
+
+## Quy tắc lọc và trạng thái
+
+Thứ tự cho mỗi record trong file hợp lệ:
+
+1. Không tách được GTIN/cấu trúc/checksum mã không hợp lệ: thêm `{code, reason: "invalidStructure"}` vào `invalidCodes`.
+2. GTIN mã khác GTIN metadata sau chuẩn hóa: thêm `{code, reason: "gtinMismatch"}` vào `invalidCodes`.
+3. Raw trùng ordinal trong file hoặc đã có trong **chính PO đích**: thêm raw vào `duplicateCodes`.
+4. Còn lại: lưu nguyên `CodeContent` và tăng `acceptedCount`.
+
+Một mã sai lặp lại vẫn được báo sai theo thứ tự trên, không đổi thành duplicate. Cùng raw trong PO khác vẫn độc lập. Không dùng serial/hậu tố URL để dedupe.
+
+Ví dụ file có bốn record: một mã đúng GTIN, một bản lặp của nó, một chuỗi sai cấu trúc và một mã GTIN khác. Gửi `orderQty=4`: `acceptedCount=1`, `plannedCount=4`, hai `invalidCodes`, một `duplicateCodes`; DB giữ planned=4, actual=1. Gửi `orderQty=3` hoặc `5`: `400`, không thay DB.
+
+PO đã gắn GTIN khác bị `422` trước mutation. Với PO legacy, store chỉ suy GTIN khi có bằng chứng metadata hợp lệ hoặc toàn bộ mã cũ cùng một GTIN hợp lệ; append còn kiểm tra mọi mã đã lưu. PO thiếu GTIN không xác định được, có mã legacy sai hoặc mã trộn bị `422`; không tự sửa code/lịch sử scan cũ để cho nhập.
+
+Khi còn PO đã chạy nhưng chưa kết thúc, upload bị `409`. PO đã hoàn tất, hủy hoặc đóng không được mở lại bằng upload. Append vào PO chưa bắt đầu giữ nguyên identity, lịch sử và trạng thái mã cũ. Lỗi lưu SQLite rollback cả mã lẫn metadata trong lần ghi.
 
 ## Gửi request
 
-Các ví dụ dùng `curl.exe` trên Windows. Thay `<API_KEY>` bằng giá trị cấu hình của máy; bỏ header khi `PoServer:ApiKey` rỗng.
-
-### File CSV với metadata trong query
+Ví dụ Windows `curl.exe`; thay `<API_KEY>` bằng cấu hình cục bộ và bỏ header khi không cấu hình key.
 
 ```powershell
-curl.exe --request POST "http://127.0.0.1:8085/api/po?poName=PO-001&orderQty=4" `
+curl.exe --request POST "http://127.0.0.1:8085/api/po?orderNo=PO-001&orderQty=4&gtin=09506000134352" `
   --header "x-api-key: <API_KEY>" `
   --header "Content-Type: text/csv; charset=utf-8" `
   --data-binary "@codes.csv"
 ```
 
-`text/csv` được nhận trực tiếp, không bắt buộc header filename. Khi gửi kiểu file khác, dùng `Content-Disposition: attachment; filename="codes.xlsx"` hoặc `X-Filename` để chỉ rõ định dạng phù hợp.
-
-### File JSON với metadata trong query
-
-```powershell
-curl.exe --request POST "http://127.0.0.1:8085/api/po?poName=PO-JSON-001&orderQty=3" `
-  --header "x-api-key: <API_KEY>" `
-  --header "Content-Type: application/json; charset=utf-8" `
-  --data-binary "@codes.json"
-```
-
-Body vẫn là mảng object CodeContent của file JSON, không phải object PO có `codes`/`csv`.
-
-### Multipart với metadata và một file
+Gửi JSON cũng dùng metadata ở query và `Content-Type: application/json`; body vẫn là mảng object CodeContent, không phải envelope PO có `codes`/`csv`. Có thể chỉ rõ filename bằng `Content-Disposition: attachment; filename="codes.json"` hoặc `X-Filename`.
 
 ```powershell
 curl.exe --request POST "http://127.0.0.1:8085/api/po" `
   --header "x-api-key: <API_KEY>" `
-  --form "poName=PO-XLSX-001" `
+  --form "orderNo=PO-XLSX-001" `
   --form "orderQty=3" `
+  --form "gtin=09506000134352" `
   --form "batchCode=LOT-001" `
-  --form "productName=San pham A" `
   --form "file=@codes.xlsx;type=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 ```
 
-Client tự tạo boundary cho multipart; không tự gán header `Content-Type: multipart/form-data` thiếu boundary.
+Client/`FormData` tự đặt boundary multipart; không tự gán `Content-Type: multipart/form-data` thiếu boundary.
 
-### C# gửi CSV
+## Response
 
-```csharp
-using var client = new HttpClient();
-using var file = File.OpenRead("codes.csv");
-using var content = new StreamContent(file);
-content.Headers.ContentType = new("text/csv");
-using var request = new HttpRequestMessage(
-    HttpMethod.Post, "http://127.0.0.1:8085/api/po?poName=PO-001&orderQty=4")
-{
-    Content = content,
-};
-request.Headers.Add("x-api-key", "<API_KEY>");
-using var response = await client.SendAsync(request);
-Console.WriteLine(await response.Content.ReadAsStringAsync());
-response.EnsureSuccessStatusCode();
-```
-
-## Response và quy tắc trùng
-
-Response thành công:
+Ví dụ nhận một phần:
 
 ```json
 {
   "success": true,
-  "message": "Đã nhận PO PO-001 với 4 mã mới.",
+  "message": "Đã nhận 1/4 mã từ file cho PO PO-001; loại 2 mã sai và 1 mã trùng.",
+  "orderNo": "PO-001",
   "poName": "PO-001",
-  "accepted": 4,
-  "ignoredDuplicates": 0
+  "accepted": 1,
+  "acceptedCount": 1,
+  "plannedCount": 4,
+  "ignoredDuplicates": 1,
+  "invalidCodes": [
+    { "code": "raw-invalid", "reason": "invalidStructure" },
+    { "code": "(01)00012345678905(21)Other", "reason": "gtinMismatch" }
+  ],
+  "duplicateCodes": ["(01)09506000134352(21)Case"]
 }
 ```
 
-`accepted` là số mã mới lưu vào PO đích trong request này. `ignoredDuplicates` là số dòng bỏ qua do lặp nguyên CodeContent trong cùng file hoặc đã có trong **chính PO đích**. Gửi lại cùng file cho cùng PO chưa bắt đầu có thể trả `200`, `accepted=0`; không ghi lại trạng thái cũ. Nội dung giống nhau trong PO khác vẫn được lưu độc lập theo PO. Số thống kê PO lấy từ bản ghi đã lưu; không dùng bộ đếm tổng của PLC làm số mã PO.
-
-PO đã bắt đầu nhưng chưa kết thúc chặn nhận thêm dữ liệu. Khi còn PO dở dang, server trả `409` cho thao tác nhập. PO đã hoàn tất, hủy hoặc đóng không được mở lại bằng upload. Với PO chưa bắt đầu, việc bổ sung không ghi đè trạng thái mã đã tồn tại.
-
-Một file có bất kỳ bản ghi/schema không hợp lệ làm request bị từ chối toàn bộ: không tạo PO mới và không thêm một phần mã vào PO cũ. `orderQty` phải khớp chính xác số bản ghi hợp lệ trước lọc trùng; không tự bỏ dòng sai để nhập phần còn lại.
-
-## Health và lỗi
-
-```powershell
-curl.exe --header "x-api-key: <API_KEY>" "http://127.0.0.1:8085/api/health"
-```
-
-Health trả `success`, `message`, `prefix`, `received`, `startedUtc`. `received` là số lần nhận có ghi dữ liệu thành công từ lúc bật listener, không phải số mã hay số PO duy nhất.
+`acceptedCount` là mã mới lưu trong request, `plannedCount` là `orderQty` của request. Alias response legacy `poName`, `accepted`, `ignoredDuplicates` còn được giữ. Danh sách chứa raw theo thứ tự record bị loại; không có trường `rejectedCodes` tổng hợp riêng. Client cần đọc HTTP status, `success` và cả hai danh sách để phân biệt nhận một phần, validation, duplicate và lỗi vận chuyển.
 
 | HTTP | Trường hợp |
 |---|---|
-| `200` | Nhận thành công, kể cả upload lại cùng PO và không có mã mới. |
-| `400` | Metadata không hợp lệ, sai schema/số dòng, file lỗi/không được hỗ trợ, inline envelope hoặc nhiều file. |
-| `401` | Thiếu hoặc sai `x-api-key`. |
-| `404` | Endpoint không tồn tại. |
-| `408` | Request quá hạn hoặc bị hủy trước khi hoàn tất. |
-| `409` | Còn PO dở dang hoặc PO đích đã kết thúc. |
-| `413` | Request hoặc file vượt dung lượng cấu hình. |
-| `500` | Lỗi lưu/đọc dữ liệu; xem log trên máy chạy. |
+| `200` | Có mã mới được lưu (có thể partial); hoặc toàn bộ mã hợp lệ đã trùng, `success=true`, accepted=0. |
+| `400` | Metadata lặp/không hỗ trợ, thiếu orderNo/orderQty, sai số record/schema/file hoặc nhiều file. |
+| `401` | Thiếu/sai `x-api-key` ở route được bảo vệ. |
+| `404` | Endpoint/method không hỗ trợ. |
+| `408` | Timeout/hủy request. |
+| `409` | Còn PO đang chạy, PO đích đã kết thúc hoặc tên PO đụng file sau chuẩn hóa. |
+| `413` | Vượt giới hạn body/file. |
+| `415` | Không nhận diện được kiểu upload. |
+| `422` | GTIN metadata thiếu/sai/khác PO, legacy không an toàn; hoặc accepted=0 và có ít nhất một mã sai. |
+| `500` | Lỗi đọc/lưu DB; xem log cục bộ. |
 
-Response lỗi vẫn có `success=false`, `message`, `poName`, `accepted=0` và `ignoredDuplicates`. Hãy đọc `message` để xác định lỗi thực tế. Nếu timeout phía MES, kiểm tra lại PO và có thể gửi lại cùng file; việc lọc trùng trong PO ngăn thêm lại mã đã lưu.
+Nếu toàn invalid (hoặc invalid cộng duplicate nhưng không có mã mới), trả `422`, `success=false`, accepted=0 và không ghi DB. Nếu toàn duplicate hợp lệ, trả `200`, accepted=0, vẫn persist planned max khi tăng; không sửa mã/scan hoặc metadata mô tả. Response lỗi vẫn có shape trên nhưng các field chưa xác định có thể rỗng/0.
 
-Trên Windows, lỗi bind địa chỉ LAN cần kiểm tra URL ACL và firewall cho đúng cổng được cấu hình. Health không truy cập được thì xử lý listener/kết nối trước khi kiểm tra file. Health hoạt động nhưng POST bị `400` thì kiểm tra tên cột `CodeContent`, metadata bên ngoài file, số bản ghi và định dạng UTF-8.
+Health có xác thực trả `success`, `message`, `prefix`, `received`, `startedUtc`. `received` là số lần upload có ghi mã mới thành công từ lúc bật listener, không phải số mã hoặc số PO duy nhất. Timeout phía client là lỗi vận chuyển; kiểm tra trạng thái rồi replay cùng file nếu cần, không coi response validation là lỗi mạng hoặc coi HTTP lỗi là thành công rỗng.
+
+## Kiểm chứng cục bộ
+
+```powershell
+dotnet run --project tools/PoServerTests/PoServerTests.csproj --no-restore
+dotnet run --project tools/PoServerTests/e2e/PoServerE2E.csproj --no-restore
+```
+
+Bộ kiểm thử kiểm CSV/JSON/XLSX, partial/raw/planned/reload, metadata nguyên tử, alias, GTIN canonical/append legacy, lifecycle, lỗi DB, auth và route nhúng loopback/wildcard/path/method. Browser smoke của trang demo cần chạy sau khi UI nguồn hoàn tất và build lại assembly; xem `docs/po-demo/README.md`.
+
+Host cục bộ dùng đúng `PoHttpServer`, store thư mục tạm mới và key công khai dành riêng cho thử nghiệm `po-demo-local-test-key`:
+
+```powershell
+dotnet run --project tools/PoServerTests/PoServerTests.csproj --no-restore -- --serve --port 18085
+```
+
+Mở `http://127.0.0.1:18085/po-demo/`; Ctrl+C để dừng. Bỏ `--port` để tự chọn cổng trống và đọc URL trong stdout. Host này không đọc cấu hình/key thật hoặc DB production; thư mục store tạm được in ra để kiểm chứng sau browser smoke. Không có API giả lập.
+
+MES simulator cũng phải cấu hình `MesSimulator:Gtin` hợp lệ để tạo/upload file GS1. `CustomOrderNo` được ưu tiên, `CustomPoName` còn là alias cũ. Khi dùng client API C#, tham số override `gtin` tùy chọn nằm sau `CancellationToken` để giữ tương thích vị trí tham số cũ; không bỏ GTIN khỏi request thực tế.

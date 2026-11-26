@@ -108,7 +108,8 @@ public sealed class PoConsoleServer : IAsyncDisposable
                 if (!string.IsNullOrWhiteSpace(metadata.ProductName)) additional["productName"] = metadata.ProductName;
                 if (!string.IsNullOrWhiteSpace(metadata.Customer)) additional["customer"] = metadata.Customer;
                 ct.ThrowIfCancellationRequested();
-                var imported = Store.ImportOrder(metadata.PoName, metadata.OrderQty, content.Content.RawCodes, additional);
+                var imported = Store.ImportOrder(metadata.OrderNo, metadata.OrderQty, content.Content.RawCodes, additional, metadata.Gtin);
+                if (!imported.Success) response.StatusCode = 422;
                 await JsonAsync(response, imported, PoServerJsonContext.Default.PoPushResponse);
                 return;
             }

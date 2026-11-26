@@ -1,6 +1,6 @@
 # Quy trình Production Order với CodeContent
 
-TanTienQR lưu dữ liệu sản xuất theo từng PO trên máy. Mã được nhận diện bằng **toàn bộ `CodeContent`**, so sánh ordinal và phân biệt hoa thường. Hai URL cùng hậu tố, hai mã khác chữ hoa/thường hoặc khác khoảng trắng có ý nghĩa vẫn là các mã riêng. Luồng sản xuất không tách GTIN/serial và không dùng cửa sổ chống trùng theo giây.
+TanTienQR lưu dữ liệu sản xuất theo từng PO trên máy. Mã được nhận diện bằng **toàn bộ `CodeContent`**, so sánh ordinal và phân biệt hoa thường. Hai URL cùng hậu tố, hai mã khác chữ hoa/thường hoặc khác khoảng trắng có ý nghĩa vẫn là các mã riêng. Luồng sản xuất giữ nguyên CodeContent; bước nhận/tải PO kiểm tra cấu trúc GS1 và GTIN của mã, không cắt URL/serial hay chuẩn hóa raw, và không dùng cửa sổ chống trùng theo giây.
 
 Hợp đồng dữ liệu nằm ở [contract.md](contract.md); định dạng upload và ví dụ HTTP nằm ở [MES-PO-API.md](MES-PO-API.md). Hướng dẫn bộ đếm, reset PLC và tra cứu nằm ở [application-codecontent.md](application-codecontent.md).
 
@@ -15,7 +15,9 @@ Có hai đường đưa PO vào cơ sở dữ liệu local:
 
 Listener `ClassLibraryMT.PoServer` nhận file và cung cấp health; nó không phục vụ API tải danh sách/mã hay nhận kích hoạt. Server tại `Po:BaseUrl` phải cung cấp các API đó. Công cụ `tools/PoServer` là server thử nghiệm riêng, mặc định cổng 5080. `ClassLibraryMT.MesSimulator` là client gửi file tới listener; xem [MES-SIMULATOR.md](MES-SIMULATOR.md).
 
-File nhập chỉ có đúng một cột/thuộc tính `CodeContent`: CSV có header, JSON là mảng object, hoặc XLSX một cột văn bản. Metadata `poName`, `orderQty` và mô tả tùy chọn đi riêng qua query hoặc field multipart. `orderQty` bằng số bản ghi của lần upload **trước lọc trùng**. Ví dụ đầy đủ và các trường hợp bị từ chối có trong hướng dẫn API.
+File nhập chỉ có đúng một cột/thuộc tính `CodeContent`: CSV có header, JSON là mảng object, hoặc XLSX một cột văn bản. Metadata `orderNo` (LOT; alias legacy `poName`), `orderQty` và `gtin` đi riêng qua query hoặc field multipart. `orderQty` là số lượng planned và phải bằng số record của lần upload **trước mọi bước lọc**. GTIN bắt buộc là đúng một giá trị 8/12/13/14 chữ số có checksum; hệ thống lưu dạng canonical 14 chữ số, còn CodeContent giữ nguyên raw. Mỗi PO chỉ có một GTIN.
+
+Receiver phân loại từng record thành `invalidStructure`, `gtinMismatch` hoặc duplicate exact-string; response trả `acceptedCount`, `plannedCount`, `invalidCodes` (raw code + reason) và `duplicateCodes`, nên `acceptedCount` có thể thấp hơn planned mà không làm đổi planned. Khi tải PO từ server, snapshot có thể chỉ chứa các mã đã được chấp nhận (`0 < raw count <= planned`); mã sai cấu trúc, lệch GTIN và trùng không được ghi vào DB local. Khi merge hoặc nhận lại PO, planned đã lưu là `max(planned hiện có, orderQty lần này)`, kể cả upload chỉ toàn mã trùng; actual là số dòng mã thực có trong DB và không được dùng để hạ planned.
 
 Nhập lại vào PO chưa bắt đầu chỉ bổ sung mã mới theo nguyên chuỗi; mã và trạng thái đã lưu được giữ nguyên. Cùng CodeContent trong một PO khác vẫn được lưu độc lập. Khi còn PO đang chạy hoặc dở dang, thao tác nhận/tải PO mới bị chặn. PO hoàn tất, hủy hoặc đóng không được mở lại bằng upload.
 

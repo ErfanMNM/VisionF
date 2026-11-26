@@ -43,8 +43,11 @@ public sealed class PoStore
     /// <summary>Key lưu thời điểm huỷ sản xuất.</summary>
     public const string MetaCancelledUtc = "cancelledUtc";
 
-    /// <summary>Key lưu tổng số mã của PO.</summary>
+    /// <summary>Key lưu số lượng kế hoạch của PO, độc lập với số mã thực nhận.</summary>
     public const string MetaOrderQty = "orderQty";
+
+    /// <summary>Key lưu GTIN chuẩn 14 chữ số của PO.</summary>
+    public const string MetaGtin = "gtin";
 
     /// <summary>Key lưu các trường mở rộng của PO dưới dạng JSON.</summary>
     public const string MetaAdditional = "additional";
@@ -430,10 +433,37 @@ public sealed class PoStore
         // Giữ nguyên trạng thái local đã có (Running/Completed/Cancelled).
         // Tải lại PO từ server không được làm mất trạng thái huỷ hoặc hoàn tất.
 
-        // Lưu tổng số mã của PO (server có thể bổ sung mã sau này — số này sẽ
-        // được cập nhật lại mỗi lần cào).
-        await SetMetaAsync(connection, MetaOrderQty, order.OrderQty.ToString(), ct, transaction)
-            .ConfigureAwait(false);
+        // Planned là mục tiêu tích lũy, không phải actual hay số mã của batch.
+        // Giữ target lớn nhất để replay/append không cộng hai lần hoặc hạ target.
+        await using (var planned = connection.CreateCommand())
+        {
+            planned.Transaction = transaction;
+            planned.CommandText = """
+                INSERT INTO PoMeta (Key, Value) VALUES ($key, $value)
+                ON CONFLICT(Key) DO UPDATE SET Value =
+                    CAST(MAX(CAST(PoMeta.Value AS INTEGER), CAST(excluded.Value AS INTEGER)) AS TEXT);
+                """;
+            planned.Parameters.AddWithValue("$key", MetaOrderQty);
+            planned.Parameters.AddWithValue("$value", order.OrderQty.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            await planned.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
+        }
+
+        var gtin = order.Gtin;
+        if (string.IsNullOrEmpty(gtin) && order.Additional is not null)
+            gtin = order.Additional.FirstOrDefault(e => string.Equals(e.Key, MetaGtin,
+                StringComparison.OrdinalIgnoreCase)).Value;
+        if (PoCodeParser.TryNormalizeGtin(gtin, out var normalizedGtin))
+        {
+            await using var existingGtin = connection.CreateCommand();
+            existingGtin.Transaction = transaction;
+            existingGtin.CommandText = "SELECT Value FROM PoMeta WHERE Key=$key COLLATE NOCASE LIMIT 1;";
+            existingGtin.Parameters.AddWithValue("$key", MetaGtin);
+            var storedGtin = await existingGtin.ExecuteScalarAsync(ct).ConfigureAwait(false) as string;
+            if (PoCodeParser.TryNormalizeGtin(storedGtin, out var normalizedStoredGtin)
+                && !string.Equals(normalizedGtin, normalizedStoredGtin, StringComparison.Ordinal))
+                throw new InvalidDataException("Không thể đổi GTIN của PO đã lưu.");
+            await SetMetaAsync(connection, MetaGtin, normalizedGtin, ct, transaction).ConfigureAwait(false);
+        }
 
         // Lưu các trường mở rộng (tên sản phẩm, khách hàng...) để hỗ trợ tìm kiếm.
         if (order.Additional is { Count: > 0 })
@@ -547,6 +577,8 @@ public sealed class PoStore
                 string status = ProductionOrderStatus.Downloaded.ToString();
                 DateTime createdUtc = DateTime.MinValue;
                 int orderQty = 0;
+                string gtin = string.Empty;
+                bool hasOrderQty = false;
                 DateTime? startedUtc = null;
                 DateTime? completedUtc = null;
                 DateTime? cancelledUtc = null;
@@ -568,7 +600,9 @@ public sealed class PoStore
                         else if (string.Equals(key, MetaCreatedUtc, StringComparison.OrdinalIgnoreCase))
                             createdUtc = ParseUtc(value);
                         else if (string.Equals(key, MetaOrderQty, StringComparison.OrdinalIgnoreCase))
-                            _ = int.TryParse(value, out orderQty);
+                            hasOrderQty = int.TryParse(value, out orderQty) && orderQty >= 0;
+                        else if (string.Equals(key, MetaGtin, StringComparison.OrdinalIgnoreCase))
+                            gtin = value;
                         else if (string.Equals(key, MetaStartedUtc, StringComparison.OrdinalIgnoreCase))
                             startedUtc = ParseUtc(value);
                         else if (string.Equals(key, MetaCompletedUtc, StringComparison.OrdinalIgnoreCase))
@@ -578,6 +612,32 @@ public sealed class PoStore
                         else if (string.Equals(key, MetaAdditional, StringComparison.OrdinalIgnoreCase))
                             additional = ParseAdditional(value);
                     }
+                }
+
+                // Tương thích PO cũ: đọc GTIN từ additional trước, rồi chỉ suy
+                // ra từ mã cũ nếu toàn bộ mã hợp lệ và cùng đúng một GTIN.
+                if (string.IsNullOrEmpty(gtin))
+                    gtin = additional.FirstOrDefault(e => string.Equals(e.Key, MetaGtin,
+                        StringComparison.OrdinalIgnoreCase)).Value ?? string.Empty;
+                if (!PoCodeParser.TryNormalizeGtin(gtin, out var normalizedGtin))
+                {
+                    normalizedGtin = string.Empty;
+                    var candidate = string.Empty;
+                    var consistent = true;
+                    await using var legacyCodes = connection.CreateCommand();
+                    legacyCodes.CommandText = "SELECT Code FROM PoCodes;";
+                    await using var legacyReader = await legacyCodes.ExecuteReaderAsync(ct).ConfigureAwait(false);
+                    while (await legacyReader.ReadAsync(ct).ConfigureAwait(false))
+                    {
+                        if (!PoCodeParser.TryGetGtin(legacyReader.GetString(0), out var parsed)
+                            || (candidate.Length > 0 && !string.Equals(candidate, parsed, StringComparison.Ordinal)))
+                        {
+                            consistent = false;
+                            break;
+                        }
+                        candidate = parsed;
+                    }
+                    if (consistent) normalizedGtin = candidate;
                 }
 
                 if (string.IsNullOrWhiteSpace(orderNo))
@@ -614,7 +674,8 @@ public sealed class PoStore
                 result.Add(new LocalPoInfo
                 {
                     OrderNo = orderNo,
-                    OrderQty = totalCodes > 0 ? totalCodes : orderQty,
+                    OrderQty = hasOrderQty ? orderQty : totalCodes,
+                    Gtin = normalizedGtin,
                     CreatedUtc = createdUtc,
                     Status = ParseStatus(status),
                     StartedUtc = startedUtc,
@@ -1284,8 +1345,11 @@ public sealed class LocalPoInfo
     /// <summary>Mã PO.</summary>
     public string OrderNo { get; set; } = string.Empty;
 
-    /// <summary>Tổng số mã của PO.</summary>
+    /// <summary>Số lượng kế hoạch của PO, không phải số mã thực nhận.</summary>
     public int OrderQty { get; set; }
+
+    /// <summary>GTIN chuẩn 14 chữ số; rỗng nếu PO legacy không xác định được duy nhất.</summary>
+    public string Gtin { get; set; } = string.Empty;
 
     /// <summary>Thời điểm tạo PO (từ server).</summary>
     public DateTime CreatedUtc { get; set; }

@@ -219,15 +219,15 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
             var sync = await _po.SyncFromServerAsync().ConfigureAwait(true);
             await ReloadLocalAsync().ConfigureAwait(true);
 
-            StatusMessage =
-                $"Đã cào {sync.PoCount} PO từ server " +
-                $"({sync.NewPoCount} PO mới, {sync.NewCodeCount} mã mới).";
+            IsStatusError = sync.HasValidationErrors;
+            StatusMessage = DescribeDownloadResult(sync);
 
             _actionLog.Log(
                 "Po.Download",
                 "ProductionOrder",
-                $"Cao {sync.PoCount} PO tu server ({sync.NewPoCount} moi, {sync.NewCodeCount} ma moi)",
-                UserActionResults.Success);
+                $"Đã xử lý {sync.PoCount} PO: {sync.AcceptedCount}/{sync.PlannedCount} mã mới/kế hoạch; " +
+                $"{sync.InvalidCodes.Count} mã sai, {sync.DuplicateCodes.Count} mã trùng; lỗi xác thực={sync.HasValidationErrors}.",
+                sync.HasValidationErrors ? UserActionResults.Failed : UserActionResults.Success);
 
             ListChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -247,6 +247,26 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
             IsBusy = false;
             RefreshRunningState();
         }
+    }
+
+    /// <summary>Phân biệt kết quả nhận đủ, nhận một phần và PO bị từ chối xác thực.</summary>
+    private static string DescribeDownloadResult(PoSyncResult sync)
+    {
+        if (sync.PoCount == 0) return "Server không có PO để tải.";
+        var message = $"Đã xử lý {sync.PoCount} PO từ server ({sync.NewPoCount} PO mới). " +
+            $"Chấp nhận {sync.AcceptedCount} mã mới / {sync.PlannedCount} mã theo kế hoạch; " +
+            $"loại {sync.InvalidCodes.Count} mã sai và {sync.DuplicateCodes.Count} mã trùng.";
+        var partial = sync.Orders.Count(order => order.ValidationError is null && order.InputCount < order.PlannedCount);
+        if (partial > 0)
+            message += $" {partial} PO có snapshot nguồn chưa đủ số lượng kế hoạch.";
+        var errors = sync.Orders.Where(order => order.ValidationError is not null)
+            .Select(order => $"{order.OrderNo}: {order.ValidationError}").ToArray();
+        if (errors.Length > 0) message += " PO chưa được nhập: " + string.Join("; ", errors) + ".";
+        var structure = sync.InvalidCodes.Count(code => code.Reason == "invalidStructure");
+        var mismatch = sync.InvalidCodes.Count(code => code.Reason == "gtinMismatch");
+        if (structure > 0 || mismatch > 0)
+            message += $" Chi tiết mã loại: {structure} sai cấu trúc, {mismatch} khác GTIN.";
+        return message;
     }
 
     /// <summary>Chuyển lỗi khi cào PO thành thông báo dễ hiểu cho người dùng.</summary>
@@ -621,14 +641,14 @@ internal sealed class ProductionOrderRowViewModel : ViewModelBase
     /// <summary>Mã PO.</summary>
     public string OrderNo => _summary.OrderNo;
 
-    /// <summary>Tổng số mã của PO.</summary>
+    /// <summary>Số lượng kế hoạch của PO.</summary>
     public int OrderQty => _summary.OrderQty;
 
     /// <summary>Số mã đã quét.</summary>
     public int ScannedCount => _summary.ScannedCount;
 
-    /// <summary>Chuỗi "đã quét / tổng".</summary>
-    public string ProgressText => $"{ScannedCount} / {OrderQty}";
+    /// <summary>Tiến độ trên số mã thực nhận; lượng kế hoạch vẫn ở OrderQty.</summary>
+    public string ProgressText => $"{ScannedCount} / {_summary.TotalCodes}";
 
     /// <summary>Thời điểm tạo PO (hiển thị local).</summary>
     public string CreatedText =>

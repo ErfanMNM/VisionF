@@ -10,9 +10,11 @@ body{font:16px system-ui,sans-serif;background:#f3f5f8;color:#182337;max-width:1
 <h1>Server PO thử nghiệm</h1><p>Nhập file một cột CodeContent để ứng dụng tải PO và gửi kích hoạt. Mỗi PO giữ tập mã độc lập.</p>
 <main><section><h2>Nhập file PO</h2>
 <form id="upload">
-<label for="po">Mã PO</label><input id="po" name="poName" required maxlength="200" placeholder="PO-TEST-001">
-<label for="quantity">Số bản ghi trong file</label><input id="quantity" name="orderQty" required type="number" min="1" step="1">
-<p class="hint">Đếm trước lọc trùng. Mã trống và số lượng không khớp sẽ bị từ chối.</p>
+<label for="po">Mã PO</label><input id="po" name="orderNo" required maxlength="200" placeholder="PO-TEST-001">
+<label for="quantity">Số lượng kế hoạch</label><input id="quantity" name="orderQty" required type="number" min="1" step="1">
+<p class="hint">Phải bằng số record trong file trước lọc mã. Mã trống và số lượng không khớp sẽ bị từ chối.</p>
+<label for="gtin">GTIN duy nhất của PO</label><input id="gtin" name="gtin" required inputmode="numeric" pattern="(?:[0-9]{8}|[0-9]{12,14})" placeholder="00012345678905">
+<p class="hint">GTIN 8/12/13/14 chữ số có checksum hợp lệ. Mã sai cấu trúc GS1, khác GTIN hoặc trùng sẽ được báo riêng; nội dung raw không đổi.</p>
 <label for="file">File CodeContent</label><input id="file" name="file" required type="file" accept=".csv,.json,.xlsx">
 <p class="hint">CSV có header CodeContent; JSON là mảng object chỉ có CodeContent; XLSX có một cột văn bản. Giữ nguyên toàn bộ nội dung mã và phân biệt hoa thường.</p>
 <button id="send" type="submit">Nhập PO</button></form><p id="message" role="status"></p>
@@ -22,6 +24,6 @@ body{font:16px system-ui,sans-serif;background:#f3f5f8;color:#182337;max-width:1
 <script>
 const form=document.querySelector('#upload'),message=document.querySelector('#message'),send=document.querySelector('#send');
 async function reload(){const response=await fetch('/api/po?includeCompleted=true');if(!response.ok)throw new Error('Không tải được danh sách PO.');const orders=await response.json();const rows=document.querySelector('#rows');rows.replaceChildren();for(const order of orders){const row=document.createElement('tr');for(const value of [order.orderNo,order.orderQty,new Date(order.createdUtc).toLocaleString('vi-VN')]){const cell=document.createElement('td');cell.textContent=String(value);row.append(cell)}rows.append(row)}}
-form.addEventListener('submit',async event=>{event.preventDefault();send.disabled=true;message.textContent='Đang nhập file…';try{const response=await fetch('/api/po',{method:'POST',body:new FormData(form)});const result=await response.json();message.textContent=result.message||('HTTP '+response.status);if(response.ok)await reload()}catch(error){message.textContent=error.message}finally{send.disabled=false}});
+form.addEventListener('submit',async event=>{event.preventDefault();send.disabled=true;message.textContent='Đang nhập file…';try{const response=await fetch('/api/po',{method:'POST',body:new FormData(form)});const result=await response.json();message.textContent=(result.message||('HTTP '+response.status))+'\n'+(result.invalidCodes||[]).map(item=>item.reason+': '+item.code).concat((result.duplicateCodes||[]).map(code=>'duplicate: '+code)).join('\n');if(response.ok)await reload()}catch(error){message.textContent=error.message}finally{send.disabled=false}});
 document.querySelector('#reload').addEventListener('click',()=>reload().catch(error=>message.textContent=error.message));reload().catch(error=>message.textContent=error.message);
 </script></body></html>

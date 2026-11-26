@@ -42,6 +42,9 @@ public sealed class PoCreateRequest
 
     /// <summary>Số lượng mã cần sinh.</summary>
     public int OrderQty { get; set; } = 100;
+
+    /// <summary>GTIN duy nhất của PO.</summary>
+    public string Gtin { get; set; } = "";
 }
 
 /// <summary>
