@@ -23,13 +23,14 @@ public sealed class ScanRowViewModel
             ScanOutcome.NoRead => "NoRead",
             ScanOutcome.Duplicate => "Trùng",
             ScanOutcome.InvalidForOrder => "Không tồn tại",
+            ScanOutcome.InvalidStructure => "Sai cấu trúc",
             ScanOutcome.NoProductionOrder => "Chưa chạy PO",
             ScanOutcome.Halted => "Đã dừng",
             ScanOutcome.PlcError => "Lỗi PLC",
             ScanOutcome.Overload => "Quá tải",
             _ => "Lỗi",
         };
-        PlcText = record.Outcome is ScanOutcome.Overload or ScanOutcome.NoProductionOrder or ScanOutcome.Halted
+        PlcText = record.PlcSkipped || record.Outcome is ScanOutcome.Overload or ScanOutcome.NoProductionOrder or ScanOutcome.Halted
             ? "Bỏ qua"
             : record.PlcWritten ? "Đã ghi" : "Lỗi";
         ProcessingTimeText = $"{record.ProcessingTimeMs:F3} ms";
@@ -41,7 +42,7 @@ public sealed class ScanRowViewModel
     /// <summary>Nội dung mã đầy đủ do camera gửi lên (QR thô).</summary>
     public string CodeText { get; }
 
-    /// <summary>Kết quả xử lý (Pass / NoRead / Sai định dạng / Quá tải).</summary>
+    /// <summary>Kết quả xử lý (Pass / NoRead / Sai cấu trúc / Quá tải).</summary>
     public string OutcomeText { get; }
 
     /// <summary>Trạng thái ghi xuống PLC.</summary>

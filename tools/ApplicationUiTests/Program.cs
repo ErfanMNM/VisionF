@@ -69,9 +69,25 @@ internal static class Program
             Check(original == (int.MaxValue, int.MaxValue, 4_294_967_294L), "Dashboard áp dụng đúng snapshot PLC Int32/Int64");
 
             var longCode = "PO-CODE-CONTENT://full/" + string.Concat(Enumerable.Repeat("A9_ĐầyĐủ_%25/CaseSensitive?x=1&y=2-", 20));
-            foreach (var outcome in new[] { ScanOutcome.Pass, ScanOutcome.Duplicate, ScanOutcome.InvalidForOrder, ScanOutcome.NoRead })
+            foreach (var outcome in new[] { ScanOutcome.Pass, ScanOutcome.Duplicate, ScanOutcome.InvalidForOrder, ScanOutcome.NoRead, ScanOutcome.InvalidStructure })
                 Invoke(main, "AddScan", new ScanRecord(longCode, outcome, DateTime.UtcNow, true, 0.333));
             Check(Metrics(main) == original, "Sự kiện camera không cộng hoặc thay thế các số lớn lấy từ PLC");
+            var structureRow = new ScanRowViewModel(new ScanRecord(longCode, ScanOutcome.InvalidStructure, DateTime.UtcNow, true, 0.333));
+            Check(structureRow.OutcomeText == "Sai cấu trúc" && structureRow.IsInvalid
+                && structureRow.OutcomeBadgeClass == "fault" && structureRow.CodeText == longCode,
+                "Bảng quét hiển thị chính xác Sai cấu trúc bằng badge đỏ và giữ nguyên mã");
+            var skippedStructure = new ScanRowViewModel(new ScanRecord(longCode, ScanOutcome.InvalidStructure,
+                DateTime.UtcNow, false, 0.333, PlcSkipped: true));
+            Invoke(main, "AddScan", new ScanRecord(longCode, ScanOutcome.InvalidStructure, DateTime.UtcNow,
+                false, 0.333, PlcSkipped: true));
+            Check(skippedStructure.OutcomeText == "Sai cấu trúc" && skippedStructure.PlcText == "Bỏ qua"
+                && skippedStructure.PlcBadgeClass == "warning",
+                "Chưa chạy PO hiển thị Sai cấu trúc và PLC Bỏ qua, không coi là lỗi PLC");
+            var events = ((IEnumerable)Read<object>(main, "Events")).Cast<ScanEvent>().ToArray();
+            Check(events.Any(item => item.Message.Contains("Sai cấu trúc", StringComparison.Ordinal)
+                    && item.Message.Contains(longCode, StringComparison.Ordinal))
+                && !events.Any(item => item.Message.Contains("Ghi kết quả xuống PLC thất bại", StringComparison.Ordinal)),
+                "Sự kiện Sai cấu trúc chứa đầy đủ mã, không báo lỗi PLC khi Fail đã ghi thành công");
 
             var lookup = Read<object>(main, "CodeLookup");
             var row = new CodeLookupRowViewModel(new ScanRecordEntity
@@ -94,6 +110,7 @@ internal static class Program
             foreach (var (status, label) in new[]
             {
                 (ScanStatuses.Duplicate, "Trùng"), (ScanStatuses.InvalidForOrder, "Không tồn tại"), (ScanStatuses.NoRead, "NoRead"),
+                (ScanStatuses.InvalidStructure, "Sai cấu trúc"),
             })
             {
                 var failure = new CodeLookupRowViewModel(new ScanRecordEntity { CodeContent = longCode, Status = status });

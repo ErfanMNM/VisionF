@@ -16,7 +16,7 @@ public static class ScanServiceCollectionExtensions
     /// Đăng ký toàn bộ dịch vụ lưu bản ghi quét mã:
     /// <list type="bullet">
     /// <item><see cref="ScanStoreOptions"/> — bind thủ công (AOT-safe).</item>
-    /// <item><see cref="IScanRecordWriter"/> — ghi bất đồng bộ qua hàng đợi.</item>
+    /// <item><see cref="IScanRecordWriter"/> — ghi theo hàng đợi có xác nhận commit SQLite.</item>
     /// <item><see cref="IScanRecordQuery"/> — đọc lại bản ghi.</item>
     /// </list>
     /// </summary>

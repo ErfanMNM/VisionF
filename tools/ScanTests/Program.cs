@@ -1,5 +1,6 @@
 using ClassLibraryMT.Scans;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Options;
 
 var checks = 0;
 void Check(bool valid, string description)
@@ -30,6 +31,7 @@ await using (var connection = await store.OpenAsync(token))
         new() { CodeContent = "OTHER|SAME", ReceivedUtc = DateTime.UtcNow, Status = ScanStatuses.Pass, OrderNo = "PO-OLD" },
         new() { CodeContent = "TRUNG", ReceivedUtc = DateTime.UtcNow, Status = ScanStatuses.Duplicate },
         new() { CodeContent = "KHONG-TON-TAI", ReceivedUtc = DateTime.UtcNow, Status = ScanStatuses.InvalidForOrder },
+        new() { CodeContent = content, Raw = content, ReceivedUtc = DateTime.UtcNow, Status = ScanStatuses.InvalidStructure, OrderNo = "PO-NOW" },
         new() { CodeContent = "", ReceivedUtc = DateTime.UtcNow, Status = ScanStatuses.NoRead },
         new() { CodeContent = "OLD-FAIL", ReceivedUtc = DateTime.UtcNow, Status = ScanStatuses.Fail },
         new() { CodeContent = "BUSY", ReceivedUtc = DateTime.UtcNow, Status = ScanStatuses.Overload },
@@ -48,15 +50,19 @@ await using (var connection = await store.OpenAsync(token))
 
 var query = new ScanRecordQuery(store);
 var page = await query.GetAsync(pageSize: 100, cancellationToken: token);
-Check(page.TotalCount == 11 && page.Items.Any(row => row.CodeContent == content), "Giữ CodeContent dài, Unicode, GS và khoảng trắng nguyên vẹn");
+Check(page.TotalCount == 12 && page.Items.Any(row => row.CodeContent == content), "Giữ CodeContent dài, Unicode, GS và khoảng trắng nguyên vẹn");
+Check(page.Items.Single(row => row.Status == ScanStatuses.InvalidStructure) is { } malformed
+    && malformed.CodeContent == content && malformed.Raw == content && malformed.OrderNo == "PO-NOW",
+    "SQLite giữ nguyên mã/Raw/PO và trạng thái Sai cấu trúc riêng");
 Check(page.Items.Single(row => row.Raw == "LEGACY-FULL/GTIN|SAME").CodeContent == "LEGACY-FULL/GTIN|SAME", "Đọc dữ liệu cũ lấy mã đầy đủ từ Raw thay vì Serial");
 var seen = await query.GetSeenCodeContentsAsync("PO-NOW", token);
 Check(seen.Count == 4 && seen.Contains(content) && seen.Contains(caseVariant), "Lịch sử mã đầy đủ distinct theo ordinal, phân biệt hoa thường");
 Check(seen.Contains("OTHER|SAME") && seen.Contains("LEGACY-FULL/GTIN|SAME") && !seen.Contains("SAME"), "Không gộp hai mã khác nhau chỉ vì cùng đuôi serial");
 Check(!seen.Contains("PO-LOCAL") && !seen.Contains("TRUNG") && !seen.Contains("BUSY"), "History chỉ lấy Pass của PO khác");
 var failures = await query.GetAsync(new ScanRecordFilter { Status = ScanStatus.Fail }, cancellationToken: token);
-Check(failures.TotalCount == 4, "Bộ lọc Fail tổng hợp cả Duplicate, InvalidForOrder, NoRead và Fail cũ");
-foreach (var status in new[] { ScanStatus.Duplicate, ScanStatus.InvalidForOrder, ScanStatus.NoRead })
+Check(failures.TotalCount == 5 && failures.Items.Any(row => row.Status == ScanStatuses.InvalidStructure),
+    "Bộ lọc Fail tổng hợp cả InvalidStructure, Duplicate, InvalidForOrder, NoRead và Fail cũ");
+foreach (var status in new[] { ScanStatus.Duplicate, ScanStatus.InvalidForOrder, ScanStatus.NoRead, ScanStatus.InvalidStructure })
 {
     var filtered = await query.GetAsync(new ScanRecordFilter { Status = status }, cancellationToken: token);
     Check(filtered.TotalCount == 1 && filtered.Items[0].Status == ScanStatuses.ToStorage(status), "Giữ riêng outcome " + status);
@@ -121,6 +127,45 @@ var manyIds = Enumerable.Range(10000, 1200).Select(value => (long)value).Append(
 Check(await exactSend.ResetToPendingAsync(manyIds, token) == 1
         && await exactSend.ResetToPendingAsync([], token) == 0,
     "ResetToPending chia danh sách lớn thành batch và chấp nhận danh sách rỗng");
+
+var reliablePath = Path.Combine(root, "reliable-queue.db");
+using (var writer = new ScanRecordWriter(
+    Options.Create(new ScanStoreOptions
+    {
+        Path = reliablePath,
+        QueueCapacity = 1,
+        BatchSize = 1,
+        FlushIntervalMs = 20,
+    }), new ScanStore(reliablePath)))
+{
+    await writer.VerifyHealthyAsync(token);
+    await using var blocker = new SqliteConnection($"Data Source={reliablePath}");
+    await blocker.OpenAsync(token);
+    await using var lockTransaction = blocker.BeginTransaction(deferred: false);
+    var recordCount = 12;
+    var producer = Task.Run(() =>
+    {
+        for (var i = 0; i < recordCount; i++)
+            writer.Enqueue(new ScanRecordEntity
+            {
+                ReceivedUtc = DateTime.UtcNow,
+                CodeContent = $"QUEUE-{i:D2}",
+                Raw = $"QUEUE-{i:D2}",
+                OrderNo = "PO-QUEUE",
+                Status = ScanStatuses.Pass,
+            });
+    }, token);
+    await Task.Delay(TimeSpan.FromSeconds(6), token); // Cross SQLite's 5s busy_timeout; the writer retries.
+    Check(!producer.IsCompleted, "Queue capacity 1 tạo backpressure trong lúc SQLite bị khóa, không trả thành công giả");
+    await lockTransaction.RollbackAsync(token);
+    await producer.WaitAsync(token);
+    await writer.FlushAsync(token);
+    var durable = await new ScanRecordQuery(new ScanStore(reliablePath)).GetAsync(pageSize: 100, cancellationToken: token);
+    Check(durable.TotalCount == recordCount
+        && durable.Items.Select(item => item.CodeContent).ToHashSet(StringComparer.Ordinal)
+            .SetEquals(Enumerable.Range(0, recordCount).Select(i => $"QUEUE-{i:D2}")),
+        "Queue capacity 1 ghi bền vững toàn bộ CodeContent sau khi khóa SQLite được giải phóng");
+}
 
 SqliteConnection.ClearAllPools();
 Directory.Delete(root, recursive: true);

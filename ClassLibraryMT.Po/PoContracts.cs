@@ -76,7 +76,7 @@ public sealed class PoActivateResult
     public string Message { get; set; } = "";
 }
 
-/// <summary>Outcome of coordinating validation, PLC Pass, and durable PO scan state.</summary>
+/// <summary>Validation, durable PO commit, and separate PLC write outcome.</summary>
 public sealed record PoScanResult(
     PoCodeValidation Validation,
     bool? PlcWritten,
@@ -86,7 +86,7 @@ public sealed record PoScanResult(
     string? Message = null);
 
 /// <summary>
-/// The PLC Pass may have been written, but its PO state could not be confirmed.
+/// Legacy compatibility exception for callers that cannot confirm durable PO state.
 /// </summary>
 public sealed class PoScanProcessingException : Exception
 {

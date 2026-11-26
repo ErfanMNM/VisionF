@@ -27,10 +27,8 @@ public sealed class ScanStoreOptions
     public int FlushIntervalMs { get; set; } = 100;
 
     /// <summary>
-    /// Sức chứa tối đa của hàng đợi ghi bất đồng bộ.
-    ///
-    /// Khi đầy thì bản ghi cũ nhất bị bỏ (<c>DropOldest</c>) — ưu tiên không
-    /// làm chậm luồng xử lý mã của camera.
+    /// Sức chứa tối đa của hàng đợi ghi. Khi đầy, producer chờ worker ghi
+    /// xuống SQLite thay vì bỏ bản ghi.
     /// </summary>
     public int QueueCapacity { get; set; } = 20_000;
 

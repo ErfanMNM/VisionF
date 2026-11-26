@@ -14,13 +14,14 @@ namespace TanTienQR.Services;
 /// <summary>
 /// Nhận nguyên CodeContent từ camera, đối chiếu PO và gửi kết quả xuống PLC.
 ///
-/// Không phân tích GTIN/serial: mã tồn tại và chưa kích hoạt trong PO được Pass;
-/// mã trùng, không tồn tại hoặc NoRead/FAIL được Fail (D12 = 0).
+/// Kiểm tra cấu trúc GS1 trước khi đối chiếu nguyên CodeContent trong PO;
+/// mã sai cấu trúc, trùng, không tồn tại hoặc NoRead/FAIL được Fail (D12 = 0).
 ///
 /// Ghi PLC được thực hiện trong <see cref="ProcessQueueAsync"/> (luồng riêng qua
 /// <see cref="Channel{T}"/>) chứ không phải trong callback của camera — vì ghi
 /// PLC là I/O đồng bộ có timeout, làm trong callback sẽ chặn socket loop và
-/// làm mất frame.
+/// làm mất frame. Ghi lịch sử chờ xác nhận SQLite để không bỏ bản ghi khi
+/// hàng đợi đầy hoặc database tạm thời chậm.
 ///
 /// <para>
 /// <b>Ưu tiên mã đang xử lý:</b> hệ thống chỉ xử lý <b>một mã tại một thời
@@ -31,8 +32,8 @@ namespace TanTienQR.Services;
 ///
 /// <para>
 /// <b>Lưu lịch sử:</b> mọi mã (kể cả mã bị từ chối) đều được ghi vào SQLite
-/// qua <see cref="IScanRecordWriter"/> — hàng đợi bất đồng bộ nên không ảnh
-/// hưởng tới luồng xử lý.
+/// qua <see cref="IScanRecordWriter"/> — writer xác nhận sau khi commit SQLite
+/// và tạo backpressure khi ghi chậm để không mất lịch sử.
 /// </para>
 ///
 /// <para>
@@ -51,8 +52,8 @@ internal sealed class CameraSignalWorker : BackgroundService
     /// lúc worker xử lý (mỗi mã lại ghi PLC — I/O đồng bộ có timeout), hàng
     /// đợi unbounded sẽ phình vô hạn và cuối cùng làm app bị OOM.
     ///
-    /// Khi đầy thì bỏ mã cũ nhất (<c>DropOldest</c>) — chấp nhận được vì UI
-    /// cũng chỉ giữ 200 dòng gần nhất.
+    /// Mã dư khi một scan đang xử lý được ghi lịch sử Overload trực tiếp từ
+    /// callback thay vì bị rơi khỏi queue.
     /// </summary>
     private const int CameraQueueCapacity = 512;
 
@@ -69,7 +70,7 @@ internal sealed class CameraSignalWorker : BackgroundService
     private readonly Channel<ScanRequest> _scanQueue = Channel.CreateBounded<ScanRequest>(
         new BoundedChannelOptions(CameraQueueCapacity)
         {
-            FullMode = BoundedChannelFullMode.DropOldest,
+            FullMode = BoundedChannelFullMode.Wait,
             SingleReader = true,
         });
 
@@ -79,9 +80,8 @@ internal sealed class CameraSignalWorker : BackgroundService
     // (kiểm tra) và luồng worker (giảm). Khi giá trị > 1 nghĩa là đã có mã
     // đang được xử lý -> mã mới bị từ chối ngay (ưu tiên mã đang xử lý).
     //
-    // Vì chỉ nhận 1 mã tại một thời điểm nên hàng đợi luôn có tối đa 1 phần
-    // tử chờ -> không bao giờ chạm giới hạn 512, không lo mất mã do
-    // DropOldest.
+    // Vì chỉ nhận 1 mã tại một thời điểm nên queue chỉ có tối đa một phần tử
+    // chờ; mọi mã khác được ghi Overload trực tiếp.
     private int _inFlight;
     private IDisposable? _scanFaultSuspension;
     private readonly ScanIntakeGate _intake;
@@ -135,9 +135,10 @@ internal sealed class CameraSignalWorker : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _camera.ClientCallback += OnCameraEvent;
+        var queueTask = ProcessQueueAsync(CancellationToken.None);
         try
         {
-            await Task.WhenAll(_camera.RunAsync(stoppingToken), ProcessQueueAsync(stoppingToken));
+            await _camera.RunAsync(stoppingToken);
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
         {
@@ -149,6 +150,9 @@ internal sealed class CameraSignalWorker : BackgroundService
             _scanQueue.Writer.TryComplete();
             _logger.LogInformation("Camera signal worker đã dừng.");
         }
+
+        // Process all camera frames already admitted before allowing shutdown.
+        await queueTask.ConfigureAwait(false);
     }
 
     private async Task ProcessQueueAsync(CancellationToken ct)
@@ -157,6 +161,9 @@ internal sealed class CameraSignalWorker : BackgroundService
         {
             try
             {
+                // Fail closed before PO mutation when durable scan history is
+                // unavailable. Publish below also waits for its SQLite commit.
+                await _scanWriter.VerifyHealthyAsync(ct).ConfigureAwait(false);
                 await HandleAsync(request, ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -166,6 +173,16 @@ internal sealed class CameraSignalWorker : BackgroundService
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Lỗi khi xử lý mã quét: {Data}", request.Raw);
+                _counters.AddScan(pass: false);
+                try
+                {
+                    Publish(request.Raw, ScanOutcome.Halted, request.ReceivedUtc, plcWritten: false,
+                        MeasureProcessingMs(request), _po.CurrentOrder?.OrderNo ?? string.Empty, plcSkipped: true);
+                }
+                catch (Exception historyError)
+                {
+                    _logger.LogCritical(historyError, "Không ghi được lịch sử scan lỗi: {Data}", request.Raw);
+                }
             }
             finally
             {
@@ -179,6 +196,12 @@ internal sealed class CameraSignalWorker : BackgroundService
     {
         var raw = request.Raw;
         var orderNo = _po.CurrentOrder?.OrderNo ?? string.Empty;
+        if (GlobalVariables.PLCStatus != PLCStatus.Connected)
+        {
+            PublishPlcUnavailable(raw, request.ReceivedUtc, request.ReceivedTimestamp, orderNo);
+            return;
+        }
+
         if (_po.IsHalted)
         {
             _counters.AddScan(pass: false);
@@ -196,15 +219,27 @@ internal sealed class CameraSignalWorker : BackgroundService
             return;
         }
 
+        if (!QrParser.HasGs1Structure(raw))
+        {
+            var processingMs = MeasureProcessingMs(request);
+            var hasRunningPo = _po.IsProductionRunning;
+            var written = hasRunningPo && await _plc.WriteResultAsync(pass: false, ct).ConfigureAwait(false);
+            _counters.AddScan(pass: false);
+            _logger.LogWarning("Sai cấu trúc GS1, PLC Fail={PlcWritten}, PO đang chạy={ProductionRunning}: CodeContent={CodeContent}",
+                written, hasRunningPo, raw);
+            Publish(raw, ScanOutcome.InvalidStructure, request.ReceivedUtc, written, processingMs, orderNo,
+                plcSkipped: !hasRunningPo);
+            return;
+        }
+
         var passAttempted = false;
         var passWritten = false;
         var passProcessingMs = 0.0;
         PoCodeValidation validation;
         try
         {
-            // Backend giữ khóa vòng đời PO xuyên suốt validate → PLC ACK → commit DB.
-            // PLC từ chối chắc chắn (false) không tiêu thụ mã hay tăng số đếm PO.
-            // Pass mất ACK hoặc phản hồi không xác định phải throw để giữ quarantine.
+            // Backend giữ khóa vòng đời PO: commit dictionary/PO trước rồi mới
+            // gọi PLC. PLC fail/timeout không được hoàn tác mã đã tiêu thụ.
             var result = await _po.ProcessCodeAsync(raw, async token =>
             {
                 orderNo = _po.CurrentOrder?.OrderNo ?? orderNo;
@@ -217,7 +252,7 @@ internal sealed class CameraSignalWorker : BackgroundService
             orderNo = result.OrderNo;
             if (validation == PoCodeValidation.Valid)
             {
-                var accepted = result.PlcWritten == true && result.Committed;
+                var accepted = result.Committed;
                 _counters.AddScan(pass: accepted);
                 _logger.LogInformation("CodeContent={CodeContent}: PLC Pass={PlcWritten}, PO committed={Committed}",
                     raw, result.PlcWritten, result.Committed);
@@ -234,6 +269,9 @@ internal sealed class CameraSignalWorker : BackgroundService
                 }
                 Publish(raw, accepted ? ScanOutcome.Pass : ScanOutcome.PlcError,
                     request.ReceivedUtc, result.PlcWritten == true, passProcessingMs, orderNo);
+                if (accepted && result.PlcWritten != true)
+                    _logger.LogWarning("CodeContent={CodeContent} đã commit Pass nhưng PLC không xác nhận ghi: {Message}",
+                        raw, result.Message ?? "không nhận được xác nhận");
                 return;
             }
         }
@@ -243,7 +281,7 @@ internal sealed class CameraSignalWorker : BackgroundService
             // Giữ lease đến hết tiến trình: không tự mở lại intake bằng hotapply/resume.
             _scanFaultSuspension ??= _intake.Suspend();
             _logger.LogCritical(ex,
-                "DỪNG NHẬN MÃ: không xác nhận được commit sau PLC Pass. PO={OrderNo}, CodeContent={CodeContent}. Cần đối soát PLC và DB trước khi chạy lại.",
+                "DỪNG NHẬN MÃ: lỗi trạng thái PO khi xử lý Pass. PO={OrderNo}, CodeContent={CodeContent}.",
                 orderNo, raw);
             _counters.AddScan(pass: false);
             Publish(raw, ScanOutcome.Halted, request.ReceivedUtc, passWritten,
@@ -292,7 +330,8 @@ internal sealed class CameraSignalWorker : BackgroundService
     /// <summary>
     /// Đẩy kết quả ra UI (kênh <see cref="ScanFeed"/>) và ghi vào SQLite.
     ///
-    /// Ghi DB là bất đồng bộ (chỉ enqueue) nên KHÔNG ảnh hưởng tới luồng xử lý.
+    /// Enqueue chờ SQLite xác nhận commit; producer chịu backpressure thay vì
+    /// bỏ mất lịch sử nếu worker ghi chậm.
     /// </summary>
     /// <param name="processingMs">
     /// Thời gian xử lý (ms) — đã đo trước khi gửi xuống PLC.
@@ -303,14 +342,16 @@ internal sealed class CameraSignalWorker : BackgroundService
         DateTime receivedUtc,
         bool plcWritten,
         double processingMs,
-        string? orderNo = null)
+        string? orderNo = null,
+        bool plcSkipped = false)
     {
         _feed.Publish(new ScanRecord(
             raw,
             outcome,
             receivedUtc,
             plcWritten,
-            processingMs));
+            processingMs,
+            plcSkipped));
 
         _scanWriter.Enqueue(new ScanRecordEntity
         {
@@ -323,12 +364,13 @@ internal sealed class CameraSignalWorker : BackgroundService
                 ScanOutcome.Duplicate => ScanStatuses.Duplicate,
                 ScanOutcome.InvalidForOrder => ScanStatuses.InvalidForOrder,
                 ScanOutcome.NoRead => ScanStatuses.NoRead,
+                ScanOutcome.InvalidStructure => ScanStatuses.InvalidStructure,
                 _ => ScanStatuses.Fail,
             },
             ProcessingTimeMs = processingMs,
             PlcResult = plcWritten
                 ? ScanPlcResults.Ok
-                : outcome switch
+                : plcSkipped ? ScanPlcResults.Skipped : outcome switch
                 {
                     ScanOutcome.Overload => ScanPlcResults.Skipped,
                     ScanOutcome.NoProductionOrder => ScanPlcResults.Skipped,
@@ -380,6 +422,15 @@ internal sealed class CameraSignalWorker : BackgroundService
         var receivedUtc = DateTime.UtcNow;
         var receivedTimestamp = Stopwatch.GetTimestamp();
 
+        // PLC status is sampled at the camera callback boundary. An offline
+        // PLC must not consume a valid code or receive a result write.
+        if (GlobalVariables.PLCStatus != PLCStatus.Connected)
+        {
+            PublishPlcUnavailable(data, receivedUtc, receivedTimestamp,
+                _po.CurrentOrder?.OrderNo ?? string.Empty);
+            return;
+        }
+
         // Ưu tiên mã đang xử lý: nếu đã có mã đang chờ/đang xử lý thì mã mới
         // bị TỪ CHỐI NGAY.
         //
@@ -409,9 +460,24 @@ internal sealed class CameraSignalWorker : BackgroundService
 
         if (!_scanQueue.Writer.TryWrite(new ScanRequest(data, receivedUtc, receivedTimestamp)))
         {
-            // Hàng đợi đã đóng (app đang tắt) -> trả lại bộ đếm để không kẹt.
+            // Phòng thủ với queue đầy bất thường; lúc shutdown record mới
+            // không được đưa vào worker đã dừng.
             Interlocked.Decrement(ref _inFlight);
+            if (!_scanQueue.Reader.Completion.IsCompleted)
+            {
+                _counters.AddScan(pass: false);
+                Publish(data, ScanOutcome.Overload, receivedUtc, plcWritten: false,
+                    MeasureProcessingMs(new ScanRequest(data, receivedUtc, receivedTimestamp)));
+            }
         }
+    }
+
+    private void PublishPlcUnavailable(string raw, DateTime receivedUtc, long receivedTimestamp, string? orderNo)
+    {
+        _logger.LogWarning("PLC chưa kết nối; không xử lý/tiêu thụ mã camera và không gửi PLC: CodeContent={CodeContent}", raw);
+        _counters.AddScan(pass: false);
+        Publish(raw, ScanOutcome.PlcError, receivedUtc, plcWritten: false,
+            MeasureProcessingMs(new ScanRequest(raw, receivedUtc, receivedTimestamp)), orderNo, plcSkipped: true);
     }
 }
 

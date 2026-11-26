@@ -6,14 +6,15 @@ namespace ClassLibraryMT.Scans;
 /// <summary>
 /// Worker nền ghi bản ghi quét mã vào SQLite.
 ///
-/// Mọi lệnh ghi chỉ enqueue vào <see cref="Channel{T}"/> (không block luồng xử
-/// lý mã). Worker gom batch rồi insert trong một transaction.
+/// Mọi lệnh ghi enqueue vào <see cref="Channel{T}"/> và chờ ACK commit SQLite.
+/// Worker gom batch rồi insert trong một transaction.
 ///
 /// Tính năng:
 /// - WAL mode + busy_timeout để đọc không bị chặn bởi worker ghi.
 /// - Flush theo thời gian (<see cref="ScanStoreOptions.FlushIntervalMs"/>) hoặc
 ///   khi batch đủ (<see cref="ScanStoreOptions.BatchSize"/>).
 /// - Prune theo retention mỗi <see cref="ScanStoreOptions.PruneIntervalMs"/>.
+/// - Queue đầy hoặc database tạm lỗi tạo backpressure/retry, không bỏ record.
 /// - Khi <see cref="Dispose"/> thì flush toàn bộ bản ghi còn trong queue trước khi đóng.
 ///
 /// Lỗi ghi ra stderr qua <see cref="ScanDiagnostics"/> — cố ý KHÔNG nhận
@@ -42,15 +43,15 @@ internal sealed class ScanRecordWriter : IScanRecordWriter, IDisposable
         _opt = options.Value;
         _store = store;
 
-        // Bounded channel: nếu camera quét nhanh hơn tốc độ ghi DB thì bản ghi
-        // cũ bị drop thay vì làm treo app.
+        // Bounded channel tạo backpressure thay vì bỏ lịch sử. Enqueue có thể
+        // chờ khi writer chậm, nhưng mỗi bản ghi camera vẫn được giữ nguyên.
         _queue = Channel.CreateBounded<object>(
             new BoundedChannelOptions(Math.Max(1, _opt.QueueCapacity))
             {
-                FullMode = BoundedChannelFullMode.DropOldest,
+                FullMode = BoundedChannelFullMode.Wait,
                 SingleReader = true,
                 SingleWriter = false,
-            }, OnItemDropped);
+            });
 
         _worker = Task.Run(() => RunAsync(_cts.Token));
 
@@ -84,7 +85,7 @@ internal sealed class ScanRecordWriter : IScanRecordWriter, IDisposable
     public long WrittenCount => Interlocked.Read(ref _writtenCount);
 
     /// <summary>
-    /// Enqueue một bản ghi quét mã (không chặn luồng gọi).
+    /// Đưa một bản ghi vào hàng đợi và chờ tới khi SQLite commit.
     /// </summary>
     /// <param name="record">Bản ghi cần lưu.</param>
     public void Enqueue(ScanRecordEntity record)
@@ -93,16 +94,28 @@ internal sealed class ScanRecordWriter : IScanRecordWriter, IDisposable
 
         if (_disposed)
         {
-            RecordFailure(new ObjectDisposedException(nameof(ScanRecordWriter)));
-            return;
+            var error = new ObjectDisposedException(nameof(ScanRecordWriter));
+            RecordFailure(error);
+            throw error;
         }
 
-        if (!_queue.Writer.TryWrite(record))
-            RecordFailure(new IOException("Hàng đợi bản ghi đã đóng."));
+        var pending = new PendingRecord(record);
+        try
+        {
+            // Chờ chỗ trong hàng đợi lẫn ACK commit SQLite. Enqueue thành công
+            // nghĩa là lịch sử đã nằm bền vững trong DB.
+            _queue.Writer.WriteAsync(pending).AsTask().GetAwaiter().GetResult();
+            pending.Wait();
+        }
+        catch (Exception ex)
+        {
+            RecordFailure(ex);
+            throw;
+        }
     }
 
     /// <summary>
-    /// Chờ cho tới khi hàng đợi rỗng và dữ liệu đã nằm trong database.
+    /// Chờ cho tới khi hàng đợi rỗng và dữ liệu đã commit vào database.
     /// </summary>
     /// <param name="cancellationToken">Token hủy.</param>
     public async Task FlushAsync(CancellationToken cancellationToken = default)
@@ -123,45 +136,30 @@ internal sealed class ScanRecordWriter : IScanRecordWriter, IDisposable
 
     public async Task VerifyHealthyAsync(CancellationToken cancellationToken = default)
     {
-        ThrowIfUnhealthy();
+        ObjectDisposedException.ThrowIf(_disposed, this);
         await FlushAsync(cancellationToken).ConfigureAwait(false);
-        ThrowIfUnhealthy();
         try
         {
             await using var connection = await _store.OpenAsync(cancellationToken).ConfigureAwait(false);
             // BEGIN IMMEDIATE xác nhận quyền ghi cả khi SQLite mở fallback read-only.
             await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
             await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            Interlocked.Exchange(ref _writeFailure, null);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             RecordFailure(ex);
             throw new IOException("Không xác minh được database bản ghi quét mã.", ex);
         }
-        ThrowIfUnhealthy();
-    }
-
-    private void RecordFailure(Exception cause) => Interlocked.CompareExchange(ref _writeFailure, cause, null);
-
-    private void ThrowIfUnhealthy()
-    {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        if (Volatile.Read(ref _writeFailure) is { } cause)
-            throw new IOException("Writer bản ghi quét mã đã gặp lỗi hoặc mất dữ liệu. Hãy kiểm tra trước khi cập nhật.", cause);
         if (_worker.IsCompleted)
             throw new IOException("Writer bản ghi quét mã đã dừng.");
     }
 
-    private void OnItemDropped(object item)
-    {
-        RecordFailure(new IOException("Hàng đợi bản ghi quét mã đã tràn."));
-        // Flush thường vẫn có thể hoàn thành; VerifyHealthy kiểm tra latch sau barrier.
-        if (item is FlushRequest request) request.Complete();
-    }
+    private void RecordFailure(Exception cause) => Interlocked.CompareExchange(ref _writeFailure, cause, null);
 
     private async Task RunAsync(CancellationToken ct)
     {
-        var pending = new List<ScanRecordEntity>(capacity: _opt.BatchSize);
+        var pending = new List<PendingRecord>(capacity: _opt.BatchSize);
         var lastFlush = Environment.TickCount64;
         var lastPrune = Environment.TickCount64;
 
@@ -186,6 +184,9 @@ internal sealed class ScanRecordWriter : IScanRecordWriter, IDisposable
                     hasItem = false;
                 }
 
+                if (!hasItem && _queue.Reader.Completion.IsCompleted)
+                    break;
+
                 if (hasItem)
                 {
                     // Gom tối đa BatchSize phần tử đang có sẵn (không chặn).
@@ -199,7 +200,7 @@ internal sealed class ScanRecordWriter : IScanRecordWriter, IDisposable
                             continue;
                         }
 
-                        if (item is ScanRecordEntity record)
+                        if (item is PendingRecord record)
                         {
                             pending.Add(record);
                         }
@@ -248,18 +249,19 @@ internal sealed class ScanRecordWriter : IScanRecordWriter, IDisposable
             }
         }
 
-        // Tắt: flush nốt phần đang dở + hoàn thành mọi yêu cầu còn treo.
+        // Tắt: flush nốt phần đang dở + hoàn thành barrier sau khi đã commit.
+        var pendingFlushRequests = new List<FlushRequest>();
         try
         {
             while (_queue.Reader.TryRead(out var item))
             {
                 if (item is FlushRequest request)
                 {
-                    request.Complete();
+                    pendingFlushRequests.Add(request);
                     continue;
                 }
 
-                if (item is ScanRecordEntity record)
+                if (item is PendingRecord record)
                 {
                     pending.Add(record);
                 }
@@ -267,39 +269,54 @@ internal sealed class ScanRecordWriter : IScanRecordWriter, IDisposable
 
             if (pending.Count > 0)
             {
-                await FlushBatchAsync(pending, CancellationToken.None).ConfigureAwait(false);
+                await FlushBatchAsync(pending, ct).ConfigureAwait(false);
             }
+            foreach (var request in pendingFlushRequests) request.Complete();
+            pendingFlushRequests.Clear();
         }
         catch (Exception ex)
         {
             RecordFailure(ex);
+            foreach (var record in pending) record.Fail(ex);
+            foreach (var request in pendingFlushRequests) request.Fail(ex);
             ScanDiagnostics.Error("Khong flush duoc ban ghi con lai khi dong worker.", ex);
         }
     }
 
-    private async Task FlushBatchAsync(List<ScanRecordEntity> pending, CancellationToken ct)
+    private async Task FlushBatchAsync(List<PendingRecord> pending, CancellationToken ct)
     {
         if (pending.Count == 0)
         {
             return;
         }
 
-        var batch = new List<ScanRecordEntity>(pending);
-        pending.Clear();
-
-        try
+        // Giữ batch trong bộ nhớ cho tới khi SQLite xác nhận transaction đã
+        // commit. Lỗi tạm thời được retry; Flush chỉ được hoàn tất sau khi ghi.
+        while (pending.Count > 0)
         {
-            await using var connection = await _store.OpenAsync(ct).ConfigureAwait(false);
-            await _store.InsertBatchAsync(connection, batch, ct).ConfigureAwait(false);
+            var batch = new List<PendingRecord>(pending);
+            try
+            {
+                await using var connection = await _store.OpenAsync(ct).ConfigureAwait(false);
+                await _store.InsertBatchAsync(connection, batch.Select(item => item.Record).ToArray(), ct)
+                    .ConfigureAwait(false);
 
-            Interlocked.Add(ref _writtenCount, batch.Count);
-        }
-        catch (Exception ex)
-        {
-            RecordFailure(ex);
-            // Mất batch này cũng được: ưu tiên app chạy ổn định.
-            ScanDiagnostics.Error(
-                $"Ghi batch ban ghi quet ma that bai ({batch.Count} ban ghi).", ex);
+                pending.Clear();
+                Interlocked.Add(ref _writtenCount, batch.Count);
+                Interlocked.Exchange(ref _writeFailure, null);
+                foreach (var item in batch) item.Complete();
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                RecordFailure(ex);
+                ScanDiagnostics.Error(
+                    $"Ghi batch ban ghi quet ma that bai ({batch.Count} ban ghi); se thu lai.", ex);
+                await Task.Delay(500, ct).ConfigureAwait(false);
+            }
         }
     }
 
@@ -340,7 +357,16 @@ internal sealed class ScanRecordWriter : IScanRecordWriter, IDisposable
         {
             // Đóng channel để worker biết hết việc -> flush nốt rồi thoát.
             _queue.Writer.TryComplete();
-            _worker.Wait(TimeSpan.FromSeconds(5));
+            if (!_worker.Wait(TimeSpan.FromSeconds(5)))
+            {
+                _cts.Cancel();
+                if (!_worker.Wait(TimeSpan.FromSeconds(5)))
+                {
+                    var error = new IOException("Writer dừng trước khi xác nhận commit một số bản ghi scan.");
+                    FailQueuedItems(error);
+                    ScanDiagnostics.Error("Writer scan chưa dừng sau timeout; các producer còn chờ được báo lỗi.", error);
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -348,17 +374,23 @@ internal sealed class ScanRecordWriter : IScanRecordWriter, IDisposable
         }
         finally
         {
-            // Giải phóng mọi yêu cầu flush còn treo để không ai chờ mãi.
-            while (_queue.Reader.TryRead(out var item))
-            {
-                if (item is FlushRequest request)
-                {
-                    request.Complete();
-                }
-            }
-
+            // Nếu worker đã thoát bất thường, đánh lỗi cho producer đang chờ;
+            // không giả báo các bản ghi chưa commit là hoàn tất.
             _cts.Cancel();
-            _cts.Dispose();
+            if (_worker.IsCompleted)
+                FailQueuedItems(new ObjectDisposedException(nameof(ScanRecordWriter),
+                    "Writer stopped before this record was committed."));
+            else
+                _ = _worker.ContinueWith(_ => _cts.Dispose(), TaskScheduler.Default);
+        }
+    }
+
+    private void FailQueuedItems(Exception error)
+    {
+        while (_queue.Reader.TryRead(out var item))
+        {
+            if (item is FlushRequest request) request.Fail(error);
+            if (item is PendingRecord record) record.Fail(error);
         }
     }
 
@@ -378,5 +410,17 @@ internal sealed class ScanRecordWriter : IScanRecordWriter, IDisposable
 
         /// <summary>Báo cho bên chờ biết đã ghi xong.</summary>
         public void Complete() => _tcs.TrySetResult();
+        public void Fail(Exception error) => _tcs.TrySetException(error);
+    }
+
+    private sealed class PendingRecord(ScanRecordEntity record)
+    {
+        private readonly TaskCompletionSource _tcs =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public ScanRecordEntity Record { get; } = record;
+        public void Complete() => _tcs.TrySetResult();
+        public void Fail(Exception error) => _tcs.TrySetException(error);
+        public void Wait() => _tcs.Task.GetAwaiter().GetResult();
     }
 }

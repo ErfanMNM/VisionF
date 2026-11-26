@@ -1,0 +1,16 @@
+{
+  "thread_id": "01a2162b-3ae9-76a2-976a-055cba157b1b",
+  "observed_at": "2026-11-26T12:22:05+07:00",
+  "completed_requests": 69,
+  "limit": 100,
+  "prepare_at": 80,
+  "handover_after": 90,
+  "remaining_requests": 31,
+  "status": "normal",
+  "exact": true,
+  "last_record_at": "2026-11-26T05:22:05.009Z",
+  "sources": [
+    "C:\\Users\\THUC\\.codex\\sessions\\2026\\11\\26\\rollout-2026-11-26T11-44-21-01a2162b-3ae9-76a2-976a-055cba157b1b.jsonl"
+  ],
+  "warnings": []
+}

@@ -1,0 +1,11 @@
+# Checkpoint ETRACE-01-W1
+- Executor: 01a21617-7b39-7351-ba10-f19c286c018d (/root/integration_worker), parent01a21616-70a0-7d80-9ccc-73bb2ba6c4f0; không chuyển quyền.
+- Project root C:\Users\THUC\source\repos\ErfanMNM\VisionF; master @92ba3ca09bdc5ba7706cdc430b6a94805f0d3c37. Không commit/deploy/đổi nhánh. Các sửa UI trước đó giữ nguyên.
+- Đã chốt báo cáo docs/etrace-po-a002-report-2026-11-26.md, evidence .session-org/etrace-po-a002/artifacts/final-summary.json và pilot-response.json.
+- CSV1000, toàn URL1 chuẩn hóa theo mẫu user, khớp đủ1000 A002.db thật; no-op import, importedNew0. DB Running/Pending1000/Scanned0/Activated0 được giữ nguyên, hash ef3318263c40282f0cf9a501d294b00459d018f376d12142f4c3260c663665d5.
+- Token200 nhưng API nghiệp vụ401. CEO chỉ định pilot1 bất chấp GET chưa verify; đúng1 POST toànURL1 lúc11:32:15+07 ngày26/11 trả400 lỗi `Provide either serialNumbers or fromIndex and toIndex, not both` dù payload chỉ serialNumbers; dừng mutation, không retry/gửi thêm.
+- Sent1/rejected1/confirmedAccepted0/notSent999/remoteStateUnverified1000; GET hậu kiểm401/400. Tổng HTTP GET12,POST1;200×3,401×7,400×3.
+- Marker artifacts/pilot-attempt.json đã tồn tại; không xóa để retry. Các cờ remote verified vẫn false. Không bật app/worker/backlog, không sửa config hoặc code sản phẩm.
+- .tmp-etrace-po-a002/etrace_a002.py có preflight/pilot/reconcile, guard source SHA+localset+exactpilot, one-shot/no retry/redaction. Chưa có gửi999 mode; chỉ xem xét khi eTrace sửa, có chỉ đạo mới và GET đối soát mã/lô.
+- File credential tạm đúng đích đã xóa sau hoàn tất; không có secret trong report/evidence theo literal audit23 file. Không có tiến trình đang chạy.
+- Bước tiếp theo: parent/QA nghiệm thu báo cáo; eTrace giải quyết401 và activation validation400. Không thực hiện thêm mutation trong phạm vi đợt đã chốt.

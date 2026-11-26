@@ -504,6 +504,7 @@ public sealed class CodeLookupRowViewModel
             ScanStatuses.Pass => "Pass",
             ScanStatuses.Duplicate => "Trùng",
             ScanStatuses.InvalidForOrder => "Không tồn tại",
+            ScanStatuses.InvalidStructure => "Sai cấu trúc",
             ScanStatuses.NoRead => "NoRead",
             ScanStatuses.Overload => "Quá tải",
             _ => "Fail",

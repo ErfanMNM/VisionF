@@ -1,0 +1,10 @@
+# Quyết định
+
+- 2026-11-26: tiếp nhận yêu cầu trực tiếp của người dùng từ CEO cũ đã dừng. Task UI/API cũ đã nghiệm thu, giữ nguyên; chỉ triển khai kiểm tra đầu vào camera.
+- Cấu trúc trong phạm vi mã sản phẩm AI 01/21: Digital Link, dạng ngoặc và element string. Nhận GTIN ngắn 8/12/13/14 trong Digital Link để tương thích eTrace; không kiểm checksum và không sửa CodeContent. Dạng element string/ngoặc dùng GTIN 14.
+- Guard intake/quá tải/halt và NoRead ưu tiên trước việc kiểm tra. Sai cấu trúc được phân loại ngay cả khi PO chưa chạy; chỉ gửi Fail=0 nếu PO đang chạy. Kiểm tra xảy ra trước lookup, chưa tạo bất kỳ trạng thái Pass nào trong PO. Mã GS1 hợp lệ khi chưa có PO đi qua luồng cũ để nhận NoProductionOrder.
+- Resolver có path prefix trong URL HTTP/HTTPS tuyệt đối là hợp lệ; chuỗi plain có substring /01/…/21/… không hợp lệ. Percent escape phải hợp lệ trên toàn Digital Link, chỉ decode serial để kiểm tra độ dài/bộ ký tự.
+- Skill session-ceo cập nhật sau khi phần sản phẩm đã build xong. CEO chuyển sửa review và chạy camera/UI cho /root/scan_review; /root/gs1_audit giữ review độc lập. Không build chồng lên nhau.
+- 2026-11-26: người dùng trực tiếp chỉ định CEO hiện tại tiếp nhận công việc dở dang từ 01a2162b-3ae9-76a2-976a-055cba157b1b; thread tiền nhiệm có trạng thái systemError và các executor được ghi nhận đều đã hoàn tất. Đã chuyển owner trong REGISTRY.md sang 01a21681-6ac4-7ca1-895d-55a3c8e93537 và ghi ACK.
+- DATA-02: mỗi record scan phải được lưu bền vững; không xử lý mã khi PLC offline tại thời điểm camera nhận; với mã đủ điều kiện, đánh dấu dictionary/PO trước khi gửi PLC và không hoàn tác do PLC send thất bại. `ScanStatus=Pass` theo PO commit nghiệp vụ; `PlcResult` độc lập lưu kết quả PLC. Record Pass đã commit vẫn đủ điều kiện gửi Checkee khi PLC write fail, đúng yêu cầu user không quan tâm kết quả send PLC. PLC offline trước intake được lưu history nhưng không xử lý mã hoặc gửi Checkee như Pass.
+- Bounded in-memory backpressure đơn lẻ chưa chứng minh insert đã bền vững; cần retry/ack từ SQLite và không âm thầm bỏ batch.

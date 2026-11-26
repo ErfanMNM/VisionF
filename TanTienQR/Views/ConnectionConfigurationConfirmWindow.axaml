@@ -1,0 +1,119 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="using:TanTienQR.Views"
+        x:Class="TanTienQR.Views.ConnectionConfigurationConfirmWindow"
+        Title="Xác nhận cấu hình Camera / PLC"
+        Width="700" MinHeight="360" MaxHeight="760"
+        SizeToContent="Height" CanResize="False" ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource BgPanel}">
+    <Grid RowDefinitions="Auto,*,Auto">
+        <Grid Margin="28,26,28,22" ColumnDefinitions="Auto,*" ColumnSpacing="16">
+            <Border Width="54" Height="54" CornerRadius="16"
+                    Background="{DynamicResource AccentSoft}" VerticalAlignment="Top">
+                <Path Width="28" Height="28" Stretch="Uniform"
+                      Stroke="{DynamicResource Accent}" StrokeThickness="1.8"
+                      StrokeLineCap="Round" StrokeJoin="Round"
+                      Data="M 4,5 H 20 V 19 H 4 Z M 8,2 V 5 M 16,2 V 5 M 8,19 V 22 M 16,19 V 22 M 1,9 H 4 M 1,15 H 4 M 20,9 H 23 M 20,15 H 23 M 8,9 H 16 V 15 H 8 Z" />
+            </Border>
+            <StackPanel Grid.Column="1" Spacing="5">
+                <TextBlock Text="CAMERA / PLC" Classes="overline" Foreground="{DynamicResource Accent}" />
+                <TextBlock Text="Xác nhận cấu hình" FontSize="24" FontWeight="Bold" LineHeight="32" />
+                <TextBlock x:Name="ConfirmationIntroduction"
+                           Text="Kiểm tra thông tin trước khi lưu và áp dụng."
+                           FontSize="13" LineHeight="21" Foreground="{DynamicResource TextSecondary}"
+                           TextWrapping="Wrap" />
+            </StackPanel>
+        </Grid>
+
+        <!-- Cuộn toàn bộ nội dung, kể cả ghi chú dài; header và nút luôn ở lại. -->
+        <ScrollViewer x:Name="ConfigurationDetailsScroll" Grid.Row="1" MaxHeight="470"
+                      HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="28,0,28,24" Spacing="16">
+                <Border x:Name="ChangesCard" Background="{DynamicResource BgPanel}"
+                        BorderBrush="{DynamicResource LineColor}" BorderThickness="1" CornerRadius="14">
+                    <StackPanel>
+                        <Grid ColumnDefinitions="*,Auto" Margin="18,15" ColumnSpacing="12">
+                            <TextBlock Text="THAY ĐỔI SẼ ÁP DỤNG" Classes="overline" VerticalAlignment="Center" />
+                            <Border Grid.Column="1" Background="{DynamicResource BgRaised}"
+                                    CornerRadius="7" Padding="9,4">
+                                <TextBlock x:Name="ConfigurationChangeCount" FontSize="11" LineHeight="17"
+                                           FontWeight="SemiBold" Foreground="{DynamicResource TextSecondary}" />
+                            </Border>
+                        </Grid>
+                        <ItemsControl x:Name="ConfigurationChanges" Margin="0,0,0,4">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="views:ConfigurationChangeDisplay">
+                                    <Border BorderBrush="{DynamicResource LineColor}" BorderThickness="0,1,0,0"
+                                            Padding="18,14">
+                                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
+                                            <Border Background="{DynamicResource AccentSoft}" CornerRadius="6"
+                                                    Width="62" Padding="7,4" VerticalAlignment="Top">
+                                                <TextBlock Text="{Binding Device}" FontSize="11" LineHeight="18"
+                                                           FontWeight="SemiBold" Foreground="{DynamicResource Accent}"
+                                                           HorizontalAlignment="Center" />
+                                            </Border>
+                                            <TextBlock Grid.Column="1" Text="{Binding Description}"
+                                                       FontSize="14" LineHeight="23" TextWrapping="Wrap"
+                                                       VerticalAlignment="Center" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <Border x:Name="ConnectionNoticeCard" Background="{DynamicResource WarnSoft}"
+                        BorderBrush="{DynamicResource LineWarn}" BorderThickness="1" CornerRadius="14" Padding="18">
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                        <Path Width="20" Height="20" Margin="0,2,0,0" VerticalAlignment="Top"
+                              Stretch="Uniform" Stroke="{DynamicResource Warn}" StrokeThickness="1.8"
+                              StrokeLineCap="Round" StrokeJoin="Round"
+                              Data="M 12,3 L 22,21 H 2 Z M 12,9 V 14 M 12,17 V 17.5" />
+                        <StackPanel Grid.Column="1" Spacing="6">
+                            <TextBlock Text="Kết nối sẽ tạm ngắt" FontSize="14" FontWeight="SemiBold" LineHeight="22" />
+                            <TextBlock x:Name="ConnectionNoticeText" FontSize="13" LineHeight="21"
+                                       Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Border x:Name="DevelopmentNoteCard" IsVisible="False" CornerRadius="12"
+                        Background="{DynamicResource BgRaised}" Padding="16,13">
+                    <TextBlock x:Name="DevelopmentNoteText" FontSize="12" LineHeight="20"
+                               Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" />
+                </Border>
+
+                <Border x:Name="OriginalMessageCard" IsVisible="False" CornerRadius="14" Padding="18"
+                        Background="{DynamicResource BgRaised}" BorderBrush="{DynamicResource LineColor}" BorderThickness="1">
+                    <TextBlock x:Name="OriginalMessageText" FontSize="14" LineHeight="23" TextWrapping="Wrap" />
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Border Grid.Row="2" Background="{DynamicResource BgBase}" BorderBrush="{DynamicResource LineColor}"
+                BorderThickness="0,1,0,0" Padding="28,18">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                <StackPanel VerticalAlignment="Center" Spacing="3">
+                    <TextBlock Text="Chưa sẵn sàng?" FontSize="12" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextSecondary}" />
+                    <TextBlock Text="Nhấn Esc để hủy" FontSize="11" Foreground="{DynamicResource TextMuted}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
+                    <Button x:Name="CancelConfigurationButton" Classes="soft" Content="Hủy" IsCancel="True"
+                            MinHeight="44" MinWidth="92" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" />
+                    <Button x:Name="ApplyConfigurationButton" Classes="primary" MinHeight="44" MinWidth="176"
+                            HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="9">
+                            <Path Width="16" Height="16" VerticalAlignment="Center" Stretch="Uniform"
+                                  StrokeThickness="2" StrokeLineCap="Round" StrokeJoin="Round"
+                                  Data="M 4,12 L 9,17 L 20,6" />
+                            <TextBlock Text="Lưu và áp dụng" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

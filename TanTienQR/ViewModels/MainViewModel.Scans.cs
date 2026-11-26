@@ -57,6 +57,9 @@ internal partial class MainViewModel
             case ScanOutcome.NoRead:
                 AddEvent("Camera không đọc được mã (NoRead)", EventLevel.Warning);
                 break;
+            case ScanOutcome.InvalidStructure:
+                AddEvent($"Sai cấu trúc · {record.CodeContent}", EventLevel.Warning);
+                break;
             case ScanOutcome.Duplicate:
                 AddEvent($"Trùng mã trong PO · {record.CodeContent}", EventLevel.Warning);
                 break;
@@ -85,7 +88,7 @@ internal partial class MainViewModel
 
         // Mã bị từ chối do quá tải / chưa bắt đầu sản xuất thì KHÔNG ghi PLC
         // -> không phải lỗi PLC.
-        if (!record.PlcWritten
+        if (!record.PlcWritten && !record.PlcSkipped
             && record.Outcome is not (ScanOutcome.Overload or ScanOutcome.NoProductionOrder or ScanOutcome.Halted))
         {
             AddEvent("Ghi kết quả xuống PLC thất bại", EventLevel.Critical);

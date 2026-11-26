@@ -32,7 +32,7 @@ static async Task Execute(string path, string sql)
 }
 
 ScanRecordWriter NewScans(string path, int capacity = 20000) => new(
-    Options.Create(new ScanStoreOptions { Path = path, QueueCapacity = capacity, BatchSize = 1000, FlushIntervalMs = 1000 }),
+    Options.Create(new ScanStoreOptions { Path = path, QueueCapacity = capacity, BatchSize = 1, FlushIntervalMs = 10 }),
     new ScanStore(path));
 
 SqliteLogWriter NewLogs(string path) => new(Options.Create(new SqliteLoggingOptions
@@ -66,16 +66,21 @@ try
         await MustFail(() => logs.VerifyHealthyAsync(timeout.Token));
     });
 
-    await Test("Ghi batch scan lỗi thì Flush cũ không ném; Verify chặn kể cả đã sửa DB", async () =>
+    await Test("Ghi batch scan retry lại sau lỗi trigger mà không mất record", async () =>
     {
         var path = Path.Combine(root, "failed-scan-batch.db");
         using var scans = NewScans(path);
         await scans.VerifyHealthyAsync(timeout.Token);
         await Execute(path, "CREATE TRIGGER fail_write BEFORE INSERT ON ScanRecords BEGIN SELECT RAISE(ABORT, 'test failure'); END;");
-        scans.Enqueue(new ScanRecordEntity { CodeContent = "FAILED", ReceivedUtc = DateTime.UtcNow });
-        await scans.FlushAsync(timeout.Token);
+        var enqueue = Task.Run(() => scans.Enqueue(new ScanRecordEntity { CodeContent = "FAILED", ReceivedUtc = DateTime.UtcNow }), timeout.Token);
+        await Task.Delay(800, timeout.Token);
+        if (enqueue.IsCompleted) throw new Exception("Enqueue xác nhận trước khi SQLite commit.");
         await Execute(path, "DROP TRIGGER fail_write;");
-        await MustFail(() => scans.VerifyHealthyAsync(timeout.Token));
+        await enqueue.WaitAsync(timeout.Token);
+        await scans.VerifyHealthyAsync(timeout.Token);
+        var rows = await new ScanRecordQuery(new ScanStore(path)).GetAsync(pageSize: 10, cancellationToken: timeout.Token);
+        if (rows.TotalCount != 1 || rows.Items.Single().CodeContent != "FAILED")
+            throw new Exception("Record retry không được lưu nguyên vẹn.");
     });
 
     await Test("Ghi batch log lỗi thì Flush cũ không ném; Verify chặn kể cả đã sửa DB", async () =>
@@ -90,12 +95,17 @@ try
         await MustFail(() => logs.VerifyHealthyAsync(timeout.Token));
     });
 
-    await Test("Tràn hàng đợi scan được ghi nhận để chặn cập nhật", async () =>
+    await Test("Queue scan đầy tạo backpressure nhưng lưu đủ record", async () =>
     {
-        using var scans = NewScans(Path.Combine(root, "overflow-scans.db"), capacity: 1);
+        var path = Path.Combine(root, "overflow-scans.db");
+        using var scans = NewScans(path, capacity: 1);
         await scans.VerifyHealthyAsync(timeout.Token);
-        for (var i = 0; i < 5000; i++) scans.Enqueue(new ScanRecordEntity { CodeContent = i.ToString() });
-        await MustFail(() => scans.VerifyHealthyAsync(timeout.Token));
+        const int count = 300;
+        for (var i = 0; i < count; i++) scans.Enqueue(new ScanRecordEntity { CodeContent = i.ToString(), ReceivedUtc = DateTime.UtcNow });
+        await scans.VerifyHealthyAsync(timeout.Token);
+        var rows = await new ScanRecordQuery(new ScanStore(path)).GetAsync(pageSize: 500, cancellationToken: timeout.Token);
+        if (rows.TotalCount != count || scans.WrittenCount != count)
+            throw new Exception($"Queue đầy nhưng chỉ lưu {rows.TotalCount}/{count} record.");
     });
 
     await Test("Tràn hàng đợi log được ghi nhận để chặn cập nhật", async () =>

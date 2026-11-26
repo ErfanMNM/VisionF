@@ -3,13 +3,13 @@ namespace ClassLibraryMT.Scans;
 /// <summary>
 /// API ghi bản ghi quét mã vào SQLite.
 ///
-/// Ghi bất đồng bộ (enqueue) nên không block luồng xử lý mã của camera.
-/// Nếu hàng đợi đầy thì bản ghi cũ nhất bị bỏ — ưu tiên không làm chậm app.
+/// Enqueue chịu backpressure và chỉ trả sau khi SQLite commit xong, để bản ghi
+/// camera không bị bỏ khi hàng đợi đầy.
 /// </summary>
 public interface IScanRecordWriter
 {
     /// <summary>
-    /// Đưa một bản ghi vào hàng đợi ghi (không chặn).
+    /// Đưa một bản ghi vào hàng đợi và chờ SQLite xác nhận commit.
     /// </summary>
     /// <param name="record">Bản ghi cần lưu.</param>
     void Enqueue(ScanRecordEntity record);

@@ -59,7 +59,7 @@ public sealed class PlcConfig
     [ConfigField("Số lần thử lại", Order = 6, Min = 0, Max = 10, RequiresRestart = false)]
     [JsonPropertyName("Retries")] public int Retries { get; set; }
 
-    [ConfigField("Kết quả (1/0)", Order = 7, Placeholder = "VD: D12", RequiresRestart = false, HelpText = "D12 = 1 khi đọc mã hợp lệ, D12 = 0 khi NoRead / FAIL / không tồn tại trong PO / trùng mã.")]
+    [ConfigField("Kết quả (1/0)", Order = 7, Placeholder = "VD: D12", RequiresRestart = false, HelpText = "D12 = 1 khi đọc mã hợp lệ, D12 = 0 khi NoRead / FAIL / sai cấu trúc / không tồn tại trong PO / trùng mã.")]
     [JsonPropertyName("ResultAddress")] public string ResultAddress { get; set; } = "D12";
 
     [ConfigField("Ready (1/0)", Order = 8, Placeholder = "VD: D16", RequiresRestart = false, HelpText = "D16 = 1 mỗi chu kỳ khi camera + PLC + license đều sẵn sàng.")]

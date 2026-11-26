@@ -21,16 +21,20 @@ body:json {
     "GTIN": "{{gtin}}",
     "batchCode": "{{batchCode}}",
     "type": "{{serialType}}",
-    "serialNumbers": ["{{serialNumber}}"]
+    "serialNumbers": [
+      "{{serialNumber}}"
+    ],
+    "fromIndex": 0,
+    "toIndex": 0
   }
 }
 
 vars:pre-request {
-  gtin: 8931234567892
-  batchCode: A002
+  gtin: 8935348800215
+  batchCode: A001
   serialType: RANDOM
-  serialNumber: BN8joxxKwx
-  apiKey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2YWUxYTUwM2ViZGNjMzQ0NTE2YjIyZTAiLCJ1c2VybmFtZSI6ImFzdGEtaGVhbHRoY2FyZSIsInN0YXR1cyI6dHJ1ZSwidHlwZSI6IlBBUlRORVIiLCJyZXNvdXJjZSI6Ik1FRCIsImxldmVsIjoiUEFDS0FHRSIsInJvbGUiOiJNQVNURVIiLCJlbnRlcnByaXNlSWQiOiIiLCJuZGFUcmFjZVRva2VuIjoiIiwiaWF0IjoxNzk1NTc4MTgxLCJleHAiOjE3OTYxODI5ODF9.0gWFzNa5Wb1koZxMSq_8d0GOVTAk4-1wcL_dsrfumC
+  serialNumber: UhtX8gAftf
+  apiKey: bf566fe2-f8e0-4d2e-925f-155f17fc82a6
 }
 
 tests {

@@ -254,7 +254,7 @@
                                         <TextBlock Classes="overline" FontSize="11" Text="Ý NGHĨA" />
                                         <TextBlock FontSize="11" TextWrapping="Wrap"
                                                    Foreground="{StaticResource TextMuted}"
-                                                   Text="D12 = 1 khi đọc mã hợp lệ, D12 = 0 khi NoRead / FAIL / sai định dạng / trùng mã. D16 = 1 mỗi chu kỳ khi camera + PLC + license đều sẵn sàng." />
+                                                   Text="D12 = 1 khi đọc mã hợp lệ, D12 = 0 khi NoRead / FAIL / sai cấu trúc / trùng mã. D16 = 1 mỗi chu kỳ khi camera + PLC + license đều sẵn sàng." />
                                     </StackPanel>
                                 </Border>
                             </StackPanel>

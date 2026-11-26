@@ -24,7 +24,7 @@ public sealed class ScanRecordEntity
     /// <summary>Metadata serial cũ; không dùng làm định danh hoặc kiểm tra mã sản xuất.</summary>
     public string Serial { get; set; } = string.Empty;
 
-    /// <summary>Pass / Duplicate / InvalidForOrder / NoRead; Fail và Overload tương thích lịch sử.</summary>
+    /// <summary>Pass / Duplicate / InvalidForOrder / NoRead / InvalidStructure; Fail và Overload tương thích lịch sử.</summary>
     public string Status { get; set; } = ScanStatuses.Fail;
 
     /// <summary>

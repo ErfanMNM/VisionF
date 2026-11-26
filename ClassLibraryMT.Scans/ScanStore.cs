@@ -447,12 +447,13 @@ internal sealed class ScanStore
             {
                 if (filter.Status.Value == ScanStatus.Fail)
                 {
-                    // Fail remains the aggregate rejection filter for legacy UI/report consumers.
-                    where += " AND Status IN ($status, $duplicate, $invalidForOrder, $noRead)";
+                    // Fail là bộ lọc tổng hợp các mã bị loại, gồm dữ liệu cũ.
+                    where += " AND Status IN ($status, $duplicate, $invalidForOrder, $noRead, $invalidStructure)";
                     parameters.Add(("$status", ScanStatuses.Fail));
                     parameters.Add(("$duplicate", ScanStatuses.Duplicate));
                     parameters.Add(("$invalidForOrder", ScanStatuses.InvalidForOrder));
                     parameters.Add(("$noRead", ScanStatuses.NoRead));
+                    parameters.Add(("$invalidStructure", ScanStatuses.InvalidStructure));
                 }
                 else
                 {

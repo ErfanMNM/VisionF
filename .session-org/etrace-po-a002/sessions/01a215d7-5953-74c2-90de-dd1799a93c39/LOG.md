@@ -1,0 +1,11 @@
+# Nhật ký CEO
+- Thread: 01a215d7-5953-74c2-90de-dd1799a93c39; active, người dùng gọi session-ceo và tuyển người cho tác vụ mới.
+- 2026-11-26T11:22:00+07:00: Đọc skill PDF, xác minh dependency pypdf/pdfplumber/fitz có sẵn; đọc báo cáo UAT trước và hợp đồng CodeContent hiện tại.
+- Snapshot đầu: CEO 59 completed_requests, normal/exact; CSV 1001 dòng và 8 cột. Lần in header lỗi stdout cp1252, cần sys.stdout.reconfigure(encoding='utf-8') khi xử lý tiếng Việt.
+- Code UI cũ và spec PDF chưa commit được giữ nguyên. Chỉ phân công một bên mutation, QA chỉ đọc.
+- User đã đổi CodeContent sang Link1 và cung cấp credential thật. Đã giao phòng resume remote preflight/pilot; credential giữ trong file Temp, không ghi giá trị vào hồ sơ.
+- Tại 80 request đã tạo HANDOVER.md checkpoint; CEO vẫn giữ quyền. Local A002 khớp đủ 1.000 URL1, QA đối chiếu hash độc lập; chưa cần import lại. Chưa có mutation ở checkpoint gần nhất.
+- Nghiệm thu cuối: tự đọc report và pilot-response.json. Đúng1POST fullURL1/A002/RANDOM, không index, automaticRetries0; HTTP400/statusfalse lỗi Provide either serialNumbers or fromIndex and toIndex, not both. Không thêm mutation sau lỗi;999chưa gửi,0accepted xác nhận,1000remote chưa đối soát.
+- Tự hash DB vẫn ef3318263c40282f0cf9a501d294b00459d018f376d12142f4c3260c663665d5; secret scan report+20JSON không có clientId/apiKey thật. Đã xóa đúng file credential Temp chỉ định khi hoàn tất.
+- QA cuối PASS tính đúng/đủ báo cáo/evidence, API vẫn FAIL; độc lập SQLite read-only xác nhận1000URL1,hashDB/CSV khớp; không còn finding cần sửa/thêm API/test.
+- Đầu ra docs/etrace-po-a002-report-2026-11-26.md; chứng cứ artifacts/pilot-response.json cùng pre/post/token đã che. Nhiệm vụ thử và báo cáo hoàn tất; lỗi phía eTrace vẫn tái hiện, trạng thái remote chưa xác minh. Không còn việc/code mới để nhận, không gửi bulk hoặc tự retry.

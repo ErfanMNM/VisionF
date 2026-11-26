@@ -6,7 +6,7 @@ internal static class CodeContentLifecycleChecks
 {
     public static async Task RunAsync(string workDir, Action<string, bool, string> check)
     {
-        Console.WriteLine("\n[11] Exact identity and acknowledged Pass lifecycle");
+        Console.WriteLine("\n[11] Exact identity and commit-before-PLC Pass lifecycle");
         var identity = await Fixture.Create(workDir, "identity",
             " Chuỗi\u001dopaque;Code ", "case", "Case", "remaining");
         check("Start exact-content PO", await identity.Service.StartProductionAsync(identity.Order.OrderNo), "");
@@ -18,31 +18,30 @@ internal static class CodeContentLifecycleChecks
         var missing = await identity.Service.ProcessCodeAsync("unknown", _ => { callbacks++; return Task.FromResult(true); });
         check("Missing code never sends PLC Pass", missing.Validation == PoCodeValidation.InvalidForOrder && callbacks == 0, "");
         var rejected = await identity.Service.ProcessCodeAsync("case", _ => { callbacks++; return Task.FromResult(false); });
-        check("Confirmed PLC rejection leaves code available",
-            rejected.Validation == PoCodeValidation.Valid && rejected.PlcWritten == false && !rejected.Committed
-            && identity.Service.ValidateCode("case") == PoCodeValidation.Valid, "");
-        check("Confirmed PLC rejection clears durable intent and counters",
+        check("PLC rejection does not undo the already consumed code",
+            rejected.Validation == PoCodeValidation.Valid && rejected.PlcWritten == false && rejected.Committed
+            && identity.Service.ValidateCode("case") == PoCodeValidation.Duplicate, "");
+        check("PLC rejection leaves durable Scanned state and PO count",
             (await identity.Store.GetCodesWithFlagsAsync(identity.Order.OrderNo, identity.Order.CreatedUtc))
-                .Single(p => p.Key == "case").Value == PoCodeCache.Flags.None
-            && await identity.Store.CountScannedAsync(identity.Order.OrderNo, identity.Order.CreatedUtc) == 0, "");
-        using var postAckCancellation = new CancellationTokenSource();
-        var accepted = await identity.Service.ProcessCodeAsync("case", _ =>
+                .Single(p => p.Key == "case").Value.HasFlag(PoCodeCache.Flags.Scanned)
+            && await identity.Store.CountScannedAsync(identity.Order.OrderNo, identity.Order.CreatedUtc) == 1, "");
+        var accepted = await identity.Service.ProcessCodeAsync("remaining", _ =>
         {
             callbacks++;
-            postAckCancellation.Cancel();
-            return Task.FromResult(true);
-        }, postAckCancellation.Token);
-        check("Caller cancellation after ACK cannot lose committed Pass",
-            accepted.Validation == PoCodeValidation.Valid && accepted.PlcWritten == true && accepted.Committed, "");
+            return Task.FromException<bool>(new IOException("PLC result unavailable"));
+        });
+        check("PLC exception after commit keeps the code consumed",
+            accepted.Validation == PoCodeValidation.Valid && accepted.PlcWritten is null && accepted.Committed
+            && identity.Service.ValidateCode("remaining") == PoCodeValidation.Duplicate, "");
         var repeat = await identity.Service.ProcessCodeAsync("case", _ => { callbacks++; return Task.FromResult(true); });
         check("Duplicate never sends another PLC Pass", repeat.Validation == PoCodeValidation.Duplicate && callbacks == 2, "");
         check("Ordinal case variant remains independent", identity.Service.ValidateCode("Case") == PoCodeValidation.Valid, "");
         var identityRestart = identity.Restart();
-        check("Restart restores current PO and committed exact state",
+        check("Restart restores both committed exact-content scans",
             await identityRestart.RestoreRunningOrderAsync()
             && identityRestart.ValidateCode("case") == PoCodeValidation.Duplicate
             && identityRestart.ValidateCode("Case") == PoCodeValidation.Valid
-            && identityRestart.ScannedCount == 1, "");
+            && identityRestart.ScannedCount == 2, "");
 
         var independentOrder = new ProductionOrder
         {
@@ -59,28 +58,25 @@ internal static class CodeContentLifecycleChecks
             && identityRestart.ScannedCount == 0, "");
         await identityRestart.CancelProductionAsync();
 
-        Console.WriteLine("\n[12] Ambiguous PLC result and post-ACK database failure quarantine");
+        Console.WriteLine("\n[12] PLC failure after commit and PO database failure before PLC");
         var ambiguous = await Fixture.Create(workDir, "ambiguous", "uncertain", "other");
         await ambiguous.Service.StartProductionAsync(ambiguous.Order.OrderNo);
-        PoScanProcessingException? uncertain = null;
-        try
-        {
-            await ambiguous.Service.ProcessCodeAsync("uncertain", _ => Task.FromException<bool>(new IOException("ACK lost")));
-        }
-        catch (PoScanProcessingException ex) { uncertain = ex; }
-        check("Lost ACK returns explicit uncertainty and halts",
-            uncertain?.Result is { Validation: PoCodeValidation.Halted, PlcWritten: null, Committed: false }
-            && ambiguous.Service.IsHalted, "");
-        check("Lost ACK keeps pending intent without consuming code",
+        var uncertain = await ambiguous.Service.ProcessCodeAsync("uncertain",
+            _ => Task.FromException<bool>(new IOException("ACK lost")));
+        check("Lost ACK after commit keeps Pass state without rolling PO back",
+            uncertain is { Validation: PoCodeValidation.Valid, PlcWritten: null, Committed: true }
+            && !ambiguous.Service.IsHalted
+            && ambiguous.Service.ValidateCode("uncertain") == PoCodeValidation.Duplicate, "");
+        check("Lost ACK has durable Scanned state and no pending intent",
             (await ambiguous.Store.GetCodesWithFlagsAsync(ambiguous.Order.OrderNo, ambiguous.Order.CreatedUtc))
-                .Single(p => p.Key == "uncertain").Value.HasFlag(PoCodeCache.Flags.PendingPass)
-            && await ambiguous.Store.CountScannedAsync(ambiguous.Order.OrderNo, ambiguous.Order.CreatedUtc) == 0, "");
+                .Single(p => p.Key == "uncertain").Value == PoCodeCache.Flags.Scanned
+            && await ambiguous.Store.CountScannedAsync(ambiguous.Order.OrderNo, ambiguous.Order.CreatedUtc) == 1, "");
         var ambiguousRestart = ambiguous.Restart();
         await ambiguousRestart.RestoreRunningOrderAsync();
         var replayCallbacks = 0;
         var quarantined = await ambiguousRestart.ProcessCodeAsync("uncertain", _ => { replayCallbacks++; return Task.FromResult(true); });
-        check("Restart cannot replay uncertain Pass",
-            ambiguousRestart.IsHalted && quarantined.Validation == PoCodeValidation.Halted && replayCallbacks == 0, "");
+        check("Restart prevents duplicate Pass replay after lost ACK",
+            !ambiguousRestart.IsHalted && quarantined.Validation == PoCodeValidation.Duplicate && replayCallbacks == 0, "");
 
         var commitFault = await Fixture.Create(workDir, "commit-fault", "acknowledged", "other");
         await commitFault.Service.StartProductionAsync(commitFault.Order.OrderNo);
@@ -88,16 +84,16 @@ internal static class CodeContentLifecycleChecks
             CREATE TRIGGER reject_scan BEFORE UPDATE OF ScannedUtc ON PoCodes
             WHEN NEW.ScannedUtc IS NOT NULL BEGIN SELECT RAISE(ABORT, 'test scan commit failure'); END;
             """);
-        PoScanProcessingException? failedCommit = null;
-        try { await commitFault.Service.ProcessCodeAsync("acknowledged", _ => Task.FromResult(true)); }
-        catch (PoScanProcessingException ex) { failedCommit = ex; }
-        check("Post-ACK scan fault preserves truthful PLC result",
-            failedCommit?.Result is { Validation: PoCodeValidation.Halted, PlcWritten: true, Committed: false }, "");
+        var plcCallbacks = 0;
+        try { await commitFault.Service.ProcessCodeAsync("acknowledged", _ => { plcCallbacks++; return Task.FromResult(true); }); }
+        catch (SqliteException) { }
+        check("PO commit failure prevents PLC Pass",
+            plcCallbacks == 0 && commitFault.Service.ValidateCode("acknowledged") == PoCodeValidation.Valid, "");
         var commitRestart = commitFault.Restart();
         await commitRestart.RestoreRunningOrderAsync();
-        check("Post-ACK scan fault survives restart with zero processed rows",
-            commitRestart.IsHalted && commitRestart.ScannedCount == 0
-            && commitRestart.ValidateCode("acknowledged") == PoCodeValidation.Halted, "");
+        check("Pre-PLC PO commit failure leaves code eligible after restart",
+            !commitRestart.IsHalted && commitRestart.ScannedCount == 0
+            && commitRestart.ValidateCode("acknowledged") == PoCodeValidation.Valid, "");
 
         Console.WriteLine("\n[13] Completion failure after committed final Pass");
         var completionFault = await Fixture.Create(workDir, "completion-fault", "last-code");

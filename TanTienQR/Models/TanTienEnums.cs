@@ -38,6 +38,9 @@ public enum ScanOutcome
     /// </summary>
     Halted = 7,
 
-    /// <summary>Mã hợp lệ nhưng PLC chưa xác nhận Pass; không tiêu thụ mã PO.</summary>
+    /// <summary>Lỗi PLC cho kết quả không phải Pass đã commit; mã hợp lệ đã commit vẫn là Pass.</summary>
     PlcError = 8,
+
+    /// <summary>Nội dung mã không đúng cấu trúc GS1 AI 01/21 → Fail (D12 = 0).</summary>
+    InvalidStructure = 9,
 }

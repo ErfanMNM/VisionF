@@ -73,6 +73,17 @@ AppBuilder.Configure<App>()
 
 Console.WriteLine("[Harness] Avalonia headless (Skia) khoi dong.");
 
+var confirmationOutputIndex = Array.IndexOf(args, "--confirmation-artifacts");
+var confirmationOutput = confirmationOutputIndex >= 0 && confirmationOutputIndex + 1 < args.Length
+    ? Path.GetFullPath(args[confirmationOutputIndex + 1])
+    : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../artifacts/connection-confirmation"));
+ConnectionConfirmationChecks.Run(Check, confirmationOutput);
+if (args.Contains("--confirmation-only"))
+{
+    Console.WriteLine($"KẾT QUẢ HỘP THOẠI: {passed} pass / {failed} fail");
+    return failed == 0 ? 0 : 1;
+}
+
 // ---------------------------------------------------------------
 // Sandbox rieng cho test: config goc + thu muc ghi rieng
 // ---------------------------------------------------------------

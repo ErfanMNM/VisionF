@@ -727,11 +727,11 @@ public sealed class ProductionOrderService
         ValidateCode(PoStore.BuildCodeKey(gtin, serial));
 
     /// <summary>
-    /// Đánh dấu mã đã quét hợp lệ (ghi vào cache RAM + DB PO).
+    /// Commit mã hợp lệ vào DB PO và cache RAM trước khi gửi Pass xuống PLC.
     ///
     /// <para>
     /// Khi PO đã quét đủ 100% thì <b>tự động hoàn tất</b> — UI về trạng thái
-    /// "chưa chọn PO".
+    /// "chưa chọn PO". Kết quả gửi PLC không hoàn tác mã đã commit.
     /// </para>
     /// </summary>
     public async Task<PoScanResult> ProcessCodeAsync(
@@ -759,10 +759,10 @@ public sealed class ProductionOrderService
                 return new PoScanResult(validation, false, false, order?.OrderNo ?? string.Empty);
 
             ct.ThrowIfCancellationRequested();
-            var pending = await _store
-                .BeginPendingPassAsync(order.OrderNo, order.CreatedUtc, codeContent, ct)
+            var committed = await _store
+                .MarkScannedAsync(order.OrderNo, order.CreatedUtc, codeContent, ct)
                 .ConfigureAwait(false);
-            if (!pending)
+            if (!committed)
             {
                 var latestValidation = _cache.IsScanned(codeContent) || _cache.IsActivated(codeContent)
                     ? PoCodeValidation.Duplicate
@@ -774,91 +774,26 @@ public sealed class ProductionOrderService
                 return new PoScanResult(latestValidation, false, false, order.OrderNo);
             }
 
-            if (!_cache.MarkPassPending(codeContent))
-            {
-                await _store.ClearPendingPassAsync(
-                    order.OrderNo, order.CreatedUtc, codeContent, CancellationToken.None).ConfigureAwait(false);
-                return new PoScanResult(PoCodeValidation.Duplicate, false, false, order.OrderNo);
-            }
+            // The durable PO row is authoritative. Publish it to the live cache
+            // before physical PLC I/O so a failed write never reopens this code.
+            _cache.MarkScanned(codeContent);
+            total = _cache.ValidCount;
+            scanned = _cache.ScannedCount;
 
-            if (ct.IsCancellationRequested)
-            {
-                var cleared = await _store.ClearPendingPassAsync(
-                    order.OrderNo, order.CreatedUtc, codeContent, CancellationToken.None).ConfigureAwait(false);
-                _cache.ClearPassPending(codeContent);
-                if (!cleared)
-                {
-                    _halted = true;
-                    var clearException = new InvalidOperationException(
-                        "Could not clear the cancelled PLC Pass intent.");
-                    await PersistHaltBestEffortAsync(order, clearException).ConfigureAwait(false);
-                    RaiseChanged();
-                    throw new PoScanProcessingException(
-                        "Cancellation arrived before PLC Pass, but its durable intent could not be cleared. Production was halted.",
-                        new PoScanResult(PoCodeValidation.Halted, false, false, order.OrderNo), clearException);
-                }
-                ct.ThrowIfCancellationRequested();
-            }
-            bool plcWritten;
+            bool? plcWritten;
+            string? plcMessage = null;
             try
             {
                 plcWritten = await sendPass(ct).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
-                _halted = true;
-                await PersistHaltBestEffortAsync(order, ex).ConfigureAwait(false);
-                RaiseChanged();
-                throw new PoScanProcessingException(
-                    "PLC Pass outcome is uncertain. Production was halted and the pending code was quarantined.",
-                    new PoScanResult(PoCodeValidation.Halted, null, false, order.OrderNo), ex);
+                plcWritten = null;
+                plcMessage = ex.Message;
             }
 
-            if (!plcWritten)
-            {
-                try
-                {
-                    var cleared = await _store.ClearPendingPassAsync(
-                        order.OrderNo, order.CreatedUtc, codeContent, CancellationToken.None).ConfigureAwait(false);
-                    if (!cleared)
-                        throw new InvalidOperationException("Could not clear the failed PLC Pass intent.");
-                    _cache.ClearPassPending(codeContent);
-                }
-                catch (Exception ex)
-                {
-                    _halted = true;
-                    await PersistHaltBestEffortAsync(order, ex).ConfigureAwait(false);
-                    RaiseChanged();
-                    throw new PoScanProcessingException(
-                        "PLC Pass failed, but its durable intent could not be cleared. Production was halted.",
-                        new PoScanResult(PoCodeValidation.Halted, false, false, order.OrderNo), ex);
-                }
-
-                ct.ThrowIfCancellationRequested();
-                return new PoScanResult(PoCodeValidation.Valid, false, false, order.OrderNo);
-            }
-
-            try
-            {
-                var committed = await _store.CommitPendingPassAsync(
-                    order.OrderNo, order.CreatedUtc, codeContent, CancellationToken.None).ConfigureAwait(false);
-                if (!committed)
-                    throw new InvalidOperationException("The pending PO code could not be committed as scanned.");
-            }
-            catch (Exception ex)
-            {
-                _halted = true;
-                await PersistHaltBestEffortAsync(order, ex).ConfigureAwait(false);
-                RaiseChanged();
-                throw new PoScanProcessingException(
-                    "PLC Pass was written but PO scan state could not be committed. Production was halted to prevent replay.",
-                    new PoScanResult(PoCodeValidation.Halted, true, false, order.OrderNo), ex);
-            }
-
-            _cache.MarkScanned(codeContent);
-            total = _cache.ValidCount;
-            scanned = _cache.ScannedCount;
-            outcome = new PoScanResult(PoCodeValidation.Valid, true, true, order.OrderNo);
+            outcome = new PoScanResult(PoCodeValidation.Valid, plcWritten, true, order.OrderNo,
+                Message: plcMessage);
         }
         finally
         {
@@ -888,7 +823,7 @@ public sealed class ProductionOrderService
         return outcome;
     }
 
-    [Obsolete("Use ProcessCodeAsync so only a confirmed PLC Pass consumes the code.")]
+    [Obsolete("Use ProcessCodeAsync so PO state commits before sending PLC Pass.")]
     public async Task MarkCodeScannedAsync(string codeContent, CancellationToken ct = default)
     {
         using var mutationLock = await _store.AcquireMutationLockAsync(ct).ConfigureAwait(false);

@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Text;
 using ClassLibraryMT.Communications.CodeReaderProtocol;
 using ClassLibraryMT.Communications.Plc;
+using ClassLibraryMT.DeviceStatus;
 using ClassLibraryMT.Po;
 using ClassLibraryMT.Scans;
 using Microsoft.Data.Sqlite;
@@ -29,6 +30,66 @@ internal static class CameraCodeContentChecks
             Console.WriteLine("[OK] " + description);
         }
 
+        var hasGs1Structure = typeof(App).Assembly.GetType("TanTienQR.Services.QrParser", true)!
+            .GetMethod("HasGs1Structure", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)!
+            .CreateDelegate<Func<string, bool>>();
+        const string gtin14 = "08934567890123";
+        foreach (var (content, description) in new[]
+        {
+            ("https://beta-elink.checkee.vn/01/8931234567892/21/BN8joxxKwx", "Link eTrace UAT GTIN-13 được kiểm tra cấu trúc, không kiểm checksum"),
+            ("http://example.test/01/12345678/21/A", "Digital Link GTIN-8 và serial một ký tự"),
+            ("/01/123456789012/21/A", "Digital Link GTIN-12"),
+            ($"/01/{gtin14}/21/ABCDEFGHIJKLMNOPQRST", "Digital Link GTIN-14 và serial tối đa 20 ký tự"),
+            ($"https://example.test/01/{gtin14}/21/A%2FB%3FC%25D?batch=A002#source", "Serial URL percent escape hợp lệ, có query và fragment"),
+            ($"/01/{gtin14}/21/ABC?batch=A002#source", "Path Digital Link có query và fragment"),
+            ($"https://example.test/prefix/01/{gtin14}/21/ABC", "Digital Link hỗ trợ path prefix của resolver"),
+            ($"https://example.test/prefix%2Fbatch/01/{gtin14}/21/ABC?batch=%20#source%25", "Escape hợp lệ trong resolver prefix, query và fragment"),
+            ($"(01){gtin14}(21)ABC123", "GS1 có ngoặc AI 01/21"),
+            ($"01{gtin14}21ABC123", "GS1 element string AI 01/21"),
+            ($"]C101{gtin14}21ABC123", "GS1-128 có symbology identifier ]C1"),
+            ($"]d201{gtin14}21ABC123", "GS1 DataMatrix có symbology identifier ]d2"),
+            ($"]Q301{gtin14}21ABC123", "GS1 QR có symbology identifier ]Q3"),
+            ($"\u001d01{gtin14}21ABC123\u001d", "Element string có ký tự GS đầu và cuối"),
+            ($"01{gtin14}21!\"%&'()*+,-./:;<=>?_", "Serial chấp nhận đầy đủ 20 ký tự đặc biệt thuộc GS1 set82"),
+        })
+            Check(hasGs1Structure(content), description);
+
+        foreach (var (content, description) in new[]
+        {
+            ("", "mã rỗng"),
+            ("PLAIN-CODE-42", "mã plain"),
+            ("NoRead", "NoRead không phải cấu trúc GS1"),
+            ("FAIL", "FAIL không phải cấu trúc GS1"),
+            ("https://example.test/21/ABC", "thiếu AI 01"),
+            ($"https://example.test/01/{gtin14}/ABC", "thiếu AI 21"),
+            ($"https://example.test/01/{gtin14}/21/", "serial rỗng"),
+            ($"/01/{gtin14}/21/ABCDEFGHIJKLMNOPQRSTU", "serial dài hơn 20 ký tự"),
+            ("/01/12345678901/21/ABC", "độ dài GTIN không được hỗ trợ"),
+            ("/01/0893456789012X/21/ABC", "GTIN có chữ"),
+            ("/01/０８９３４５６７８９０１２３/21/ABC", "GTIN dùng chữ số Unicode"),
+            ($"prefix/01/{gtin14}/21/ABC", "không nhận một đoạn GS1 bên trong chuỗi bất kỳ"),
+            ($" /01/{gtin14}/21/ABC", "không tự bỏ khoảng trắng đầu mã"),
+            ($"/01/{gtin14}/21/ABC ", "không tự bỏ khoảng trắng cuối mã"),
+            ($"ftp://example.test/01/{gtin14}/21/ABC", "chỉ nhận URL HTTP hoặc HTTPS"),
+            ($"https://example.test/01/{gtin14}/21/ABC/10/LOT", "AI ngoài phạm vi 01/21 hoặc path thừa"),
+            ($"https://example.test/01/{gtin14}/21/A%ZZ", "percent escape không phải hex"),
+            ($"https://example.test/01/{gtin14}/21/A%2", "percent escape bị thiếu ký tự"),
+            ($"https://example.test/01/{gtin14}/21/A%20B", "serial đã decode chứa khoảng trắng"),
+            ($"https://example.test/01/{gtin14}/21/A%23B", "serial đã decode chứa dấu # ngoài set82"),
+            ($"https://example.test/01/{gtin14}/21/ABC?batch=%ZZ", "percent escape sai trong query"),
+            ($"/01/{gtin14}/21/ABC?batch=%2", "percent escape thiếu ký tự trong query của path Digital Link"),
+            ($"https://example.test/01/{gtin14}/21/ABC#source%ZZ", "percent escape sai trong fragment"),
+            ($"/01/{gtin14}/21/ABC#source%", "percent escape thiếu ký tự trong fragment của path Digital Link"),
+            ($"https://example.test/prefix%ZZ/01/{gtin14}/21/ABC", "percent escape sai trong resolver prefix"),
+            ($"(01)8931234567892(21)ABC", "AI 01 có ngoặc yêu cầu đúng 14 số"),
+            ($"(01){gtin14}(22)ABC", "sai AI 21 trong mã có ngoặc"),
+            ($"01{gtin14}21Việt", "serial có Unicode ngoài GS1 set82"),
+            ($"01{gtin14}21A|B", "serial chứa dấu | ngoài set82"),
+            ($"01{gtin14}21A\u001dB", "GS ở giữa serial không thuộc cấu trúc hỗ trợ"),
+            ($"]C001{gtin14}21ABC", "symbology identifier không phải GS1"),
+        })
+            Check(!hasGs1Structure(content), "Sai cấu trúc: " + description);
+
         var root = Path.Combine(Path.GetTempPath(), "VisionF-CameraCodeContent-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
@@ -39,12 +100,12 @@ internal static class CameraCodeContentChecks
         var seenHistory = new CodeContentHistory();
         ProductionOrderService NewService() => new(client, store, history, new PoCodeCache(), seenHistory);
         var po = NewService();
-        const string plain = "PLAIN-CODE-42";
+        const string plain = "(01)08934567890123(21)PLAIN-CODE-42";
         const string firstUrl = "https://one.example/01/08934567890123/21/SHARED-SUFFIX";
         const string secondUrl = "https://two.example/01/08934567890123/21/SHARED-SUFFIX";
-        const string acknowledged = "ACKNOWLEDGED-BUT-NOT-SCANNED";
-        const string retryContent = "RETRY-AFTER-PLC-FAIL";
-        var arbitrary = "  Việt Nam|part:01\u001danything?key=Value  " + new string('x', 1000) + "  ";
+        const string acknowledged = "/01/08934567890123/21/ACKNOWLEDGED";
+        const string retryContent = "/01/08934567890123/21/RETRY-AFTER-PLC-FAIL";
+        const string escapedUrl = "https://escaped.example/01/08934567890123/21/A%2FB%3FC%25D?case=VALUE#batch";
         var order = new ProductionOrder
         {
             OrderNo = "CAMERA-CONTENT-PO",
@@ -56,43 +117,64 @@ internal static class CameraCodeContentChecks
             new() { CodeContent = plain },
             new() { CodeContent = firstUrl },
             new() { CodeContent = secondUrl },
-            new() { CodeContent = arbitrary },
+            new() { CodeContent = escapedUrl },
             new() { CodeContent = acknowledged, ActivatedUtc = DateTime.UtcNow },
             new() { CodeContent = retryContent },
             // Keep one unscanned code so automatic completion does not close this PO.
-            new() { CodeContent = "SPARE-CONTENT" },
+            new() { CodeContent = "/01/08934567890123/21/SPARE-CONTENT" },
         ], ct);
         await store.EnsurePoDbAsync(new ProductionOrder
         {
             OrderNo = "OTHER-CAMERA-PO", OrderQty = 1, CreatedUtc = order.CreatedUtc,
-        }, [new() { CodeContent = "ONLY-IN-OTHER-PO" }], ct);
+        }, [new() { CodeContent = "/01/08934567890123/21/ONLY-IN-OTHER-PO" }], ct);
 
         using var plc = new CameraResultPlc();
         await using (var camera = await CameraPipeline.StartAsync(po, plc, ct))
         {
-            var inactive = await camera.ScanAsync("BEFORE-START", ct);
+            var inactive = await camera.ScanAsync("/01/08934567890123/21/BEFORE-START", ct);
             Check(inactive.Outcome == ScanOutcome.NoProductionOrder && !inactive.PlcWritten
                 && plc.Writes.IsEmpty && camera.Saved.Last().PlcResult == ScanPlcResults.Skipped,
-                "Camera chưa chạy PO bỏ qua mã, không ghi PLC");
+                "Camera chưa chạy PO vẫn báo NoProductionOrder cho mã GS1 hợp lệ, không ghi PLC");
+            foreach (var malformedBeforeStart in new[] { "BEFORE-START", "/01/invalid/21/ABC" })
+            {
+                var malformed = await camera.ScanAsync(malformedBeforeStart, ct);
+                Check(malformed is { Outcome: ScanOutcome.InvalidStructure, PlcWritten: false, PlcSkipped: true }
+                    && malformed.CodeContent == malformedBeforeStart
+                    && plc.Writes.IsEmpty
+                    && camera.Saved.Last() is { Status: ScanStatuses.InvalidStructure, PlcResult: ScanPlcResults.Skipped }
+                    && camera.Saved.Last().OrderNo == string.Empty,
+                    "Chưa chạy PO vẫn báo Sai cấu trúc, giữ Raw và không phát PLC");
+            }
             Check(await po.StartProductionAsync(order.OrderNo, ct), "Pipeline khởi động PO từ database local");
+
+            var disconnectedWrites = plc.Writes.Count;
+            AppStateManager.SetPlcStatus(PLCStatus.Disconnect);
+            var disconnected = await camera.ScanAsync(retryContent, ct);
+            Check(disconnected is { Outcome: ScanOutcome.PlcError, PlcWritten: false, PlcSkipped: true }
+                && plc.Writes.Count == disconnectedWrites && po.ScannedCount == 1
+                && po.ValidateCode(retryContent) == PoCodeValidation.Valid
+                && camera.Saved.Last() is { Status: ScanStatuses.Fail, PlcResult: ScanPlcResults.Skipped },
+                "PLC offline tại lúc nhận: lưu record Skipped nhưng không gửi PLC hoặc tiêu thụ mã PO");
+            AppStateManager.SetPlcStatus(PLCStatus.Connected);
 
             plc.FailNextWrite();
             var rejectedByPlc = await camera.ScanAsync(retryContent, ct);
-            Check(!rejectedByPlc.PlcWritten && !plc.Writes.Last().Acknowledged
-                && plc.Writes.Last().Value == 1 && po.ScannedCount == 1
-                && po.ValidateCode(retryContent) == PoCodeValidation.Valid
-                && camera.Saved.Last().PlcResult == ScanPlcResults.Failed,
-                "PLC từ chối Pass giữ mã available và số PO không tăng");
+            Check(rejectedByPlc is { Outcome: ScanOutcome.Pass, PlcWritten: false }
+                && !plc.Writes.Last().Acknowledged && plc.Writes.Last().Value == 1 && po.ScannedCount == 2
+                && po.ValidateCode(retryContent) == PoCodeValidation.Duplicate
+                && camera.Saved.Last() is { Status: ScanStatuses.Pass, PlcResult: ScanPlcResults.Failed },
+                "PLC từ chối sau commit vẫn giữ Pass/Checkee và Scanned; PLC failure được ghi riêng");
+            AppStateManager.SetPlcStatus(PLCStatus.Connected);
             var retry = await camera.ScanAsync(retryContent, ct);
-            Check(retry is { Outcome: ScanOutcome.Pass, PlcWritten: true } && po.ScannedCount == 2
+            Check(retry is { Outcome: ScanOutcome.Duplicate, PlcWritten: true } && po.ScannedCount == 2
                 && po.ValidateCode(retryContent) == PoCodeValidation.Duplicate,
-                "Retry sau lỗi PLC được Pass thành công rồi mới commit PO");
+                "Mã đã commit không được gửi Pass lần hai sau PLC rejection");
             var retryDuplicate = await camera.ScanAsync(retryContent, ct);
             Check(retryDuplicate is { Outcome: ScanOutcome.Duplicate, PlcWritten: true }
                 && plc.Writes.Last().Value == 0 && po.ScannedCount == 2,
-                "Chỉ lượt retry đã được PLC ACK mới trở thành Duplicate");
+                "Mọi lượt quét sau khi PO commit đều là Duplicate, kể cả lượt PLC không ACK");
 
-            foreach (var content in new[] { plain, firstUrl, secondUrl, arbitrary })
+            foreach (var content in new[] { plain, firstUrl, secondUrl, escapedUrl })
             {
                 var before = plc.Writes.Count;
                 var record = await camera.ScanAsync(content, ct);
@@ -101,13 +183,13 @@ internal static class CameraCodeContentChecks
                     && plc.Writes.Last() is { Address: 12, Value: 1 }
                     && camera.Saved.Last() is { Status: ScanStatuses.Pass, PlcResult: ScanPlcResults.Ok } saved
                     && saved.CodeContent == content && saved.Raw == content && saved.OrderNo == order.OrderNo,
-                    content == arbitrary
-                        ? "Pipeline giữ nguyên mã dài Unicode/GS/khoảng trắng và Pass D12=1"
+                    content == escapedUrl
+                        ? "Pipeline kiểm tra serial đã decode nhưng lưu nguyên URL có percent escape/query/fragment"
                         : content == secondUrl
                                 ? "Hai URL khác nhau cùng đuôi serial đều Pass riêng biệt"
                                 : content == firstUrl
                                     ? "Camera nhận URL nguyên vẹn làm CodeContent"
-                                    : "Mã plain bất kỳ thuộc PO được Pass D12=1");
+                                    : "GS1 có ngoặc thuộc PO được Pass D12=1");
             }
             Check(po.ScannedCount == 6, "PO ghi nhận năm mã Pass và một mã đã kích hoạt, không gộp theo đoạn serial");
             var activated = await camera.ScanAsync(acknowledged, ct);
@@ -121,15 +203,15 @@ internal static class CameraCodeContentChecks
                 && plc.Writes.Last().Value == 0 && camera.Saved.Last().Status == ScanStatuses.Duplicate
                 && po.ScannedCount == 6, "Quét lại CodeContent đã dùng cho Duplicate và D12=0");
 
-            foreach (var unknown in new[] { "UNKNOWN-CONTENT", "plain-code-42", "ONLY-IN-OTHER-PO" })
+            foreach (var unknown in new[] { "/01/08934567890123/21/UNKNOWN-CONTENT", "(01)08934567890123(21)plain-code-42", "/01/08934567890123/21/ONLY-IN-OTHER-PO" })
             {
                 var record = await camera.ScanAsync(unknown, ct);
                 Check(record is { Outcome: ScanOutcome.InvalidForOrder, PlcWritten: true }
                     && record.CodeContent == unknown && plc.Writes.Last().Value == 0
                     && camera.Saved.Last().Status == ScanStatuses.InvalidForOrder,
-                    unknown == "plain-code-42"
+                    unknown == "(01)08934567890123(21)plain-code-42"
                         ? "Dictionary phân biệt hoa thường, mã khác case là Không tồn tại"
-                        : unknown == "ONLY-IN-OTHER-PO"
+                        : unknown == "/01/08934567890123/21/ONLY-IN-OTHER-PO"
                             ? "Mã chỉ thuộc PO khác bị Không tồn tại trong PO đang chạy"
                             : "Mã không thuộc PO cho InvalidForOrder và D12=0");
             }
@@ -158,7 +240,7 @@ internal static class CameraCodeContentChecks
             Check(await restored.ActivatePendingAsync(ct) == 5 && !restored.IsHalted
                 && client.ActivationCalls == 1,
                 "Mã trong lịch sử PO khác không chặn kích hoạt trạng thái riêng của PO đang chạy");
-            var independent = await camera.ScanAsync("SPARE-CONTENT", ct);
+            var independent = await camera.ScanAsync("/01/08934567890123/21/SPARE-CONTENT", ct);
             Check(independent is { Outcome: ScanOutcome.Pass, PlcWritten: true }
                 && !restored.IsProductionRunning && restored.LastFinishedScannedCount == 7
                 && restored.LastFinishedOrder?.OrderNo == order.OrderNo
@@ -170,12 +252,81 @@ internal static class CameraCodeContentChecks
             && finishedMeta.ContainsKey(PoStore.MetaCompletedUtc),
             "PO fixture tự hoàn tất bền vững trước khi kiểm tra PO tiếp theo");
 
+        // Reuse the initialized temporary history DB; a brand-new history path
+        // has no PoMeta table until the store first initializes that database.
+        var structureStore = store;
+        var structurePo = NewService();
+        var structureOrder = new ProductionOrder
+        {
+            OrderNo = "CAMERA-INVALID-STRUCTURE", OrderQty = 3, CreatedUtc = order.CreatedUtc,
+        };
+        const string malformedImported = "PLAIN-CODE-42";
+        const string malformedActivated = "ALREADY-ACTIVATED-BUT-MALFORMED";
+        await structureStore.EnsurePoDbAsync(structureOrder,
+        [
+            new() { CodeContent = malformedImported },
+            new() { CodeContent = malformedActivated, ActivatedUtc = DateTime.UtcNow },
+            new() { CodeContent = "/01/08934567890123/21/STILL-AVAILABLE" },
+        ], ct);
+        Check(await structurePo.StartProductionAsync(structureOrder.OrderNo, ct)
+            && structurePo.ScannedCount == 1
+            && structurePo.ValidateCode(malformedImported) == PoCodeValidation.Valid
+            && structurePo.ValidateCode(malformedActivated) == PoCodeValidation.Duplicate,
+            "Chuẩn bị PO có mã sai cấu trúc chưa quét và mã sai cấu trúc đã kích hoạt");
+        var flagsBeforeStructure = await structureStore.GetCodesWithFlagsAsync(structureOrder.OrderNo, structureOrder.CreatedUtc, ct);
+        await using (var camera = await CameraPipeline.StartAsync(structurePo, plc, ct))
+        {
+            foreach (var malformed in new[]
+            {
+                malformedImported,
+                malformedActivated,
+                "/01/invalid/21/ABC",
+                "https://example.test/01/08934567890123/21/ABC/10/LOT",
+                "  Việt Nam|part:01\u001danything?key=Value  " + new string('x', 1000) + "  ",
+            })
+            {
+                var before = plc.Writes.Count;
+                var rejected = await camera.ScanAsync(malformed, ct);
+                Check(rejected is { Outcome: ScanOutcome.InvalidStructure, PlcWritten: true }
+                    && rejected.CodeContent == malformed && plc.Writes.Count == before + 1
+                    && plc.Writes.Last() is { Address: 12, Value: 0 }
+                    && camera.Saved.Last() is { Status: ScanStatuses.InvalidStructure, PlcResult: ScanPlcResults.Ok } saved
+                    && saved.CodeContent == malformed && saved.Raw == malformed && saved.OrderNo == structureOrder.OrderNo
+                    && structurePo.ScannedCount == 1,
+                    "Camera báo Sai cấu trúc trước lookup/trùng, chỉ ghi Fail=0 và giữ nguyên Raw/PO");
+            }
+            var beforeFailedWrite = plc.Writes.Count;
+            plc.FailNextWrite();
+            var plcRejected = await camera.ScanAsync(malformedImported, ct);
+            Check(plcRejected is { Outcome: ScanOutcome.InvalidStructure, PlcWritten: false }
+                && plc.Writes.Count == beforeFailedWrite + 1
+                && plc.Writes.Last() is { Address: 12, Value: 0, Acknowledged: false }
+                && camera.Saved.Last() is { Status: ScanStatuses.InvalidStructure, PlcResult: ScanPlcResults.Failed }
+                && structurePo.ScannedCount == 1 && !structurePo.IsHalted,
+                "PLC từ chối Fail giữ đúng Sai cấu trúc, không phát Pass hoặc tiêu thụ mã PO");
+        }
+        var flagsAfterStructure = (await structureStore.GetCodesWithFlagsAsync(structureOrder.OrderNo, structureOrder.CreatedUtc, ct))
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        Check(flagsBeforeStructure.Count == flagsAfterStructure.Count
+            && flagsBeforeStructure.All(pair => flagsAfterStructure.TryGetValue(pair.Key, out var flags) && flags == pair.Value)
+            && flagsAfterStructure.All(pair => (pair.Value & PoCodeCache.Flags.PendingPass) == 0),
+            "Sai cấu trúc không đổi Scanned/Activated hoặc tạo PendingPass trong DB PO");
+        await using (var camera = await CameraPipeline.StartAsync(structurePo, plc, ct))
+        {
+            var validRemaining = await camera.ScanAsync("/01/08934567890123/21/STILL-AVAILABLE", ct);
+            Check(validRemaining is { Outcome: ScanOutcome.Pass, PlcWritten: true }
+                && structurePo.IsProductionRunning && structurePo.ScannedCount == 2,
+                "Mã GS1 hợp lệ còn lại vẫn Pass và ghi nhận bình thường sau các lượt Sai cấu trúc");
+        }
+        Check(await structurePo.CancelProductionAsync(structureOrder.OrderNo, ct),
+            "Dọn PO fixture Sai cấu trúc sau khi xác minh mã hợp lệ vẫn Pass");
+
         seenHistory.Codes = [];
         var finalOrder = new ProductionOrder
         {
             OrderNo = "CAMERA-LAST-CODE", OrderQty = 1, CreatedUtc = order.CreatedUtc,
         };
-        const string finalContent = "LAST-CODE-COMPLETES-PO";
+        const string finalContent = "/01/08934567890123/21/LAST-CODE";
         await store.EnsurePoDbAsync(finalOrder, [new() { CodeContent = finalContent }], ct);
         var completing = NewService();
         Check(await completing.StartProductionAsync(finalOrder.OrderNo, ct), "Chuẩn bị PO một mã để kiểm tra tự hoàn tất");
@@ -192,19 +343,19 @@ internal static class CameraCodeContentChecks
         {
             OrderNo = "CAMERA-PERSISTENCE-FAIL", OrderQty = 2, CreatedUtc = order.CreatedUtc,
         };
-        const string failedContent = "DB-FAIL-AFTER-PLC-PASS";
+        const string failedContent = "/01/08934567890123/21/DB-FAIL-AFTER-PASS";
         await store.EnsurePoDbAsync(failedOrder,
-            [new() { CodeContent = failedContent }, new() { CodeContent = "BLOCKED-AFTER-DB-FAIL" }], ct);
+            [new() { CodeContent = failedContent }, new() { CodeContent = "/01/08934567890123/21/BLOCKED-AFTER-FAIL" }], ct);
         var failAfterAck = NewService();
-        Check(await failAfterAck.StartProductionAsync(failedOrder.OrderNo, ct), "Chuẩn bị PO kiểm tra lỗi commit sau PLC Pass");
+        Check(await failAfterAck.StartProductionAsync(failedOrder.OrderNo, ct), "Chuẩn bị PO kiểm tra lỗi commit trước PLC Pass");
         await using (var connection = new SqliteConnection($"Data Source={store.GetDbPath(failedOrder.OrderNo, failedOrder.CreatedUtc)}"))
         {
             await connection.OpenAsync(ct);
             await using var command = connection.CreateCommand();
             command.CommandText = """
                 CREATE TRIGGER camera_fail_scan BEFORE UPDATE OF ScannedUtc ON PoCodes
-                WHEN NEW.Code = 'DB-FAIL-AFTER-PLC-PASS'
-                BEGIN SELECT RAISE(ABORT, 'camera test simulated commit failure after PLC ACK'); END;
+                WHEN NEW.Code = '/01/08934567890123/21/DB-FAIL-AFTER-PASS'
+                BEGIN SELECT RAISE(ABORT, 'camera test simulated PO commit failure before PLC'); END;
                 """;
             await command.ExecuteNonQueryAsync(ct);
         }
@@ -213,36 +364,39 @@ internal static class CameraCodeContentChecks
             var beforeFault = plc.Writes.Count;
             var failed = await camera.ScanAsync(failedContent, ct);
             var faultWrites = plc.Writes.Skip(beforeFault).ToArray();
-            Check(failed is { Outcome: ScanOutcome.Halted, PlcWritten: true } && failAfterAck.IsHalted
-                && camera.IsSuspended
-                && faultWrites.Any(write => write is { Address: 12, Value: 1, Acknowledged: true })
-                && faultWrites.Any(write => write is { Address: 16, Value: 0, Acknowledged: true })
+            Check(failed is { Outcome: ScanOutcome.Halted, PlcWritten: false, PlcSkipped: true }
+                && !failAfterAck.IsHalted && !camera.IsSuspended
+                && faultWrites.Length == 0
                 && camera.Errors.Any(error => error.Contains(failedContent, StringComparison.Ordinal)),
-                "Commit PO lỗi sau PLC ACK khóa camera, Ready=0 và phát Halted/log đầy đủ để đối soát");
+                "Lỗi commit PO trước PLC giữ mã available, không gửi Pass và ghi Halted/skipped");
             var durable = await store.GetCodesWithFlagsAsync(failedOrder.OrderNo, failedOrder.CreatedUtc, ct);
             var failedFlags = durable.Single(pair => pair.Key == failedContent).Value;
-            Check((failedFlags & PoCodeCache.Flags.Scanned) == 0
-                && (failedFlags & PoCodeCache.Flags.PendingPass) != 0,
-                "Commit sau PLC lỗi giữ durable PendingPass để đối soát, không xuất bản scanned giả");
-            var writes = plc.Writes.Count;
-            var saved = camera.Saved.Count;
-            await camera.SendSuppressedAsync(failedContent, ct);
-            await camera.SendSuppressedAsync("BLOCKED-AFTER-DB-FAIL", ct);
-            Check(camera.IsSuspended && camera.Saved.Count == saved && plc.Writes.Count == writes,
-                "Sau lỗi commit không replay Pass và không cho sản xuất mã tiếp theo");
+            Check(failedFlags == PoCodeCache.Flags.None
+                && failAfterAck.ValidateCode(failedContent) == PoCodeValidation.Valid,
+                "Lỗi commit không đổi Scanned/Activated và không tạo PendingPass");
+            await using var repair = new SqliteConnection($"Data Source={store.GetDbPath(failedOrder.OrderNo, failedOrder.CreatedUtc)}");
+            await repair.OpenAsync(ct);
+            await using var removeTrigger = repair.CreateCommand();
+            removeTrigger.CommandText = "DROP TRIGGER camera_fail_scan;";
+            await removeTrigger.ExecuteNonQueryAsync(ct);
+            var retried = await camera.ScanAsync(failedContent, ct);
+            Check(retried is { Outcome: ScanOutcome.Pass, PlcWritten: true }
+                && failAfterAck.ValidateCode(failedContent) == PoCodeValidation.Duplicate
+                && plc.Writes.Skip(beforeFault).Any(write => write is { Address: 12, Value: 1, Acknowledged: true }),
+                "Sau khi PO DB phục hồi, mã available được commit rồi mới gửi PLC Pass");
         }
         var restartGuard = NewService();
-        Check(await restartGuard.RestoreRunningOrderAsync(ct) && restartGuard.IsHalted
-            && restartGuard.ValidateCode(failedContent) == PoCodeValidation.Halted
-            && restartGuard.ScannedCount == 0
-            && !await restartGuard.StartProductionAsync(failedOrder.OrderNo, ct),
-            "Restart phát hiện PendingPass/halt marker và từ chối chạy lại PO cần đối soát");
+        Check(await restartGuard.RestoreRunningOrderAsync(ct) && !restartGuard.IsHalted
+            && restartGuard.ValidateCode(failedContent) == PoCodeValidation.Duplicate
+            && restartGuard.ScannedCount == 1,
+            "Restart khôi phục durable Scanned sau khi PLC Pass được gửi");
         await using (var camera = await CameraPipeline.StartAsync(restartGuard, plc, ct))
         {
             var writes = plc.Writes.Count;
-            var blocked = await camera.ScanAsync(failedContent, ct);
-            Check(blocked is { Outcome: ScanOutcome.Halted, PlcWritten: false } && plc.Writes.Count == writes,
-                "Camera sau restart không phát lại PLC Pass của mã có kết quả chưa đối soát");
+            var duplicate = await camera.ScanAsync(failedContent, ct);
+            Check(duplicate is { Outcome: ScanOutcome.Duplicate, PlcWritten: true }
+                && plc.Writes.Count == writes + 1 && plc.Writes.Last().Value == 0,
+                "Camera sau restart không replay Pass cho mã đã commit");
         }
 
         // Completion metadata can fail after a successful, committed final Pass.
@@ -255,7 +409,7 @@ internal static class CameraCodeContentChecks
         {
             OrderNo = "CAMERA-COMPLETION-FAULT", OrderQty = 1, CreatedUtc = order.CreatedUtc,
         };
-        const string completionContent = "COMMITTED-PASS-COMPLETION-FAILED";
+        const string completionContent = "/01/08934567890123/21/COMMITTED-PASS-FAULT";
         await completionStore.EnsurePoDbAsync(completionOrder, [new() { CodeContent = completionContent }], ct);
         var completionPo = CompletionService();
         Check(await completionPo.StartProductionAsync(completionOrder.OrderNo, ct),
@@ -297,8 +451,8 @@ internal static class CameraCodeContentChecks
             && completionRestart.ScannedCount == 1,
             "Restart giữ halt và số mã đã commit khi metadata hoàn tất lỗi");
 
-        // A PLC can execute Pass while its UDP acknowledgement is lost. Even
-        // with generic retries configured, a production Pass must be sent once.
+        // A PLC can execute Pass while its UDP acknowledgement is lost. The
+        // already committed code stays Pass and must never be sent as Pass again.
         var lostAckRoot = Path.Combine(root, "lost-ack");
         var lostAckStore = new PoStore(lostAckRoot);
         var lostAckHistory = new PoHistoryStore(lostAckRoot);
@@ -308,9 +462,9 @@ internal static class CameraCodeContentChecks
         {
             OrderNo = "CAMERA-LOST-PLC-ACK", OrderQty = 2, CreatedUtc = order.CreatedUtc,
         };
-        const string lostAckContent = "PLC-EXECUTED-PASS-BUT-ACK-LOST";
+        const string lostAckContent = "/01/08934567890123/21/PASS-ACK-LOST";
         await lostAckStore.EnsurePoDbAsync(lostAckOrder,
-            [new() { CodeContent = lostAckContent }, new() { CodeContent = "AFTER-LOST-ACK" }], ct);
+            [new() { CodeContent = lostAckContent }, new() { CodeContent = "/01/08934567890123/21/AFTER-LOST-ACK" }], ct);
         var lostAckPo = LostAckService();
         Check(await lostAckPo.StartProductionAsync(lostAckOrder.OrderNo, ct),
             "Chuẩn bị PO kiểm tra PLC thực thi Pass nhưng mất ACK");
@@ -320,34 +474,35 @@ internal static class CameraCodeContentChecks
             plc.DropNextAcknowledgement(); // A second request would receive a successful ACK.
             var uncertain = await camera.ScanAsync(lostAckContent, ct);
             var actual = plc.Writes.Skip(before).ToArray();
-            Check(uncertain.Outcome == ScanOutcome.Halted && lostAckPo.IsHalted && camera.IsSuspended
-                && lostAckPo.ScannedCount == 0,
-                "Mất ACK Pass giữ trạng thái chưa xác định, halt và đóng intake thay vì cho retry");
+            Check(uncertain is { Outcome: ScanOutcome.Pass, PlcWritten: false }
+                && !lostAckPo.IsHalted && !camera.IsSuspended && lostAckPo.ScannedCount == 1
+                && camera.Saved.Last() is { Status: ScanStatuses.Pass, PlcResult: ScanPlcResults.Failed },
+                "Mất ACK sau commit vẫn báo Pass/Checkee, giữ Scanned và ghi riêng PLC failure");
             Check(actual.Count(write => write is { Address: 12, Value: 1 }) == 1
                 && actual.Any(write => write is { Address: 12, Value: 1, Applied: true, Acknowledged: false })
-                && actual.Any(write => write is { Address: 16, Value: 0, Acknowledged: true }),
-                "Pass chỉ phát một UDP dù Retries=2; PLC đã thực thi/mất ACK vẫn ép Ready=0");
+                && !actual.Any(write => write.Address == 16),
+                "Pass chỉ phát một UDP dù Retries=2; không phát lệnh Ready khi PO đã commit");
             var flags = (await lostAckStore.GetCodesWithFlagsAsync(lostAckOrder.OrderNo, lostAckOrder.CreatedUtc, ct))
                 .Single(pair => pair.Key == lostAckContent).Value;
-            Check((flags & PoCodeCache.Flags.PendingPass) != 0 && (flags & PoCodeCache.Flags.Scanned) == 0
-                && camera.Errors.Any(error => error.Contains(lostAckContent, StringComparison.Ordinal)),
-                "Mất ACK lưu durable PendingPass và log đủ mã để đối soát, không xuất bản Pass giả");
-            var writes = plc.Writes.Count;
-            var saved = camera.Saved.Count;
-            await camera.SendSuppressedAsync(lostAckContent, ct);
-            Check(plc.Writes.Count == writes && camera.Saved.Count == saved,
-                "Intake đóng ngăn replay ngay sau mất ACK");
+            Check(flags == PoCodeCache.Flags.Scanned && lostAckPo.ValidateCode(lostAckContent) == PoCodeValidation.Duplicate,
+                "Mất ACK vẫn để durable Scanned và chặn Pass replay theo đúng CodeContent");
+            AppStateManager.SetPlcStatus(PLCStatus.Connected);
+            var duplicateWrites = plc.Writes.Count;
+            var repeated = await camera.ScanAsync(lostAckContent, ct);
+            Check(repeated is { Outcome: ScanOutcome.Duplicate, PlcWritten: true }
+                && plc.Writes.Count == duplicateWrites + 1 && plc.Writes.Last().Value == 0,
+                "Quét lại sau mất ACK chỉ gửi Duplicate/Fail, không gửi Pass lần hai");
         }
         var lostAckRestart = LostAckService();
-        Check(await lostAckRestart.RestoreRunningOrderAsync(ct) && lostAckRestart.IsHalted
-            && lostAckRestart.ValidateCode(lostAckContent) == PoCodeValidation.Halted
-            && !await lostAckRestart.StartProductionAsync(lostAckOrder.OrderNo, ct),
-            "Restart giữ quarantine của mã PLC có thể đã nhận Pass");
+        Check(await lostAckRestart.RestoreRunningOrderAsync(ct) && !lostAckRestart.IsHalted
+            && lostAckRestart.ValidateCode(lostAckContent) == PoCodeValidation.Duplicate
+            && lostAckRestart.ScannedCount == 1,
+            "Restart khôi phục Scanned/PO state sau khi mất ACK");
         await using (var camera = await CameraPipeline.StartAsync(lostAckRestart, plc, ct, plcRetries: 2))
         {
             var writes = plc.Writes.Count;
-            Check((await camera.ScanAsync(lostAckContent, ct)).Outcome == ScanOutcome.Halted
-                && plc.Writes.Count == writes,
+            Check((await camera.ScanAsync(lostAckContent, ct)) is { Outcome: ScanOutcome.Duplicate, PlcWritten: true }
+                && plc.Writes.Count == writes + 1 && plc.Writes.Last().Value == 0,
                 "Sau restart không gửi lại Pass của mã mất ACK");
         }
         SqliteConnection.ClearAllPools();
@@ -391,6 +546,7 @@ internal sealed class CameraPipeline : IAsyncDisposable
         var reader = new Reader("127.0.0.1", port);
         var plc = new OmronPlc("127.0.0.1", server.Port, 1, 2, 500, plcRetries);
         var gate = new ScanIntakeGate();
+        AppStateManager.SetPlcStatus(PLCStatus.Connected);
         var counters = Create("RuntimeCounters");
         var feed = Create("ScanFeed");
         var plcOptions = Create("PlcOptions");

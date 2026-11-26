@@ -21,4 +21,5 @@ public sealed record ScanRecord(
     ScanOutcome Outcome,
     DateTime TimestampUtc,
     bool PlcWritten,
-    double ProcessingTimeMs = 0);
+    double ProcessingTimeMs = 0,
+    bool PlcSkipped = false);

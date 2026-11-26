@@ -28,6 +28,9 @@ public enum ScanStatus
 
     /// <summary>Camera không đọc được mã (D12 = 0).</summary>
     NoRead = 5,
+
+    /// <summary>Mã không đúng cấu trúc GS1 (D12 = 0).</summary>
+    InvalidStructure = 6,
 }
 
 /// <summary>
@@ -56,6 +59,9 @@ public static class ScanStatuses
     /// <summary>Camera không đọc được mã.</summary>
     public const string NoRead = "NoRead";
 
+    /// <summary>Mã không đúng cấu trúc GS1.</summary>
+    public const string InvalidStructure = "InvalidStructure";
+
     /// <summary>
     /// Chuyển enum sang chuỗi ổn định để lưu vào database.
     /// </summary>
@@ -69,6 +75,7 @@ public static class ScanStatuses
         ScanStatus.Duplicate => Duplicate,
         ScanStatus.InvalidForOrder => InvalidForOrder,
         ScanStatus.NoRead => NoRead,
+        ScanStatus.InvalidStructure => InvalidStructure,
         _ => Fail,
     };
 }
