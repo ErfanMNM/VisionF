@@ -2,7 +2,7 @@
 
 ## Nhiệm vụ 1
 ### Trạng thái :
-Hoàn tất triển khai và nghiệm thu — task PO-01. Chờ người dùng duyệt nhánh riêng trước khi gộp.
+Hoàn tất triển khai và nghiệm thu — task PO-01. Người dùng đã duyệt; kết quả đã gộp và push lên master.
 ### Nội dung :
 Dây giờ nhận thông tin PO sẽ gồm có orderNo tức LOT name, orderQty và GTIN, một PO không được chứa nhiều GTIN, khi nhận file mã tự loại bỏ các mã sai cấu trúc và mã trùng trả về cho Client. Sửa cả luồn nhận và luồng down.
 
@@ -15,7 +15,7 @@ Kiểm tra cuối ngày 26/11/2026: PoTests **142**, PoFlowTests **63**, PoServe
 
 ## Nhiệm vụ 2
 ### Trạng thái :
-Hoàn tất triển khai và nghiệm thu — task PO-02. Chờ người dùng duyệt nhánh riêng trước khi gộp.
+Hoàn tất triển khai và nghiệm thu — task PO-02. Người dùng đã duyệt; kết quả đã gộp và push lên master.
 ### Nội dung :
 Để trực quan hoá luồn nhận, làm cho tôi một trang html để tôi có thể tạo PO và gửi cho TanTienApp.
 
@@ -26,6 +26,8 @@ Trang `docs/po-demo/` đã gửi FormData thật tới relative `POST /api/po`, 
 
 Node **18/18** đạt, CEO chạy lại sau source cuối. Browser trên receiver thật đã đạt nhận đủ/partial/toàn trùng, 400/401/409/422, mất mạng, chặn gửi kép, key/storage/pagehide và bố cục desktop/mobile 390px. Sau rebuild backend delta cuối, browser kiểm planned **1→4→1**, SQLite giữ **planned4/actual1**, raw URL nguyên vẹn và GTIN chuẩn hóa; tài nguyên embedded khớp source theo SHA-256. Host thử nghiệm đã dừng, không còn listener 18085. Hướng dẫn mở trang: `docs/po-demo/README.md`; hồ sơ phòng: `.session-org/visionf/departments/po-demo-ui/STATE.md`.
 
-Phạm vi nghiệm thu là local/temp DB; chưa kiểm định gói publish single-file/Native AOT hoặc thiết bị PLC thật. Nhánh bàn giao: `codex/po-gtin-demo`; chỉ commit/push để người dùng duyệt, không tự merge hoặc deploy.
+Phạm vi nghiệm thu là local/temp DB; chưa kiểm định gói publish single-file/Native AOT hoặc thiết bị PLC thật. Nhánh nguồn: `codex/po-gtin-demo`; đã được người dùng duyệt gộp vào `master`. Không deploy.
 
-Xác nhận bàn giao Git: source commit `f99a54be9c7cbcd191e7c5688357b84d121b100a` đã được đẩy thật lên `origin/codex/po-gtin-demo`; đối chiếu bằng `git ls-remote` cho SHA remote bằng local. Chờ người dùng duyệt mới gộp.
+Xác nhận bàn giao Git: source commit `f99a54be9c7cbcd191e7c5688357b84d121b100a` đã được đẩy thật lên `origin/codex/po-gtin-demo`; đối chiếu bằng `git ls-remote` cho SHA remote bằng local. Ngày 26/11/2026, người dùng đã duyệt và CEO đã gộp fast-forward/push origin/master, SHA đối chiếu khớp.
+
+Xác nhận nhánh chính: remote HEAD là `master`, đã nhận đầy đủ hai commit PO đến `b2aeabc271cce4d3689d1a0d88bea7821237f474`. Sau gộp, AcceptanceRelease **154 assertion/0 lỗi** và Node **18/18** chạy lại đạt. Không deploy; các deletion có sẵn và output thử nghiệm local giữ ngoài commit.

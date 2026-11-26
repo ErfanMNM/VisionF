@@ -15,3 +15,5 @@
 - Kết quả nghiệm thu ngày26/11/2026: hai nhiệm vụ PO đã đạt, xem docs/plans/nhiemvu.md. Đang chuẩn bị commit/push nhánh riêng codex/po-gtin-demo; việc gộp cần user duyệt. CEO hiện tại:01a21787-5ed2-7ac2-a73d-80c07b4996d0.
 
 - Xác nhận publish: source commit f99a54be9c7cbcd191e7c5688357b84d121b100a đã push thật lên origin/codex/po-gtin-demo; SHA remote đã đối chiếu bằng SHA local. Hai nhiệm vụ hoàn tất, chờ người dùng duyệt trước khi gộp. Không merge/deploy.
+
+- Người dùng đã duyệt gộp ngày26/11/2026. Toàn bộ hai commit PO được fast-forward vào master và push thật origin/master tại b2aeabc271cce4d3689d1a0d88bea7821237f474; ls-remote SHA bằng local. AcceptanceRelease154/0 và Node18/18 chạy lại trên master đạt; không deploy.

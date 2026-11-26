@@ -28,3 +28,10 @@
 - Push thật origin/codex/po-gtin-demo đã thành công, tracking được thiết lập. git ls-remote trả đúng SHA f99a54be9c7cbcd191e7c5688357b84d121b100a bằng local; không chỉ dry-run.
 - PO-06 đã đóng, đang chờ người dùng duyệt gộp. Commit hồ sơ xác nhận sau publish chỉ thay Markdown; source/test/UI không đổi nên không chạy lại suite. Receipt SHA tip cuối được lưu riêng dưới publish-result.json (không commit).
 - Giữ nguyên tám plan deleted, .playwright-cli và evidence/budget/output/archives local ngoài commit. Không merge/deploy/production.
+
+## 2026-11-26 — Gộp master sau khi người dùng duyệt
+- Người dùng trực tiếp yêu cầu gộp và push nhánh chính. Root vẫn là repository VisionF, không dùng cwd visualization.
+- Fetch/ls-remote xác nhận remote HEAD=master, origin/master b66dce6, feature b2aeabc, ahead/behind0/2. Audit worker PO-07 chỉ đọc đạt, journal mới master-merge-audit/LOG.md.
+- Đã kiểm checkpoint rồi switch master và merge --ff-only codex/po-gtin-demo; không xung đột. Cả41tệp untracked trước chuyển nhánh và tám deletion được bảo toàn.
+- AcceptanceRelease trên master154assertion/0nhóm lỗi/exit0, Node18/18/exit0; output riêng master-acceptance-output.log và master-node-output.log không commit.
+- Push thật origin/master đạt; git ls-remote trả b2aeabc271cce4d3689d1a0d88bea7821237f474 bằng local. Cập nhật hồ sơ sau push bằng commit Markdown riêng; receipt HEAD cuối lưu main-publish-result.json ngoài commit. Không deploy.

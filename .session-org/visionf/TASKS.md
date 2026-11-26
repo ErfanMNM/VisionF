@@ -1,6 +1,6 @@
 # Công việc VisionF
 
-CEO hiện tại: `01a21787-5ed2-7ac2-a73d-80c07b4996d0`. Nhánh tích hợp: `codex/po-gtin-demo`; chỉ CEO commit/push, chờ người dùng duyệt mới gộp.
+CEO hiện tại: `01a21787-5ed2-7ac2-a73d-80c07b4996d0`. Nhánh nguồn: `codex/po-gtin-demo`; người dùng đã duyệt gộp, kết quả đã có trên `master`. Chỉ CEO thực hiện Git publish.
 
 | Task ID | Kết quả và tiêu chí hoàn tất | Owner | Phạm vi | Trạng thái | Chứng cứ / bước tiếp theo |
 | --- | --- | --- | --- | --- | --- |
@@ -14,4 +14,5 @@ CEO hiện tại: `01a21787-5ed2-7ac2-a73d-80c07b4996d0`. Nhánh tích hợp: `c
 | PO-04-ACCEPTANCE | HTTP receive/static/persistence độc lập | CEO kế nhiệm nghiệm thu | Chạy tools/PoAcceptanceTests, không sửa backend | done | CEO kế nhiệm tự chạy Release sau B/C/UI final:154 assertion/0 nhóm lỗi, exit0; LOG session CEO. |
 | PO-05-PUBLISH-AUDIT | Review scope commit, output/bí mật/tài liệu | `/root/publish_scope_audit`; thread `01a21789-fd90-7fa0-ad39-bd14a4cf4607` | Chỉ sessions/publish-scope-audit/LOG.md | done | Không thấy credential thật theo mẫu trong71tệp; loại budget/output/temp, tám plan deleted và .playwright-cli khỏi stage. |
 | PO-05-DOCS | Đồng bộ hướng dẫn PO và giới hạn README acceptance với contract hiện tại | Phòng PO-01 | Chỉ docs/production-order.md và tools/PoAcceptanceTests/README.md | done | PO-01 sửa tối thiểu hai docs, diffcheck/readback đạt; không thay quy trình PLC hoặc source/test. |
-| PO-06-PUBLISH | Outcomes, stage đúng scope, commit/push nhánh riêng | CEO hiện tại | Source/test/docs PO và Markdown bàn giao liên quan | done — chờ người dùng duyệt | Đã commit/push source `f99a54be9c7cbcd191e7c5688357b84d121b100a` lên origin/codex/po-gtin-demo; ls-remote SHA bằng local. Không merge/deploy. |
+| PO-06-PUBLISH | Outcomes, stage đúng scope, commit/push nhánh riêng | CEO hiện tại | Source/test/docs PO và Markdown bàn giao liên quan | done | Đã commit/push source `f99a54be9c7cbcd191e7c5688357b84d121b100a` lên nhánh riêng; người dùng sau đó duyệt gộp qua PO-07. Không deploy. |
+| PO-07-MERGE | Gộp toàn bộ hai commit PO vào nhánh chính và push sau khi người dùng duyệt | CEO hiện tại; worker audit chỉ đọc | Git master và hồ sơ PO | done | Remote HEAD xác minh master; fast-forward b66dce6→b2aeabc, push thật origin/master và SHA bằng local. AcceptanceRelease154/0, Node18/18 chạy lại đạt; audit scope/ancestor đạt. Tám deletion và output local giữ nguyên. |

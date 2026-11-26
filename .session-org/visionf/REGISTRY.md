@@ -1,6 +1,6 @@
 # Danh bạ tổ chức
 - CEO owner_thread_id: `01a21787-5ed2-7ac2-a73d-80c07b4996d0`
-- CEO trạng thái: active — nhiệm vụ đã push, chờ người dùng duyệt gộp
+- CEO trạng thái: active — đã gộp và push master theo duyệt của người dùng
 - Cập nhật: 2026-11-26T18:09:00+07:00
 
 | Vai trò/phòng | thread_id hoặc agent_id | Loại/host | Trạng thái | Tiền nhiệm | Phạm vi/đường dẫn trạng thái |

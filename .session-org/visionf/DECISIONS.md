@@ -47,3 +47,9 @@
 - Planned max áp dụng cả upload toàn duplicate; B/C đã sửa và kiểm planned1→4→1, giữ actual/raw/scan/metadata mô tả. Không còn exception target như một snapshot review lịch sử.
 - Core142/flow63, server121/e2e31, MES31/console40, Node18 và AcceptanceRelease154/0lỗi đạt. Browser sau rebuild cuối xác nhận planned4/actual1 và hai asset embedded khớp source; host test đã dừng.
 - Publish chỉ nhánh codex/po-gtin-demo. Loại tám deletion có sẵn, .playwright-cli, budget JSON, output/temp/script/ảnh/JSON evidence; chỉ chọn source/test/docs và Markdown PO liên quan. Sau push phải đối chiếu SHA local/remote, chờ user duyệt mới gộp.
+
+## 2026-11-26 — Người dùng duyệt gộp và push nhánh chính
+- Lệnh trực tiếp mới của người dùng cho phép gộp kết quả PO và push nhánh chính, thay trạng thái chờ duyệt trước đó.
+- Sau fetch, remote HEAD xác minh là master, origin/master b66dce6 là ancestor nhánh PO b2aeabc, không có commit remote chưa tích hợp. Chọn fast-forward, không tạo merge commit thừa hoặc force push.
+- Audit PO-07 độc lập đạt; kiểm tra lại master: AcceptanceRelease154/0 lỗi, Node18/18. Push master đã thành công và SHA remote bằng local b2aeabc271cce4d3689d1a0d88bea7821237f474.
+- Bảo toàn tám deletion ngoài scope và mọi output/evidence/budget/archive local. Không deploy.
