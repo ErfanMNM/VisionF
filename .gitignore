@@ -388,3 +388,5 @@ tmp-*/
 # Nhật ký, staging và bản sao rollback tại máy
 .tantien-updates/
 
+/.session-org/visionf/sessions
+/.playwright-cli
