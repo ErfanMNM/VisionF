@@ -197,7 +197,9 @@ internal static class Program
         await f.StartCameraAsync();
         var port = FreePort();
         f.Options.HttpPrefix = $"http://127.0.0.1:{port}/";
-        using var server = new ManualActivationHttpServer(f.Manual, Microsoft.Extensions.Options.Options.Create(f.Options), NullLogger<ManualActivationHttpServer>.Instance);
+        using var server = new ManualActivationHttpServer(f.Manual, f.Query,
+            f.Provider.GetRequiredService<IScanRecordWriter>(), Microsoft.Extensions.Options.Options.Create(f.Options),
+            NullLogger<ManualActivationHttpServer>.Instance);
         var states = 0; server.StateChanged += () => states++;
         await server.StartAsync(CancellationToken.None);
         Check(server.IsListening && server.StatusText.Contains(f.Options.HttpPrefix) && states > 0, "HTTP listener binds explicit loopback with status event");
@@ -205,10 +207,29 @@ internal static class Program
         var html = await client.GetStringAsync("manual-activation");
         Check(html.Contains("autofocus") && html.Contains("<title>Thêm mã</title>") && html.Contains("code.focus()") && html.Contains("textContent"),
             "PDA GET form uses Thêm mã, autofocus/refocus, safe text rendering");
+        var lookupHtml = await client.GetStringAsync("code-lookup");
+        Check(lookupHtml.Contains("<title>Tra cứu mã</title>") && lookupHtml.Contains("/api/code-lookup")
+            && lookupHtml.Contains("autofocus") && lookupHtml.Contains("code.select()") && lookupHtml.Contains("textContent"),
+            "PDA GET form provides mobile exact-code lookup with safe rendering and scanner refocus");
         var post = await client.PostAsync("api/manual-activation", new FormUrlEncodedContent(new Dictionary<string, string> { ["codeContent"] = Code("A") }));
         using var result = JsonDocument.Parse(await post.Content.ReadAsStringAsync());
         Check(post.IsSuccessStatusCode && result.RootElement.GetProperty("success").GetBoolean()
             && result.RootElement.GetProperty("source").GetString() == "PDA", "Form POST activates offline without opening desktop tab");
+        var auditCountBeforeLookup = (await f.Manual.GetRecentAsync()).Count;
+        var lookupPost = await client.PostAsync("api/code-lookup",
+            new StringContent(JsonSerializer.Serialize(new { codeContent = Code("A") }), Encoding.UTF8, "application/json"));
+        using var lookupResult = JsonDocument.Parse(await lookupPost.Content.ReadAsStringAsync());
+        Check(lookupPost.IsSuccessStatusCode && lookupResult.RootElement.GetProperty("totalCount").GetInt64() == 1
+            && lookupResult.RootElement.GetProperty("items")[0].GetProperty("codeContent").GetString() == Code("A")
+            && lookupResult.RootElement.GetProperty("items")[0].GetProperty("orderNo").GetString() == f.Order.OrderNo,
+            "PDA lookup returns the exact scan row and production details");
+        var lookupMiss = await client.PostAsync("api/code-lookup",
+            new StringContent(JsonSerializer.Serialize(new { codeContent = Code("A").ToLowerInvariant() }), Encoding.UTF8, "application/json"));
+        using var lookupMissResult = JsonDocument.Parse(await lookupMiss.Content.ReadAsStringAsync());
+        Check(lookupMissResult.RootElement.GetProperty("totalCount").GetInt64() == 0,
+            "PDA lookup requires an exact case-sensitive code match");
+        Check((await f.Manual.GetRecentAsync()).Count == auditCountBeforeLookup,
+            "PDA lookup is read-only and does not add manual activation audit entries");
         var jsonPost = await client.PostAsync("api/manual-activation", new StringContent("{\"codeContent\":\"" + Code("A") + "\"}", Encoding.UTF8, "application/json"));
         using var duplicate = JsonDocument.Parse(await jsonPost.Content.ReadAsStringAsync());
         Check(duplicate.RootElement.GetProperty("status").GetString() == "Duplicate", "JSON PDA POST shares exact RAM duplicate guard");
@@ -220,6 +241,11 @@ internal static class Program
         { Content = new FormUrlEncodedContent(new Dictionary<string, string> { ["codeContent"] = Code("B") }) };
         foreign.Headers.Add("Origin", "https://unrelated.invalid");
         Check((await client.SendAsync(foreign)).StatusCode == HttpStatusCode.Forbidden, "Browser POST from unrelated origin rejected");
+        using var foreignLookup = new HttpRequestMessage(HttpMethod.Post, "api/code-lookup")
+        { Content = new StringContent(JsonSerializer.Serialize(new { codeContent = Code("A") }), Encoding.UTF8, "application/json") };
+        foreignLookup.Headers.Add("Origin", "https://unrelated.invalid");
+        Check((await client.SendAsync(foreignLookup)).StatusCode == HttpStatusCode.Forbidden,
+            "Browser lookup POST from unrelated origin rejected");
         if (preview)
         {
             Console.WriteLine("PDA_PREVIEW_URL=" + f.Options.HttpPrefix + "manual-activation");
@@ -229,7 +255,9 @@ internal static class Program
         await server.StopAsync(CancellationToken.None).WaitAsync(Deadline);
         Check(!server.IsListening && states >= 2, "HTTP stop publishes readiness change and joins handlers");
         var badOptions = new ManualActivationOptions { HttpPrefix = "invalid-prefix" };
-        using var denied = new ManualActivationHttpServer(f.Manual, Microsoft.Extensions.Options.Options.Create(badOptions), NullLogger<ManualActivationHttpServer>.Instance);
+        using var denied = new ManualActivationHttpServer(f.Manual, f.Query,
+            f.Provider.GetRequiredService<IScanRecordWriter>(), Microsoft.Extensions.Options.Options.Create(badOptions),
+            NullLogger<ManualActivationHttpServer>.Instance);
         await denied.StartAsync(CancellationToken.None);
         Check(!denied.IsListening && denied.LastError.Length > 0 && denied.StatusText.Contains("chưa sẵn sàng"),
             "Invalid prefix exposes HTTP readiness error without crashing application or localhost fallback");

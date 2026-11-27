@@ -269,8 +269,8 @@ public sealed class ProductionOrderService
             // Planned vẫn là target, không bị hạ về số dòng thực nhận.
             else if (order.OrderQty <= 0 || codes.Count == 0 || codes.Count > order.OrderQty)
                 validationError = "Số record tải xuống phải lớn hơn 0 và không vượt số lượng kế hoạch.";
-            else if (local is not null && (local.Gtin.Length == 0
-                || !string.Equals(local.Gtin, gtin, StringComparison.Ordinal)))
+            else if (local is not null && (!PoCodeParser.TryNormalizeGtin(local.Gtin, out var localGtin)
+                || !string.Equals(localGtin, gtin, StringComparison.Ordinal)))
                 validationError = "GTIN không khớp PO local hoặc PO legacy chưa xác định được một GTIN duy nhất.";
 
             if (validationError is not null)
@@ -316,11 +316,13 @@ public sealed class ProductionOrderService
             var additional = new Dictionary<string, string>(local?.Additional ?? [], StringComparer.OrdinalIgnoreCase);
             foreach (var entry in order.Additional ?? [])
                 additional[entry.Key] = entry.Value;
+            var sourceGtin = local?.Gtin ?? metadataGtin!;
+            additional[PoStore.MetaGtin] = sourceGtin;
             var saved = new ProductionOrder
             {
                 OrderNo = order.OrderNo,
                 OrderQty = Math.Max(local?.OrderQty ?? 0, order.OrderQty),
-                Gtin = gtin,
+                Gtin = sourceGtin,
                 CreatedUtc = local?.CreatedUtc ?? order.CreatedUtc,
                 Additional = additional,
             };

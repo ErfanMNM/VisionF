@@ -23,6 +23,8 @@ internal sealed partial class ManualActivationViewModel : ViewModelBase, IDispos
         _service = service;
         _scanner = scanner;
         _http = http;
+        PdaStatusText = _http.StatusText;
+        _http.StateChanged += OnPdaStateChanged;
     }
 
     [ObservableProperty]
@@ -46,6 +48,9 @@ internal sealed partial class ManualActivationViewModel : ViewModelBase, IDispos
     public string PdaEndpointText => _http.Endpoint.Replace("://+", "://<IP máy>", StringComparison.Ordinal)
         .Replace("://*", "://<IP máy>", StringComparison.Ordinal).TrimEnd('/') + "/manual-activation";
 
+    public string PdaCodeLookupEndpointText => _http.Endpoint.Replace("://+", "://<IP máy>", StringComparison.Ordinal)
+        .Replace("://*", "://<IP máy>", StringComparison.Ordinal).TrimEnd('/') + "/code-lookup";
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasCurrentResult))]
     public partial IReadOnlyList<ManualActivationRowViewModel> CurrentRows { get; set; } = [];
@@ -68,7 +73,6 @@ internal sealed partial class ManualActivationViewModel : ViewModelBase, IDispos
         _scanner.CodeReceived += OnScannerCode;
         _scanner.StatusChanged += OnScannerStatus;
         _service.Completed += OnCompleted;
-        _http.StateChanged += OnPdaStateChanged;
         PdaStatusText = _http.StatusText;
         _scanner.Activate();
         ScannerStatusText = _scanner.StatusText;
@@ -84,7 +88,6 @@ internal sealed partial class ManualActivationViewModel : ViewModelBase, IDispos
         _scanner.CodeReceived -= OnScannerCode;
         _scanner.StatusChanged -= OnScannerStatus;
         _service.Completed -= OnCompleted;
-        _http.StateChanged -= OnPdaStateChanged;
         _scanner.Deactivate();
         ScannerStatusText = _scanner.StatusText;
         AddCommand.NotifyCanExecuteChanged();
@@ -132,11 +135,7 @@ internal sealed partial class ManualActivationViewModel : ViewModelBase, IDispos
 
     private void OnPdaStateChanged()
     {
-        var epoch = Volatile.Read(ref _epoch);
-        Dispatcher.UIThread.Post(() =>
-        {
-            if (IsCurrent(epoch)) PdaStatusText = _http.StatusText;
-        });
+        Dispatcher.UIThread.Post(() => PdaStatusText = _http.StatusText);
     }
 
     private async Task SubmitCodeAsync(string code, string source, long epoch)
@@ -194,6 +193,7 @@ internal sealed partial class ManualActivationViewModel : ViewModelBase, IDispos
     {
         if (_disposed) return;
         Deactivate();
+        _http.StateChanged -= OnPdaStateChanged;
         _disposed = true;
         GC.SuppressFinalize(this);
     }

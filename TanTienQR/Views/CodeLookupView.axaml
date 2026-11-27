@@ -37,6 +37,8 @@
                 <TextBlock Classes="label"
                            FontSize="12"
                            Text="Tra cứu mã đã chạy qua hệ thống (camera hoặc handheld cầm tay). Nhập tay hoặc quét mã để xem thông tin." />
+                <TextBlock Classes="label" FontSize="11" Text="{Binding ManualActivation.PdaStatusText}" />
+                <TextBlock Classes="mono" FontSize="11" Text="{Binding ManualActivation.PdaCodeLookupEndpointText}" />
             </StackPanel>
 
             <Border Grid.Column="1"

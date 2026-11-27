@@ -102,14 +102,14 @@ internal sealed class CheckeeSendWorker : BackgroundService
         SendWithGateAsync(async () =>
         {
             var session=ObserveRunningOrder();
-            if (session is null) return (0, 0);
+            if (session is null || !PoCodeParser.TryNormalizeGtin(session.Gtin, out var comparisonGtin)) return (0, 0);
             var failed=await _sendStore.GetBySendStatusAsync(new ScanSendFilter
             {
                 SendStatus=ScanSendStatuses.Failed, OnlyPass=true, OnlyAccepted=true,
-                OrderNo=session.OrderNo, OrderCreatedUtc=session.CreatedUtc, Gtin=session.Gtin, Limit=5000,
+                OrderNo=session.OrderNo, OrderCreatedUtc=session.CreatedUtc, Gtin=comparisonGtin, Limit=5000,
             }, ct).ConfigureAwait(false);
             var requested=ids.ToHashSet();
-            var eligible=failed.Where(r => requested.Contains(r.Id) && MatchesCode(r, session.Gtin)).Select(r => r.Id).ToArray();
+            var eligible=failed.Where(r => requested.Contains(r.Id) && MatchesCode(r, comparisonGtin)).Select(r => r.Id).ToArray();
             if (!SendingEnabled) return (0, 0);
             var reset=await _sendStore.ResetToPendingAsync(eligible, ct).ConfigureAwait(false);
             var sent=await SendPendingCoreAsync(ct).ConfigureAwait(false);
@@ -149,6 +149,7 @@ internal sealed class CheckeeSendWorker : BackgroundService
         if (session is null) { _state.SetStatus("Chưa có PO đang chạy được nhận vào phiên gửi; không gửi lịch sử cũ.", false); return 0; }
         if (!PoCodeParser.TryNormalizeGtin(session.Gtin, out var gtin))
         { _state.SetStatus("PO thiếu GTIN hợp lệ; giữ nguyên các mã chờ gửi.", true); return 0; }
+        var sourceGtin=session.Gtin;
         await _scanWriter.FlushAsync(ct).ConfigureAwait(false);
         if (!SameOrder(session, ObserveRunningOrder()) || !SendingEnabled) return 0;
         var pending=await _sendStore.GetPendingForOrderAsync(session.OrderNo, session.CreatedUtc,
@@ -167,22 +168,22 @@ internal sealed class CheckeeSendWorker : BackgroundService
         }
         if (!SameOrder(session, ObserveRunningOrder()) || !SendingEnabled) return 0;
         var batch=ResolveBatch(session);
-        var attempt=await _sendStore.BeginSendAttemptAsync(records, gtin, batch, _opt.SerialType, ct).ConfigureAwait(false);
+        var attempt=await _sendStore.BeginSendAttemptAsync(records, sourceGtin, batch, _opt.SerialType, ct).ConfigureAwait(false);
         CheckeeSendResult result;
         try
         {
             // Fail closed if durable file audit cannot be written before network dispatch.
-            WriteAudit(attempt, "Started", session, gtin, batch, records, 0, "");
+            WriteAudit(attempt, "Started", session, sourceGtin, batch, records, 0, "");
             if (!SendingEnabled || !SameOrder(session, ObserveRunningOrder()))
                 result=new() { IsTransient=true, Message="Đã tắt gửi hoặc thay PO trước HTTP; giữ hàng đợi." };
-            else result=await _client.ActivateAsync(gtin, batch, _opt.SerialType,
+            else result=await _client.ActivateAsync(sourceGtin, batch, _opt.SerialType,
                 records.Select(r => r.CodeContent).Distinct(StringComparer.Ordinal).ToArray(), ct).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             const string message="Lượt gửi bị hủy trước xác nhận; cần đối soát trước khi gửi lại.";
             await _sendStore.CompleteSendAttemptAsync(attempt, CheckeeSendAttemptStatuses.Unknown, 0, message, CancellationToken.None).ConfigureAwait(false);
-            TryWriteAudit(attempt, CheckeeSendAttemptStatuses.Unknown, session, gtin, batch, records, 0, message);
+            TryWriteAudit(attempt, CheckeeSendAttemptStatuses.Unknown, session, sourceGtin, batch, records, 0, message);
             throw;
         }
         catch (Exception ex)
@@ -194,7 +195,7 @@ internal sealed class CheckeeSendWorker : BackgroundService
             : result.IsTransient ? CheckeeSendAttemptStatuses.RetryPending : CheckeeSendAttemptStatuses.Failed;
         var safeMessage=Redact(result.Message);
         // Write network result first: survives a subsequent SQLite failure.
-        var audited=TryWriteAudit(attempt, status, session, gtin, batch, records, result.StatusCode, safeMessage, result.RawMessage);
+        var audited=TryWriteAudit(attempt, status, session, sourceGtin, batch, records, result.StatusCode, safeMessage, result.RawMessage);
         await _sendStore.CompleteSendAttemptAsync(attempt, status, result.StatusCode, safeMessage, CancellationToken.None).ConfigureAwait(false);
         _state.SetLastRunUtc(DateTime.UtcNow);
         _state.SetStatus(audited ? $"PO {session.OrderNo}: {records.Count} mã · {status}. {safeMessage}"

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using ClassLibraryMT.Scans;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -11,6 +12,8 @@ namespace TanTienQR.Services;
 internal sealed class ManualActivationHttpServer : IHostedService, IDisposable
 {
     private readonly ManualActivationService _service;
+    private readonly IScanRecordQuery _scanQuery;
+    private readonly IScanRecordWriter _scanWriter;
     private readonly ManualActivationOptions _options;
     private readonly ILogger<ManualActivationHttpServer> _logger;
     private readonly HttpListener _listener = new();
@@ -38,10 +41,11 @@ internal sealed class ManualActivationHttpServer : IHostedService, IDisposable
             try { observer(); } catch (Exception ex) { _logger.LogError(ex, "PDA state observer failed."); }
     }
 
-    public ManualActivationHttpServer(ManualActivationService service, IOptions<ManualActivationOptions> options,
+    public ManualActivationHttpServer(ManualActivationService service, IScanRecordQuery scanQuery,
+        IScanRecordWriter scanWriter, IOptions<ManualActivationOptions> options,
         ILogger<ManualActivationHttpServer> logger)
     {
-        _service = service; _options = options.Value; _logger = logger;
+        _service = service; _scanQuery = scanQuery; _scanWriter = scanWriter; _options = options.Value; _logger = logger;
         _slots = new SemaphoreSlim(Math.Clamp(_options.MaxConcurrentRequests, 1, 256));
     }
 
@@ -118,6 +122,12 @@ internal sealed class ManualActivationHttpServer : IHostedService, IDisposable
                 await WriteAsync(response, Encoding.UTF8.GetBytes(FormHtml), deadline.Token).ConfigureAwait(false);
                 return;
             }
+            if (request.HttpMethod == "GET" && path == "/code-lookup")
+            {
+                response.ContentType = "text/html; charset=utf-8";
+                await WriteAsync(response, Encoding.UTF8.GetBytes(CodeLookupHtml), deadline.Token).ConfigureAwait(false);
+                return;
+            }
             if (request.HttpMethod == "GET" && path == "/api/manual-activation/status")
             {
                 var recent = await _service.GetRecentAsync(10, deadline.Token).ConfigureAwait(false);
@@ -127,14 +137,40 @@ internal sealed class ManualActivationHttpServer : IHostedService, IDisposable
                 }, deadline.Token).ConfigureAwait(false);
                 return;
             }
+            if (request.HttpMethod == "POST" && path == "/api/code-lookup")
+            {
+                if (!IsSameOrigin(request)) { response.StatusCode = 403; return; }
+                var lookupBodyLimit = Math.Clamp(_options.MaxBodyBytes, 256, 1024 * 1024);
+                if (request.ContentLength64 > lookupBodyLimit) { response.StatusCode = 413; return; }
+                if (!string.Equals(request.ContentType?.Split(';')[0].Trim(), "application/json", StringComparison.OrdinalIgnoreCase))
+                { response.StatusCode = 415; return; }
+
+                var lookupPayload = await ReadBodyAsync(request.InputStream, lookupBodyLimit, deadline.Token).ConfigureAwait(false);
+                using var document = JsonDocument.Parse(lookupPayload);
+                var root = document.RootElement;
+                if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("codeContent", out var value)
+                    || value.ValueKind != JsonValueKind.String) { response.StatusCode = 400; return; }
+                var lookupCode = value.GetString() ?? "";
+                if (string.IsNullOrWhiteSpace(lookupCode) || lookupCode.Length > Math.Clamp(_options.MaxCodeLength, 1, 65536))
+                { response.StatusCode = 400; return; }
+
+                // Match desktop lookup semantics exactly and make a just-finished scan visible.
+                await _scanWriter.FlushAsync(deadline.Token).ConfigureAwait(false);
+                var result = await _scanQuery.GetAsync(new ScanRecordFilter { CodeContentEquals = lookupCode },
+                    page: 1, pageSize: 200, cancellationToken: deadline.Token).ConfigureAwait(false);
+                await WriteJsonAsync(response, writer =>
+                {
+                    writer.WriteStartObject(); writer.WriteString("codeContent", lookupCode);
+                    writer.WriteNumber("totalCount", result.TotalCount); writer.WriteStartArray("items");
+                    foreach (var row in result.Items) WriteLookupResult(writer, row);
+                    writer.WriteEndArray(); writer.WriteEndObject();
+                }, deadline.Token).ConfigureAwait(false);
+                return;
+            }
             if (request.HttpMethod != "POST" || path != "/api/manual-activation")
             { response.StatusCode = 404; return; }
             // Browser callers must originate from this listener. Native PDA clients may omit Origin.
-            if (request.Headers["Origin"] is { Length: > 0 } origin
-                && (!Uri.TryCreate(origin, UriKind.Absolute, out var originUri) || request.Url is not { } url
-                    || !string.Equals(originUri.Scheme, url.Scheme, StringComparison.OrdinalIgnoreCase)
-                    || !string.Equals(originUri.Host, url.Host, StringComparison.OrdinalIgnoreCase) || originUri.Port != url.Port))
-            { response.StatusCode = 403; return; }
+            if (!IsSameOrigin(request)) { response.StatusCode = 403; return; }
             var bodyLimit = Math.Clamp(_options.MaxBodyBytes, 256, 1024 * 1024);
             if (request.ContentLength64 > bodyLimit) { response.StatusCode = 413; return; }
             var payload = await ReadBodyAsync(request.InputStream, bodyLimit, deadline.Token).ConfigureAwait(false);
@@ -173,6 +209,24 @@ internal sealed class ManualActivationHttpServer : IHostedService, IDisposable
             try { response.StatusCode = 500; } catch (ObjectDisposedException) { }
         }
         finally { try { response.Close(); } catch (Exception ex) { _logger.LogDebug(ex, "PDA connection already closed."); } }
+    }
+
+    private static bool IsSameOrigin(HttpListenerRequest request)
+    {
+        // Native PDA clients may omit Origin; browser calls must originate from this listener.
+        return request.Headers["Origin"] is not { Length: > 0 } origin
+            || Uri.TryCreate(origin, UriKind.Absolute, out var originUri) && request.Url is { } url
+                && string.Equals(originUri.Scheme, url.Scheme, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(originUri.Host, url.Host, StringComparison.OrdinalIgnoreCase) && originUri.Port == url.Port;
+    }
+
+    private static void WriteLookupResult(Utf8JsonWriter writer, ScanRecordEntity row)
+    {
+        writer.WriteStartObject(); writer.WriteString("codeContent", row.CodeContent);
+        writer.WriteString("receivedUtc", row.ReceivedUtc); writer.WriteString("status", row.Status);
+        writer.WriteString("plcResult", row.PlcResult); writer.WriteString("orderNo", row.OrderNo);
+        writer.WriteNumber("processingTimeMs", row.ProcessingTimeMs); writer.WriteString("sendStatus", row.SendStatus);
+        writer.WriteString("sendMessage", row.SendMessage); writer.WriteEndObject();
     }
 
     private static async Task<byte[]> ReadBodyAsync(Stream input, int limit, CancellationToken ct)
@@ -245,5 +299,41 @@ internal sealed class ManualActivationHttpServer : IHostedService, IDisposable
         async function recent(){try{const r=await fetch('/api/manual-activation/status');if(!r.ok)return;const rows=await r.json();history.replaceChildren();for(const row of rows){const li=document.createElement('li');li.textContent=row.status+' · '+row.codeContent+'\n'+row.message;history.appendChild(li);}}catch{}}
         form.addEventListener('submit',async e=>{e.preventDefault();if(button.disabled)return;button.disabled=true;result.textContent='Đang xử lý…';try{const r=await fetch(form.action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codeContent:code.value,source:'PDA'})});const row=await r.json();result.textContent=row.status+' — '+row.message;code.value='';await recent();}catch{result.textContent='Mất kết nối. Kiểm tra 10 lần gần nhất trước khi quét lại.';}finally{button.disabled=false;code.focus();}});recent();window.addEventListener('pageshow',()=>code.focus());</script>
         </body></html>
+        """;
+
+    internal const string CodeLookupHtml = """
+        <!doctype html><html lang="vi"><head><meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1"><title>Tra cứu mã</title>
+        <style>
+        *{box-sizing:border-box}body{font:18px system-ui;max-width:42rem;margin:1.5rem auto;padding:0 1rem;color:#162b3d;background:#f5f7fa}
+        h1{font-size:1.55rem;margin:.4rem 0}p{line-height:1.45}.hint{color:#526577;font-size:.95rem}
+        label{display:block;margin:1rem 0 .5rem}input,button{width:100%;font:inherit;padding:.8rem;border-radius:.5rem}
+        input{border:1px solid #8498aa;background:white}button{margin-top:.65rem;border:0;color:white;background:#146b63;font-weight:650}
+        button:disabled{opacity:.6}#message{white-space:pre-wrap;overflow-wrap:anywhere;min-height:1.5rem}
+        .card{background:white;border:1px solid #d4dee6;border-radius:.65rem;padding:.9rem;margin:.75rem 0;overflow-wrap:anywhere}
+        .code{font: .95rem ui-monospace,monospace;word-break:break-all}.meta{font-size:.9rem;color:#526577;margin:.35rem 0}
+        .empty{color:#526577}a{color:#146b63}
+        </style></head><body><h1>Tra cứu mã</h1>
+        <p class="hint">Quét hoặc nhập nguyên nội dung mã để xem các lần mã đã chạy qua hệ thống. Enter để tra cứu.</p>
+        <form id="lookup"><label for="codeContent">Nội dung mã</label>
+        <input id="codeContent" name="codeContent" autofocus autocomplete="off" autocapitalize="off" spellcheck="false" required>
+        <button id="submit" type="submit">Tra cứu</button></form>
+        <p id="message" role="status" aria-live="polite"></p><section id="results" aria-live="polite"></section>
+        <p class="hint"><a href="/manual-activation">Mở trang Thêm mã</a></p>
+        <script>
+        const form=document.getElementById('lookup'),code=document.getElementById('codeContent'),button=document.getElementById('submit'),message=document.getElementById('message'),results=document.getElementById('results');
+        function addLine(parent,label,value){const line=document.createElement('p');line.className='meta';line.textContent=label+': '+(value||'—');parent.appendChild(line);}
+        form.addEventListener('submit',async e=>{e.preventDefault();if(button.disabled)return;button.disabled=true;message.textContent='Đang tra cứu…';results.replaceChildren();try{
+          const r=await fetch('/api/code-lookup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({codeContent:code.value})});
+          if(!r.ok)throw new Error(r.status===400?'Mã trống hoặc vượt giới hạn.':'Không truy cập được dữ liệu tra cứu.');
+          const data=await r.json();message.textContent=data.totalCount?`Tìm thấy ${data.totalCount} lần quét.`:'Không tìm thấy mã đã quét qua hệ thống.';
+          for(const row of data.items){const card=document.createElement('article');card.className='card';const full=document.createElement('div');full.className='code';full.textContent=row.codeContent;card.appendChild(full);
+            addLine(card,'Thời gian',new Date(row.receivedUtc).toLocaleString('vi-VN'));
+            addLine(card,'Kết quả',row.status);addLine(card,'Gửi PLC',row.plcResult);addLine(card,'Lệnh sản xuất (PO)',row.orderNo);
+            addLine(card,'Gửi Checkee',row.sendStatus||'Chưa gửi');if(row.sendMessage)addLine(card,'Chi tiết Checkee',row.sendMessage);
+            addLine(card,'Thời gian xử lý',Number(row.processingTimeMs).toLocaleString('vi-VN')+' ms');results.appendChild(card);}
+          }catch(err){message.textContent=err.message||'Mất kết nối. Thử lại sau.';}finally{button.disabled=false;code.focus();code.select();}});
+        window.addEventListener('pageshow',()=>code.focus());
+        </script></body></html>
         """;
 }

@@ -11,10 +11,12 @@ Tab **Thêm mã** dùng cùng quy tắc PO và bộ ghi lịch sử của camera
 Listener PDA chạy cùng ứng dụng, độc lập với việc đã mở tab Thêm mã hay chưa:
 
 - Trang nhập: `http://<IP-máy-chạy-app>:18080/manual-activation`.
+- Trang PDA của tab **Tra cứu mã**: `http://<IP-máy-chạy-app>:18080/code-lookup`.
+- Tra cứu mã đã quét: `POST /api/code-lookup`, JSON `{"codeContent":"<toàn-bộ-mã>"}`. Kết quả khớp toàn bộ nội dung mã và chỉ đọc lịch sử quét, không thêm mã.
 - Thêm mã: `POST /api/manual-activation`, JSON `{"codeContent":"<toàn-bộ-mã>","source":"PDA"}` hoặc form `codeContent=...`.
 - Tra cứu 10 kết quả mới nhất: `GET /api/manual-activation/status`.
 
-Trang PDA tự focus ô mã khi mở và sau mỗi lần gửi, hiển thị kết quả, đồng thời nạp lại lịch sử. Khi mất kết nối, kiểm tra lịch sử trước khi gửi lại. Mỗi yêu cầu trả `id`, `codeContent`, `source`, `status`, `message`, `orderNo`, `receivedUtc`, `success` và `auditPersisted`.
+Trang PDA tự focus ô mã khi mở và sau mỗi thao tác. Trang tra cứu hiển thị các lần quét gần nhất cùng PO, trạng thái, PLC và Checkee. Trang thêm mã hiển thị kết quả và nạp lại lịch sử; khi mất kết nối, kiểm tra lịch sử trước khi gửi lại. Mỗi yêu cầu thêm mã trả `id`, `codeContent`, `source`, `status`, `message`, `orderNo`, `receivedUtc`, `success` và `auditPersisted`.
 
 Cấu hình listener ở mục `ManualActivation` trong `appsettings.json`: `HttpPrefix`, `QueueCapacity`, `HistoryPath`, `MaxCodeLength`, `MaxBodyBytes`, `MaxConcurrentRequests`, `RequestTimeoutSeconds`. Mặc định prefix là `http://+:18080/`. Windows có thể yêu cầu URL ACL cho tài khoản chạy ứng dụng và firewall cho phép cổng này. Nếu listener không mở được, xem trạng thái PDA và log kỹ thuật; không coi thao tác desktop thành công là bằng chứng PDA đã kết nối được. Chỉ mở listener trên mạng vận hành tin cậy theo cùng mô hình triển khai PO local.
 

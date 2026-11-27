@@ -784,12 +784,13 @@ public sealed class PoHttpServer : IDisposable
         var additional = existingOrder is null
             ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             : new Dictionary<string, string>(existingOrder.Additional, StringComparer.OrdinalIgnoreCase);
+        var sourceGtin = existingOrder?.Gtin ?? payload.Gtin;
         // Toàn duplicate chỉ tăng planned max, giữ các metadata mô tả và mã/scan cũ.
         if (!growPlannedOnly)
         {
             additional.Remove("gtin");
             additional.Remove("serial");
-            additional["gtin"] = gtin;
+            additional["gtin"] = sourceGtin;
             AddIfNotEmpty(additional, "batchCode", payload.BatchCode);
             AddIfNotEmpty(additional, "productName", payload.ProductName);
             AddIfNotEmpty(additional, "customer", payload.Customer);
@@ -799,7 +800,7 @@ public sealed class PoHttpServer : IDisposable
         {
             OrderNo = existingOrder?.OrderNo ?? poName,
             OrderQty = payload.OrderQty,
-            Gtin = gtin,
+            Gtin = sourceGtin,
             CreatedUtc = existingOrder?.CreatedUtc ?? DateTime.UtcNow,
             Additional = additional,
         };

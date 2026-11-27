@@ -25,7 +25,7 @@ internal static class PoContractChecks
         var reloaded = new PoStore(fixture.Store.DbRoot);
         var saved = (await reloaded.ListLocalOrdersAsync()).Single();
         var codes = await reloaded.GetCodesAsync(saved.OrderNo, saved.CreatedUtc);
-        check("Reload giữ planned khác actual và GTIN canonical", saved.OrderQty == 4 && saved.TotalCodes == 1
+        check("Reload giữ planned khác actual và nguyên GTIN metadata", saved.OrderQty == 4 && saved.TotalCodes == 1
             && saved.Gtin == Gtin && codes.Single().CodeContent == Valid, "");
         var replay = await SendAsync(fixture, "poName=MIXED&orderQty=4&gtin=" + Gtin, raw);
         check("Replay không tăng actual hoặc thay planned", replay.Result.AcceptedCount == 0
@@ -33,12 +33,15 @@ internal static class PoContractChecks
         var appendOther = await SendAsync(fixture, "orderNo=MIXED&orderQty=1&gtin=00012345678905", [Other]);
         check("GTIN khác bị chặn sau reload", appendOther.Status == HttpStatusCode.UnprocessableEntity
             && (await fixture.CodesAsync("MIXED")).Count == 1 && (await fixture.OrderAsync("MIXED")).OrderQty == 4, appendOther.Body);
-        var normalized = await SendAsync(fixture, "orderNo=PADDED&orderQty=1&gtin=4006381333931", ["(01)04006381333931(21)Raw"]);
-        check("Metadata GTIN ngắn so sánh theo padded14", normalized.Status == HttpStatusCode.OK
-            && (await fixture.OrderAsync("PADDED")).Gtin == "04006381333931", normalized.Body);
+        var shortGtin = await SendAsync(fixture, "orderNo=PADDED&orderQty=1&gtin=4006381333931", ["(01)04006381333931(21)Raw"]);
+        var shortGtinOrder = await fixture.OrderAsync("PADDED");
+        var shortGtinMeta = await fixture.Store.GetMetaAsync(shortGtinOrder.OrderNo, shortGtinOrder.CreatedUtc);
+        check("Nhận mã AI01 GTIN14 nhưng lưu nguyên metadata GTIN13", shortGtin.Status == HttpStatusCode.OK
+            && shortGtinOrder.Gtin == "4006381333931" && shortGtinMeta[PoStore.MetaGtin] == "4006381333931", shortGtin.Body);
         var duplicate = await SendAsync(fixture, "orderNo=PADDED&orderQty=1&gtin=04006381333931", ["(01)04006381333931(21)Raw"]);
-        check("Toàn duplicate trả 200 và accepted=0", duplicate.Status == HttpStatusCode.OK
-            && duplicate.Result.AcceptedCount == 0 && duplicate.Result.IgnoredDuplicates == 1, duplicate.Body);
+        check("Replay GTIN tương đương trả duplicate và giữ nguyên GTIN13 cũ", duplicate.Status == HttpStatusCode.OK
+            && duplicate.Result.AcceptedCount == 0 && duplicate.Result.IgnoredDuplicates == 1
+            && (await fixture.OrderAsync("PADDED")).Gtin == "4006381333931", duplicate.Body);
         await SendAsync(fixture, "orderNo=DUP-PLANNED&orderQty=1&gtin=" + Gtin + "&productName=Keep", [Valid]);
         var beforeTarget = await fixture.OrderAsync("DUP-PLANNED");
         // Trigger chứng minh metadata-only merge không đụng các dòng mã/lịch sử scan.

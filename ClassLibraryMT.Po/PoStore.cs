@@ -46,8 +46,11 @@ public sealed class PoStore
     /// <summary>Key lưu số lượng kế hoạch của PO, độc lập với số mã thực nhận.</summary>
     public const string MetaOrderQty = "orderQty";
 
-    /// <summary>Key lưu GTIN chuẩn 14 chữ số của PO.</summary>
+    /// <summary>Key lưu nguyên GTIN được nhập cho PO, không thêm số 0 đầu.</summary>
     public const string MetaGtin = "gtin";
+
+    /// <summary>Đánh dấu biểu diễn GTIN nguồn đã được lưu, kể cả GTIN 14 chữ số có chủ ý.</summary>
+    public const string MetaSourceGtin = "sourceGtin";
 
     /// <summary>Key lưu các trường mở rộng của PO dưới dạng JSON.</summary>
     public const string MetaAdditional = "additional";
@@ -459,27 +462,54 @@ public sealed class PoStore
         if (string.IsNullOrEmpty(gtin) && order.Additional is not null)
             gtin = order.Additional.FirstOrDefault(e => string.Equals(e.Key, MetaGtin,
                 StringComparison.OrdinalIgnoreCase)).Value;
-        if (PoCodeParser.TryNormalizeGtin(gtin, out var normalizedGtin))
+        var hasValidGtin = PoCodeParser.TryNormalizeGtin(gtin, out var normalizedGtin);
+        if (hasValidGtin)
         {
             await using var existingGtin = connection.CreateCommand();
             existingGtin.Transaction = transaction;
-            existingGtin.CommandText = "SELECT Value FROM PoMeta WHERE Key=$key COLLATE NOCASE LIMIT 1;";
+            existingGtin.CommandText = """
+                SELECT Key, Value FROM PoMeta
+                WHERE Key=$key COLLATE NOCASE OR Key=$sourceKey COLLATE NOCASE;
+                """;
             existingGtin.Parameters.AddWithValue("$key", MetaGtin);
-            var storedGtin = await existingGtin.ExecuteScalarAsync(ct).ConfigureAwait(false) as string;
+            existingGtin.Parameters.AddWithValue("$sourceKey", MetaSourceGtin);
+            string? storedGtin = null;
+            string? storedSourceGtin = null;
+            await using (var reader = await existingGtin.ExecuteReaderAsync(ct).ConfigureAwait(false))
+            {
+                while (await reader.ReadAsync(ct).ConfigureAwait(false))
+                {
+                    if (string.Equals(reader.GetString(0), MetaGtin, StringComparison.OrdinalIgnoreCase))
+                        storedGtin = reader.GetString(1);
+                    else
+                        storedSourceGtin = reader.GetString(1);
+                }
+            }
             if (PoCodeParser.TryNormalizeGtin(storedGtin, out var normalizedStoredGtin)
                 && !string.Equals(normalizedGtin, normalizedStoredGtin, StringComparison.Ordinal))
                 throw new InvalidDataException("Không thể đổi GTIN của PO đã lưu.");
-            await SetMetaAsync(connection, MetaGtin, normalizedGtin, ct, transaction).ConfigureAwait(false);
+            // Append cùng định danh không đổi biểu diễn nguồn đã chốt của PO mới.
+            // PO cũ chưa có marker nhận nguyên biểu diễn từ lần nhập hợp lệ này.
+            if (PoCodeParser.TryNormalizeGtin(storedSourceGtin, out var normalizedSourceGtin)
+                && string.Equals(normalizedGtin, normalizedSourceGtin, StringComparison.Ordinal))
+                gtin = storedSourceGtin;
+            await SetMetaAsync(connection, MetaGtin, gtin!, ct, transaction).ConfigureAwait(false);
+            await SetMetaAsync(connection, MetaSourceGtin, gtin!, ct, transaction).ConfigureAwait(false);
         }
 
         // Lưu các trường mở rộng (tên sản phẩm, khách hàng...) để hỗ trợ tìm kiếm.
         if (order.Additional is { Count: > 0 })
         {
+            var additional = new Dictionary<string, string>(order.Additional, order.Additional.Comparer);
+            if (hasValidGtin)
+                foreach (var key in additional.Keys.Where(key => string.Equals(key, MetaGtin,
+                    StringComparison.OrdinalIgnoreCase)).ToArray())
+                    additional[key] = gtin!;
             await SetMetaAsync(
                 connection,
                 MetaAdditional,
                 System.Text.Json.JsonSerializer.Serialize(
-                    order.Additional,
+                    additional,
                     PoJsonContext.Default.DictionaryStringString),
                 ct, transaction).ConfigureAwait(false);
         }
@@ -585,6 +615,7 @@ public sealed class PoStore
                 DateTime createdUtc = DateTime.MinValue;
                 int orderQty = 0;
                 string gtin = string.Empty;
+                string sourceGtin = string.Empty;
                 bool hasOrderQty = false;
                 DateTime? startedUtc = null;
                 DateTime? completedUtc = null;
@@ -610,6 +641,8 @@ public sealed class PoStore
                             hasOrderQty = int.TryParse(value, out orderQty) && orderQty >= 0;
                         else if (string.Equals(key, MetaGtin, StringComparison.OrdinalIgnoreCase))
                             gtin = value;
+                        else if (string.Equals(key, MetaSourceGtin, StringComparison.OrdinalIgnoreCase))
+                            sourceGtin = value;
                         else if (string.Equals(key, MetaStartedUtc, StringComparison.OrdinalIgnoreCase))
                             startedUtc = ParseUtc(value);
                         else if (string.Equals(key, MetaCompletedUtc, StringComparison.OrdinalIgnoreCase))
@@ -621,31 +654,54 @@ public sealed class PoStore
                     }
                 }
 
-                // Tương thích PO cũ: đọc GTIN từ additional trước, rồi chỉ suy
-                // ra từ mã cũ nếu toàn bộ mã hợp lệ và cùng đúng một GTIN.
+                // Giữ nguyên biểu diễn nguồn. Chỉ dùng canonical 14 chữ số để đối chiếu.
                 if (string.IsNullOrEmpty(gtin))
                     gtin = additional.FirstOrDefault(e => string.Equals(e.Key, MetaGtin,
                         StringComparison.OrdinalIgnoreCase)).Value ?? string.Empty;
-                if (!PoCodeParser.TryNormalizeGtin(gtin, out var normalizedGtin))
+                var hasValidGtin = PoCodeParser.TryNormalizeGtin(gtin, out var normalizedGtin);
+                if (hasValidGtin && PoCodeParser.TryNormalizeGtin(sourceGtin, out var normalizedSourceGtin)
+                    && string.Equals(normalizedGtin, normalizedSourceGtin, StringComparison.Ordinal))
+                    gtin = sourceGtin;
+                else if (!hasValidGtin || (sourceGtin.Length == 0 && gtin.Length == 14 && gtin[0] == '0'))
                 {
-                    normalizedGtin = string.Empty;
+                    // PO legacy có thể đã bị thêm 0. Đọc toàn bộ mã trước khi phục hồi;
+                    // không cắt 0 mù hoặc chọn biểu diễn từ một dòng bất kỳ.
                     var candidate = string.Empty;
+                    var candidateIdentity = string.Empty;
                     var consistent = true;
+                    var uniformSource = true;
                     await using var legacyCodes = connection.CreateCommand();
                     legacyCodes.CommandText = "SELECT Code FROM PoCodes;";
                     await using var legacyReader = await legacyCodes.ExecuteReaderAsync(ct).ConfigureAwait(false);
                     while (await legacyReader.ReadAsync(ct).ConfigureAwait(false))
                     {
-                        if (!PoCodeParser.TryGetGtin(legacyReader.GetString(0), out var parsed)
-                            || (candidate.Length > 0 && !string.Equals(candidate, parsed, StringComparison.Ordinal)))
+                        if (!PoCodeParser.TryGetSourceGtin(legacyReader.GetString(0), out var parsed)
+                            || !PoCodeParser.TryNormalizeGtin(parsed, out var parsedIdentity)
+                            || (candidateIdentity.Length > 0
+                                && !string.Equals(candidateIdentity, parsedIdentity, StringComparison.Ordinal)))
                         {
                             consistent = false;
                             break;
                         }
-                        candidate = parsed;
+                        if (candidateIdentity.Length == 0)
+                        {
+                            candidate = parsed;
+                            candidateIdentity = parsedIdentity;
+                        }
+                        else if (!string.Equals(candidate, parsed, StringComparison.Ordinal))
+                            uniformSource = false;
                     }
-                    if (consistent) normalizedGtin = candidate;
+                    if (consistent && candidateIdentity.Length > 0
+                        && (!hasValidGtin || string.Equals(normalizedGtin, candidateIdentity, StringComparison.Ordinal))
+                        && (!hasValidGtin || uniformSource))
+                        gtin = uniformSource ? candidate : candidateIdentity;
+                    else if (!hasValidGtin)
+                        gtin = string.Empty;
                 }
+                if (gtin.Length > 0)
+                    foreach (var key in additional.Keys.Where(key => string.Equals(key, MetaGtin,
+                        StringComparison.OrdinalIgnoreCase)).ToArray())
+                        additional[key] = gtin;
 
                 if (string.IsNullOrWhiteSpace(orderNo))
                 {
@@ -682,7 +738,7 @@ public sealed class PoStore
                 {
                     OrderNo = orderNo,
                     OrderQty = hasOrderQty ? orderQty : totalCodes,
-                    Gtin = normalizedGtin,
+                    Gtin = gtin,
                     CreatedUtc = createdUtc,
                     Status = ParseStatus(status),
                     StartedUtc = startedUtc,
@@ -1421,7 +1477,7 @@ public sealed class LocalPoInfo
     /// <summary>Số lượng kế hoạch của PO, không phải số mã thực nhận.</summary>
     public int OrderQty { get; set; }
 
-    /// <summary>GTIN chuẩn 14 chữ số; rỗng nếu PO legacy không xác định được duy nhất.</summary>
+    /// <summary>GTIN nguồn giữ nguyên biểu diễn; rỗng nếu PO legacy không xác định được duy nhất.</summary>
     public string Gtin { get; set; } = string.Empty;
 
     /// <summary>Thời điểm tạo PO (từ server).</summary>

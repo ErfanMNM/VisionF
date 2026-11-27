@@ -217,7 +217,14 @@ internal sealed class CameraSignalWorker : BackgroundService
             case eReaderState.Connected: AppStateManager.SetCameraStatus(CameraStatus.Connected); break;
             case eReaderState.Disconnected: AppStateManager.SetCameraStatus(CameraStatus.Disconnected); break;
             case eReaderState.Reconnecting: AppStateManager.SetCameraStatus(CameraStatus.Reconnecting); break;
-            case eReaderState.Received: _intake.Dispatch(() => HandleReceived(data)); break;
+            case eReaderState.Received:
+                // Ghi lại đúng payload đi vào ứng dụng trước khi xếp hàng xử lý.
+                // Đây là mốc đối chiếu với log/trigger của camera khi cần phân biệt
+                // camera gửi lại frame cũ với lỗi hiển thị phía ứng dụng.
+                _logger.LogInformation("Camera nhận frame lúc {ReceivedUtc:o}; Length={Length}; CodeContent={CodeContent}",
+                    DateTime.UtcNow, data.Length, data);
+                _intake.Dispatch(() => HandleReceived(data));
+                break;
         }
     }
 

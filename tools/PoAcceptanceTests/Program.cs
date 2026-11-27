@@ -57,8 +57,10 @@ async Task AssertStoredAsync(PoStore store, string orderNo, int planned, string 
         using var json = JsonDocument.Parse(additional);
         if (json.RootElement.TryGetProperty("gtin", out var value)) storedGtin = value.GetString();
     }
-    Check(orderNo + " giữ GTIN đã chuẩn hóa sau reload", string.Equals(storedGtin, gtin, StringComparison.Ordinal),
-        "GTIN lưu không khớp metadata chuẩn hóa");
+    Check(orderNo + " giữ nguyên GTIN metadata sau reload", string.Equals(storedGtin, gtin, StringComparison.Ordinal)
+        && string.Equals(order.Gtin, gtin, StringComparison.Ordinal), "GTIN lưu hoặc GTIN đọc lại khác metadata đã nhập");
+    if (order.Additional.TryGetValue("gtin", out var additionalGtin))
+        Check(orderNo + " giữ nguyên GTIN trong metadata mở rộng", string.Equals(additionalGtin, gtin, StringComparison.Ordinal));
 }
 
 void AssertMixed(string name, WireResponse response)
@@ -160,22 +162,23 @@ try
                     .SequenceEqual([valid], StringComparer.Ordinal), duplicateOnly.Body);
     });
 
-    await RunAsync("Chuẩn hóa GTIN và nhận dạng ordinal", async () =>
+    await RunAsync("Giữ nguyên GTIN metadata và nhận dạng ordinal", async () =>
     {
-        using var server = new Fixture(Path.Combine(root, "gtin-normalization"));
-        foreach (var (metadata, normalized) in new[]
+        using var server = new Fixture(Path.Combine(root, "gtin-preservation"));
+        foreach (var (metadata, matchingGtin14) in new[]
         {
             ("96385074", "00000096385074"),
             ("012345678905", gtinA),
             ("0012345678905", gtinA),
+            ("8935348800215", "08935348800215"),
             (gtinA, gtinA),
         })
         {
-            var code = "https://id.example.invalid/01/" + normalized + "/21/GTIN" + metadata.Length;
-            var orderNo = "TEST-ASYNC-PO-20261127-GTIN-" + metadata.Length;
+            var code = "https://id.example.invalid/01/" + matchingGtin14 + "/21/GTIN" + metadata.Length;
+            var orderNo = "TEST-ASYNC-PO-20261127-GTIN-" + metadata;
             var response = await server.UploadAsync(orderNo, 1, metadata, [code]);
             Check("Metadata GTIN-" + metadata.Length + " khớp mã GTIN-14", response.Status == HttpStatusCode.OK, response.Body);
-            await AssertStoredAsync(new PoStore(server.Store.DbRoot), orderNo, 1, normalized, code);
+            await AssertStoredAsync(new PoStore(server.Store.DbRoot), orderNo, 1, metadata, code);
         }
         string[] ordinal =
         [

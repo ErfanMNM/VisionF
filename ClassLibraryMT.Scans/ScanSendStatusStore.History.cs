@@ -15,6 +15,12 @@ internal sealed partial class ScanSendStatusStore
         // intent. A stale/manual selection must not bypass the PO outbox gate.
         foreach (var record in records)
         {
+            // ScanRecords giữ khóa so khớp nội bộ; lịch sử lưu GTIN nguyên bản thực gửi.
+            if (record.Gtin.Length is not (8 or 12 or 13 or 14)
+                || productGtin.Length is not (8 or 12 or 13 or 14)
+                || record.Gtin.Any(c => c is < '0' or > '9') || productGtin.Any(c => c is < '0' or > '9')
+                || !string.Equals(record.Gtin.TrimStart('0'), productGtin.TrimStart('0'), StringComparison.Ordinal))
+                throw new InvalidOperationException("GTIN bản ghi không khớp GTIN của lần gửi.");
             await using var ready = connection.CreateCommand();
             ready.Transaction = transaction;
             ready.CommandText = """
@@ -31,7 +37,7 @@ internal sealed partial class ScanSendStatusStore
             ready.Parameters.AddWithValue("$order", record.OrderNo);
             ready.Parameters.AddWithValue("$created", record.OrderCreatedUtc is { } created
                 ? ScanStore.FormatUtc(created) : DBNull.Value);
-            ready.Parameters.AddWithValue("$gtin", productGtin);
+            ready.Parameters.AddWithValue("$gtin", record.Gtin);
             if (Convert.ToInt64(await ready.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false)) != 1)
                 throw new InvalidOperationException("Bản ghi chưa đồng bộ PO hoặc không còn khớp; không được gửi Checkee.");
         }

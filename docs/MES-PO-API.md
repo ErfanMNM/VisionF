@@ -48,7 +48,7 @@ Metadata nằm ở query khi gửi file thuần, hoặc ở các field multipart
 
 Một trường và alias của nó chỉ được gửi **một lần** trên toàn query + multipart. Ví dụ cùng gửi `orderNo` và `poName`, hoặc lặp `gtin`, bị `400`. Metadata không hỗ trợ như `serial`, `codes`, `csv` cũng bị `400`. Multipart phải có đúng một file.
 
-GTIN hợp lệ được chuẩn hóa riêng về 14 chữ số bằng cách thêm số 0 đầu để so sánh/lưu định danh PO: `4006381333931` khớp AI (01) `04006381333931`. Không chuẩn hóa, cắt, trim hoặc đổi hoa thường `CodeContent` để dedupe.
+GTIN hợp lệ được giữ nguyên khi lưu metadata PO và gửi Checkee; nhập `4006381333931` thì vẫn lưu và gửi đúng 13 chữ số đó, không tự thêm số 0 đầu. Khóa GTIN 14 chữ số chỉ dùng để so sánh nội bộ: metadata `4006381333931` vẫn khớp AI (01) `04006381333931`. GTIN 14 chữ số được cung cấp rõ ràng cũng được giữ nguyên, kể cả số 0 đầu. Không chuẩn hóa, cắt, trim hoặc đổi hoa thường `CodeContent` để dedupe.
 
 `orderQty` không bị thay bằng accepted/actual sau khi lọc. Với request hợp lệ có mã mới hoặc toàn duplicate, planned đã lưu là `max(planned hiện có, orderQty lần này)`, không cộng lại target và không hạ target do batch nhỏ hơn. Actual là số mã thực trong DB; vì lọc hoặc bổ sung, actual và planned có thể khác nhau. Upload toàn duplicate vẫn tăng planned nếu cần, nhưng giữ metadata mô tả, các mã và lịch sử scan cũ.
 
@@ -84,7 +84,7 @@ Sau khi file đúng schema, server xét từng mã theo `PoCodeParser`: Digital 
 Thứ tự cho mỗi record trong file hợp lệ:
 
 1. Không tách được GTIN/cấu trúc/checksum mã không hợp lệ: thêm `{code, reason: "invalidStructure"}` vào `invalidCodes`.
-2. GTIN mã khác GTIN metadata sau chuẩn hóa: thêm `{code, reason: "gtinMismatch"}` vào `invalidCodes`.
+2. GTIN mã không tương đương GTIN metadata theo khóa đối chiếu nội bộ: thêm `{code, reason: "gtinMismatch"}` vào `invalidCodes`.
 3. Raw trùng ordinal trong file hoặc đã có trong **chính PO đích**: thêm raw vào `duplicateCodes`.
 4. Còn lại: lưu nguyên `CodeContent` và tăng `acceptedCount`.
 
@@ -169,7 +169,7 @@ dotnet run --project tools/PoServerTests/PoServerTests.csproj --no-restore
 dotnet run --project tools/PoServerTests/e2e/PoServerE2E.csproj --no-restore
 ```
 
-Bộ kiểm thử kiểm CSV/JSON/XLSX, partial/raw/planned/reload, metadata nguyên tử, alias, GTIN canonical/append legacy, lifecycle, lỗi DB, auth và route nhúng loopback/wildcard/path/method. Browser smoke của trang demo cần chạy sau khi UI nguồn hoàn tất và build lại assembly; xem `docs/po-demo/README.md`.
+Bộ kiểm thử kiểm CSV/JSON/XLSX, partial/raw/planned/reload, metadata nguyên tử, alias, giữ nguyên GTIN 8/12/13/14 chữ số khi lưu và đọc lại, đối chiếu GTIN tương đương/append legacy, lifecycle, lỗi DB, auth và route nhúng loopback/wildcard/path/method. Browser smoke của trang demo cần chạy sau khi UI nguồn hoàn tất và build lại assembly; xem `docs/po-demo/README.md`.
 
 Host cục bộ dùng đúng `PoHttpServer`, store thư mục tạm mới và key công khai dành riêng cho thử nghiệm `po-demo-local-test-key`:
 

@@ -8,8 +8,8 @@ Phép tách chỉ áp dụng tại bước tạo payload Checkee. PO, đối chi
 
 ## Metadata bắt buộc của request
 
-- `Checkee:ProductGtin`: GTIN sản phẩm do người vận hành cấu hình độc lập với nội dung mã. Worker ưu tiên giá trị này. Khi đọc dữ liệu cũ đã lưu GTIN, worker có thể fallback metadata `Gtin` trên bản ghi; không suy GTIN từ CodeContent.
-- `batchCode`: ưu tiên mã lô trên bản ghi nếu khác `NoBatch`, sau đó `Checkee:BatchCode`, cuối cùng mã PO của bản ghi.
+- `GTIN`: lấy từ PO của phiên gửi, giữ nguyên biểu diễn nguồn, không thêm số `0` đầu cho đủ 14 số. Ví dụ PO có GTIN `8935348800215` thì payload, lịch sử và audit đều ghi đúng 13 số này. Khóa GTIN 14 số chỉ dùng để đối chiếu nội bộ với mã quét.
+- `batchCode`: lấy metadata PO theo thứ tự `lot`, `lotNo`, `batchCode`, `batchNo` (không phân biệt hoa thường); nếu thiếu thì dùng số PO.
 - `type`: tiếp tục dùng `Checkee:SerialType` theo giao thức Checkee hiện có.
 
 Ví dụ phần cấu hình liên quan:
@@ -17,15 +17,12 @@ Ví dụ phần cấu hình liên quan:
 ```json
 {
   "Checkee": {
-    "ProductGtin": "08934567890123",
-    "BatchCode": "",
-    "SerialType": "DECLARE",
-    "OnlyPassCodes": true
+    "SerialType": "DECLARE"
   }
 }
 ```
 
-Đây là metadata của tích hợp gửi, không phải điều kiện để một mã thuộc PO được Pass. Cấu hình sản phẩm phải đúng với PO đang vận hành và cần áp dụng theo vòng đời cấu hình/restart hiện có của ứng dụng.
+GTIN và lô thuộc metadata PO. Việc đối chiếu GTIN và danh tính PO của mã quét vẫn được giữ trước khi gửi; payload sử dụng GTIN nguồn thay vì khóa so khớp nội bộ.
 
 ## Chờ gửi, từ chối và gửi lại
 

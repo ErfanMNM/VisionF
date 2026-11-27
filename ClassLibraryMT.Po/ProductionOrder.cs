@@ -23,7 +23,7 @@ public sealed class ProductionOrder
     /// </summary>
     public int OrderQty { get; set; }
 
-    /// <summary>GTIN duy nhất áp dụng cho PO; lưu chuẩn 14 chữ số sau xác thực.</summary>
+    /// <summary>GTIN duy nhất của PO, giữ nguyên biểu diễn được nhập sau xác thực.</summary>
     public string Gtin { get; set; } = "";
 
     /// <summary>Thời điểm tạo PO trên server (UTC).</summary>

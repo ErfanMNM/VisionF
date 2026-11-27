@@ -26,6 +26,14 @@ void Check(string name, bool ok, string detail = "")
     Console.WriteLine("[OK] " + name);
 }
 
+async Task AcceptAndPersistAsync(ProductionOrderService service, PoStore store, string code)
+{
+    var result = await service.ProcessCodeAsync(code, _ => Task.FromResult(true));
+    if (result.Mutation is { } mutation)
+        await store.MarkScannedBatchAsync([mutation]);
+    await service.CompletePendingAsync();
+}
+
 try
 {
     await CodeContentParserChecks.RunAsync(workDir, Check);
@@ -118,9 +126,9 @@ try
     Check("Running PO blocks receiving another PO", (await fixture.PushAsync("PO-BLOCKED", "(01)09506000134352(21)BLOCKED")).Status == HttpStatusCode.Conflict);
     Check("Running PO blocks same-PO append", (await fixture.PushAsync("PO-RUNNING", "(01)09506000134352(21)RUN-3")).Status == HttpStatusCode.Conflict
         && (await fixture.CodesAsync("PO-RUNNING")).Count == runningBefore.Count);
-    await lifecycle.ProcessCodeAsync("(01)09506000134352(21)RUN-1", _ => Task.FromResult(true));
+    await AcceptAndPersistAsync(lifecycle, fixture.Store, "(01)09506000134352(21)RUN-1");
     Check("Successful code has durable per-PO record", (await fixture.CodesAsync("PO-RUNNING")).Single(code => code.CodeContent == "(01)09506000134352(21)RUN-1").ScannedUtc is not null);
-    await lifecycle.ProcessCodeAsync("(01)09506000134352(21)RUN-2", _ => Task.FromResult(true));
+    await AcceptAndPersistAsync(lifecycle, fixture.Store, "(01)09506000134352(21)RUN-2");
     Check("Completed PO rejects additional file", (await fixture.PushAsync("PO-RUNNING", "(01)09506000134352(21)RUN-3")).Status == HttpStatusCode.Conflict);
     Check("Completion unlocks receiving", (await fixture.PushAsync("PO-AFTER-RUN", "(01)09506000134352(21)AFTER-1", "(01)09506000134352(21)AFTER-2")).Status == HttpStatusCode.OK);
     Check("Next PO can start", await lifecycle.StartProductionAsync("PO-AFTER-RUN"));

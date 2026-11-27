@@ -19,6 +19,13 @@ public static partial class PoCodeParser
     public static bool TryGetGtin(string? code, out string gtin)
     {
         gtin = string.Empty;
+        return TryGetSourceGtin(code, out var sourceGtin) && TryNormalizeGtin(sourceGtin, out gtin);
+    }
+
+    /// <summary>Lấy nguyên GTIN AI (01), không thêm hoặc bỏ số 0 đầu.</summary>
+    public static bool TryGetSourceGtin(string? code, out string gtin)
+    {
+        gtin = string.Empty;
         if (string.IsNullOrEmpty(code)) return false;
         var match = DigitalLink.Match(code);
         if (match.Success && HasRepeatedQueryAi(code)) return false;
@@ -29,7 +36,9 @@ public static partial class PoCodeParser
         if (!IsSerial(serial) || serial.Contains("(01)", StringComparison.Ordinal)
             || serial.Contains("(21)", StringComparison.Ordinal)) return false;
         var value = match.Groups["gtin"].Value;
-        return TryNormalizeGtin(value, out gtin);
+        if (!IsValidGtin(value)) return false;
+        gtin = value;
+        return true;
     }
 
     private static bool HasRepeatedQueryAi(string code)
@@ -49,7 +58,7 @@ public static partial class PoCodeParser
         return false;
     }
 
-    /// <summary>Xác thực checksum và chuẩn hóa riêng định danh GTIN về 14 chữ số.</summary>
+    /// <summary>Tạo khóa GTIN 14 số chỉ để so khớp nội bộ; không dùng làm GTIN lưu hoặc gửi.</summary>
     public static bool TryNormalizeGtin(string? value, out string gtin)
     {
         gtin = string.Empty;

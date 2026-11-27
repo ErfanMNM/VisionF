@@ -16,6 +16,39 @@ void Check(bool ok, string message) { if (!ok) throw new InvalidOperationExcepti
 const string gtin="08935348800215";
 static string Code(string serial, string product=gtin) => $"https://resolver.invalid/01/{product}/21/{serial}";
 
+await using (var f=await SendTestSession.CreateAsync(codes:[Code("legacy-raw", "8935348800215")],legacySource:true))
+{
+    await f.AddAsync(Code("legacy-raw", "8935348800215"));
+    Check(await f.Worker.SendPendingAsync()==1, "PO cũ đã lưu GTIN padded14 gửi được bằng GTIN13 đồng nhất trong mã nguồn");
+    Check(f.Http.Payloads.Single().GetProperty("GTIN").GetString()=="8935348800215",
+        "Đọc tương thích PO cũ đưa GTIN nguồn13 vào HTTP thay vì metadata padded14");
+    var meta=await f.PoStore.GetMetaAsync(f.Order.OrderNo,f.Order.CreatedUtc);
+    Check(meta[PoStore.MetaGtin]==gtin && !meta.ContainsKey(PoStore.MetaSourceGtin),
+        "Gửi PO cũ không sửa GTIN metadata hoặc tạo marker trong database PO");
+}
+
+await using (var f=await SendTestSession.CreateAsync(sourceGtin:"8935348800215"))
+{
+    await f.AddAsync(Code("raw-gtin", "8935348800215"));
+    f.Http.BusinessFailure=true;
+    Check(await f.Worker.SendPendingAsync()==0, "Lượt gửi GTIN gốc bị từ chối vẫn lưu được intent với khóa quét nội bộ");
+    var failed=(await f.RowsAsync()).Single();
+    f.Http.BusinessFailure=false;
+    var retried=await f.Worker.ResendFailedAsync([failed.Id]);
+    Check(retried.Reset==1 && retried.Sent==1, "Gửi lại GTIN 13 số vẫn khớp bản ghi quét 14 số của cùng PO");
+    Check(f.Http.Payloads.Count==2 && f.Http.Payloads.All(p=>p.GetProperty("GTIN").GetString()=="8935348800215"),
+        "Payload Checkee giữ đúng GTIN 13 số, không tự thêm số 0 đầu");
+    Check((await f.Store.GetRecentSendAttemptsAsync()).All(a=>a.ProductGtin=="8935348800215"),
+        "Lịch sử lưu đúng GTIN nguyên bản đã gửi");
+    var audit=await File.ReadAllTextAsync(f.AuditPath);
+    Check(audit.Split('\n',StringSplitOptions.RemoveEmptyEntries).All(line=>
+    {
+        using var entry=JsonDocument.Parse(line);
+        return entry.RootElement.GetProperty("gtin").GetString()=="8935348800215";
+    }),
+        "Audit lưu GTIN thực gửi thay vì khóa so khớp nội bộ");
+}
+
 await using (var f=await SendTestSession.CreateAsync())
 {
     f.Options.BatchSize=1;
@@ -264,11 +297,21 @@ sealed class SendTestSession : IAsyncDisposable
         _http=new(Http) { BaseAddress=new Uri("https://checkee.invalid/") }; _client=new(_http,Options);
         Outbound=new() { AuditLogPath=AuditPath }; Options.Enabled=enabled; Worker=NewWorker();
     }
-    public static async Task<SendTestSession> CreateAsync(Dictionary<string,string>? additional=null,bool enabled=true,string[]? codes=null)
+    public static async Task<SendTestSession> CreateAsync(Dictionary<string,string>? additional=null,bool enabled=true,string[]? codes=null,string? sourceGtin=null,bool legacySource=false)
     {
         codes ??= Enumerable.Range(0,10).Select(i=>$"https://resolver.invalid/01/{Gtin}/21/fixture{i}").ToArray();
         var f=new SendTestSession(enabled,additional,codes);
+        if(sourceGtin is not null) f.Order.Gtin=sourceGtin;
         await f.PoStore.EnsurePoDbAsync(f.Order,codes.Select(c=>new PoCode { CodeContent=c }).ToArray());
+        if(legacySource)
+        {
+            await using var db=new SqliteConnection("Data Source="+f.PoStore.GetDbPath(f.Order.OrderNo,f.Order.CreatedUtc));
+            await db.OpenAsync();
+            await using var command=db.CreateCommand();
+            command.CommandText="DELETE FROM PoMeta WHERE Key=$key;";
+            command.Parameters.AddWithValue("$key",PoStore.MetaSourceGtin);
+            await command.ExecuteNonQueryAsync();
+        }
         if(!await f.Po.StartProductionAsync(f.Order.OrderNo)) throw new InvalidOperationException("Fixture failed to start PO");
         return f;
     }
