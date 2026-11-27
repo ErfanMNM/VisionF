@@ -20,15 +20,9 @@
       "migrations_dir": "migrations"
     }
   ],
-  "r2_buckets": [
-    {
-      "binding": "UPDATE_BUCKET",
-      "bucket_name": "tantien-updates"
-    }
-  ],
-
   "vars": {
     "APP_NAME": "TanTienQR License Portal",
-    "DEFAULT_PRODUCT": "TanTienQR"
+    "DEFAULT_PRODUCT": "TanTienQR",
+    "UPDATE_METADATA_CACHE_TTL_SECONDS": "300"
   }
 }
