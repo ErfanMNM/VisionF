@@ -13,7 +13,9 @@
 - Bỏ simulator MES khỏi cấu hình, đăng ký runtime và tham chiếu ứng dụng. Bỏ cấu hình GTIN/lô/cho phép gửi non-Pass. Căn lại hàng nút/badge màn chính, sửa thông báo và cập nhật CanExecute theo quyền/PLC/mapping/bảo trì/busy.
 - Sửa race khởi tạo/migrate schema SQLite: BEGIN IMMEDIATE trước đọc metadata, toàn bộ ALTER/rebuild/index/version trong một transaction; bảo toàn dữ liệu legacy khi nhiều caller mở cùng lúc.
 
-## Kiểm chứng thực thi
+## Kiểm chứng tại thời điểm báo cáo 27/11/2026
+
+Các số liệu và danh sách suite dưới đây ghi nhận phiên bản trước lần gỡ trang Cài đặt V2 và sửa cảnh báo build; `SettingsV2Tests` là kết quả lịch sử.
 
 Lần thành công mới nhất của **17 suite: 1.268 kiểm tra, không lỗi**. Rerun thay thế kết quả cũ, không cộng dồn.
 
@@ -39,7 +41,18 @@ Lần thành công mới nhất của **17 suite: 1.268 kiểm tra, không lỗi
 
 Các suite chạy Release JIT, DB temp riêng, transport giả hoặc TCP/HTTP loopback. Camera tests không gọi PLC thật. Kiểm thử mới bao gồm gửi trùng nhiều nguồn, queue capacity 1, audit SQLite bị khóa không giữ consumer camera, drain/shutdown, gián đoạn nhật ký/restart, gửi Checkee theo PO và mã cuối, audit còn truy vết sau retention, mở schema đồng thời 12 caller trên DB mới/legacy và trạng thái Sent được giữ nguyên.
 
-Lệnh build cuối `dotnet build TanTienQR/TanTienQR.csproj -c Release -p:PublishAot=false` thành công, gồm helper PrinterRemoteHost: **0 error, 2 warning có sẵn** (`HistoryConflict` chưa dùng và runtime-loader constructor của ConnectionConfigurationConfirmWindow). Không publish Native AOT.
+Build đã ghi nhận trước lần sửa gần đây: `dotnet build TanTienQR/TanTienQR.csproj -c Release -p:PublishAot=false` thành công, gồm helper PrinterRemoteHost: **0 error, 2 warning** (event `HistoryConflict` chưa sử dụng và constructor runtime loader của `ConnectionConfigurationConfirmWindow`). Cả hai cảnh báo đã được khắc phục ở cập nhật sau.
+
+## Xác minh các cập nhật sau báo cáo
+
+Các lệnh dưới đây chỉ dùng build/test headless, không mở ứng dụng trên desktop:
+
+- `dotnet build TanTienQR/TanTienQR.csproj -c Debug -p:PublishAot=false` — **0 cảnh báo, 0 lỗi**.
+- `dotnet run --project tools/PoTests/PoTests.csproj -c Debug -p:PublishAot=false -p:SkipPrinterRemoteHelper=true --no-launch-profile` — **134 đạt, 0 lỗi**.
+- `dotnet run --project tools/ConfigUiTests/ConfigUiTests.csproj -c Debug -p:PublishAot=false -p:SkipPrinterRemoteHelper=true --no-launch-profile -- --confirmation-artifacts <thư-mục-tạm>` — **140 đạt, 0 lỗi**.
+- `dotnet run --project tools/FullscreenNumpadTests/FullscreenNumpadTests.csproj -c Debug -p:PublishAot=false -p:SkipPrinterRemoteHelper=true --no-launch-profile` — **31 đạt, 0 lỗi**; xác nhận trang camera dùng IP trực tiếp, tự cập nhật địa chỉ và giữ cổng HTTP tùy chỉnh mà không nối thêm đường dẫn.
+
+Các suite dùng môi trường Avalonia headless và SQLite trong thư mục tạm; không kết nối thiết bị thật.
 
 Đã xem ảnh Thêm mã ở 1100×760 và 1366×768, màn chính, Tra cứu ở vùng 1048×540, monitor Pending/Failed cùng ảnh Sent. Suite UI tạo đủ ảnh ba tab monitor ở 1048×540 và 1280×720, giữ nguyên assertion vùng bảng quét tối thiểu 24px. PDA được kiểm tra trên trình duyệt 390×844: ô mã tự focus, POST mã sai trả InvalidStructure, lịch sử tăng, focus quay lại và không tràn ngang.
 

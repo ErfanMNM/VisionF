@@ -232,7 +232,6 @@ public partial class MainWindow : Window
         vm.RegisterTabHost(TanTienQR.Models.AppSection.Info, InfoTab);
         vm.RegisterTabHost(TanTienQR.Models.AppSection.Production, ProductionTab);
         vm.RegisterTabHost(TanTienQR.Models.AppSection.Configuration, ConfigTab);
-        vm.RegisterTabHost(TanTienQR.Models.AppSection.ConfigurationV2, SettingsV2Tab);
         vm.RegisterTabHost(TanTienQR.Models.AppSection.History, HistoryTab);
         vm.RegisterTabHost(TanTienQR.Models.AppSection.Accounts, AccountsTab);
         vm.RegisterTabHost(TanTienQR.Models.AppSection.PlcSettings, PlcSettingsTab);

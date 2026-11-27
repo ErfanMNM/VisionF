@@ -10,7 +10,7 @@ Tab Chỉnh PLC gồm 3 phần:
 
 | Vùng | Nội dung |
 |---|---|
-| **Webview camera** | Nhúng trang `http://<Camera.Ip>/monitor` để xem hình trực tiếp từ camera. |
+| **Webview camera** | Truy cập trực tiếp địa chỉ gốc `http://<Camera.Ip>/` để xem hình từ camera. |
 | **Bảng thông số PLC** | Bảng tùy chỉnh các ô nhớ PLC cần đọc / ghi, kèm nút Đọc / Ghi / Sửa / Xoá. |
 | **Khung Recipe** | Lưu bộ giá trị cho từng ô nhớ theo từng recipe, rồi áp dụng xuống PLC một lần. |
 
@@ -26,7 +26,7 @@ Tab nằm trong nhóm **CẤU HÌNH** và dùng chung quyền `Permission.EditCo
 ```mermaid
 flowchart TD
     plcTab[Tab "Chỉnh PLC"] --> plcView[PlcSettingsView]
-    plcView --> webview[NativeWebView -> http Camera.Ip/monitor]
+    plcView --> webview[NativeWebView -> http Camera.Ip/]
     plcView --> recipePanel[Khung Recipe]
     plcView --> paramsTable[Bang tham so PLC]
     recipePanel --> plcVm[PlcSettingsViewModel]
@@ -211,7 +211,7 @@ Tab Chỉnh PLC dùng chung cấu hình `Plc` (kết nối PLC) và `Camera` (IP
 }
 ```
 
-- `Camera.Ip` → webview trỏ `http://<Camera.Ip>/monitor`.
+- `Camera.Ip` → webview trỏ trực tiếp tới địa chỉ gốc `http://<Camera.Ip>/`.
 - `Plc.*` → client đọc/ghi ô nhớ (tạo client riêng, không dùng chung instance heartbeat).
 
 Phần `PlcSettings` được giữ nguyên khi lưu cấu hình từ tab Cấu hình (giống `Logging` và `Auth`).

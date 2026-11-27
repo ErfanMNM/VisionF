@@ -55,7 +55,6 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
         _poServer = poServer;
 
         _po.Changed += OnPoChanged;
-        _po.HistoryConflict += OnHistoryConflict;
 
         // PO nhận từ MES -> tự động làm mới danh sách.
         _poServer.PoReceived += OnPoReceivedFromServer;
@@ -513,26 +512,6 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
     }
 
     /// <summary>
-    /// Phát hiện mã đã từng xuất hiện trong lịch sử → máy đã dừng.
-    /// </summary>
-    private void OnHistoryConflict(object? sender, IReadOnlyList<string> conflicts)
-    {
-        Dispatcher.UIThread.Post(() =>
-        {
-            IsHalted = true;
-            StatusMessage =
-                $"Phát hiện {conflicts.Count} mã đã từng quét: {string.Join(", ", conflicts)}. " +
-                "Đã dừng máy — vui lòng kiểm tra và xử lý.";
-
-            _actionLog.Log(
-                "Po.Halt",
-                "ProductionOrder",
-                $"Phat hien {conflicts.Count} ma da tung quet: {string.Join(", ", conflicts)}. Da dung may.",
-                UserActionResults.Failed);
-        });
-    }
-
-    /// <summary>
     /// MES đẩy PO xuống máy (HTTP POST /api/po) -> làm mới danh sách và
     /// hiện thông báo cho người dùng.
     ///
@@ -577,7 +556,6 @@ internal sealed partial class ProductionOrdersViewModel : ViewModelBase, IDispos
         if (_disposed) return;
         _disposed = true;
         _po.Changed -= OnPoChanged;
-        _po.HistoryConflict -= OnHistoryConflict;
         _poServer.PoReceived -= OnPoReceivedFromServer;
     }
 }

@@ -277,6 +277,37 @@ Console.WriteLine("\n[3] Ban phim so: OK -> panel phai DONG");
 
 var plcSettingsType = asm.GetType("TanTienQR.ViewModels.PlcSettingsViewModel")!;
 var plcSettings = services.GetRequiredService(plcSettingsType);
+var cameraOptions = GetField(plcSettings, "_cameraOptions")!;
+var cameraIp = cameraOptions.GetType().GetProperty("Ip")!;
+var originalCameraIp = (string)cameraIp.GetValue(cameraOptions)!;
+try
+{
+    Check(
+        "Camera mở và hiển thị trực tiếp địa chỉ IP gốc, không nối thêm đường dẫn",
+        (Uri)GetProp(plcSettings, "CameraMonitorUri")! == new Uri("http://127.0.0.1/")
+        && (string)GetProp(plcSettings, "CameraMonitorUrl")! == "http://127.0.0.1/"
+        && (bool)GetProp(plcSettings, "HasCameraUrl")!);
+
+    cameraIp.SetValue(cameraOptions, "192.168.20.15");
+    InvokeMethod(plcSettings, "RefreshCameraConfiguration");
+    Check(
+        "Camera đổi IP cập nhật URL gốc cho WebView",
+        (Uri)GetProp(plcSettings, "CameraMonitorUri")! == new Uri("http://192.168.20.15/")
+        && (string)GetProp(plcSettings, "CameraMonitorUrl")! == "http://192.168.20.15/"
+        && (bool)GetProp(plcSettings, "HasCameraUrl")!);
+
+    cameraIp.SetValue(cameraOptions, "http://192.168.20.15:8080/");
+    InvokeMethod(plcSettings, "RefreshCameraConfiguration");
+    Check(
+        "Camera giữ cổng HTTP tùy chỉnh mà không thêm đường dẫn",
+        (Uri)GetProp(plcSettings, "CameraMonitorUri")! == new Uri("http://192.168.20.15:8080/")
+        && (string)GetProp(plcSettings, "CameraMonitorUrl")! == "http://192.168.20.15:8080/");
+}
+finally
+{
+    cameraIp.SetValue(cameraOptions, originalCameraIp);
+    InvokeMethod(plcSettings, "RefreshCameraConfiguration");
+}
 
 var param1 = new ClassLibraryMT.Plc.PlcParameter
 {

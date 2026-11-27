@@ -70,7 +70,6 @@ internal partial class MainViewModel
     [NotifyPropertyChangedFor(nameof(IsInfoVisible))]
     [NotifyPropertyChangedFor(nameof(IsProductionVisible))]
     [NotifyPropertyChangedFor(nameof(IsConfigVisible))]
-    [NotifyPropertyChangedFor(nameof(IsSettingsV2Visible))]
     [NotifyPropertyChangedFor(nameof(IsHistoryVisible))]
     [NotifyPropertyChangedFor(nameof(IsAccountsVisible))]
     [NotifyPropertyChangedFor(nameof(IsPlcSettingsVisible))]
@@ -100,9 +99,6 @@ internal partial class MainViewModel
     /// <summary>True khi đang ở tab Cấu hình (và có quyền sửa).</summary>
     public bool IsConfigVisible =>
         CurrentSection == AppSection.Configuration && CanEditConfig;
-
-    public bool IsSettingsV2Visible =>
-        CurrentSection == AppSection.ConfigurationV2 && CanEditConfig;
 
     /// <summary>True khi đang ở tab Lịch sử (và có quyền xem).</summary>
     public bool IsHistoryVisible =>
@@ -181,7 +177,6 @@ internal partial class MainViewModel
     {
         AppSection.Production => "Sản xuất",
         AppSection.Configuration => "Cấu hình",
-        AppSection.ConfigurationV2 => "Cài đặt V2",
         AppSection.History => "Lịch sử thao tác",
         AppSection.Accounts => "Tài khoản",
         AppSection.PlcSettings => "Chỉnh PLC",
@@ -200,7 +195,6 @@ internal partial class MainViewModel
     {
         AppSection.Production => "Theo dõi sản xuất trên hệ thống Checkee",
         AppSection.Configuration => "Tham số camera, PLC và web — áp dụng sau khi khởi động lại",
-        AppSection.ConfigurationV2 => "Sơ đồ thiết bị · QRBox là cấu hình PLC · bảng thuộc tính dùng chung cấu hình hiện tại",
         AppSection.History => "Nhật ký thao tác của người dùng — dành cho nhà phát triển",
         AppSection.Accounts => "Quản lý tài khoản người dùng và phân quyền truy cập",
         AppSection.PlcSettings => "Đọc/ghi ô nhớ PLC Omron, quản lý tham số và áp dụng recipe",
@@ -256,7 +250,6 @@ internal partial class MainViewModel
         OnPropertyChanged(nameof(IsInfoVisible));
         OnPropertyChanged(nameof(IsProductionVisible));
         OnPropertyChanged(nameof(IsConfigVisible));
-        OnPropertyChanged(nameof(IsSettingsV2Visible));
         OnPropertyChanged(nameof(IsHistoryVisible));
         OnPropertyChanged(nameof(IsAccountsVisible));
         OnPropertyChanged(nameof(IsPlcSettingsVisible));
@@ -324,18 +317,8 @@ internal partial class MainViewModel
 
         SwitchTo(AppSection.Configuration, "Cấu hình");
 
-        // Both configuration pages edit the same draft; navigation must not discard it.
+        // Keep an unsaved draft intact when reopening the configuration tab.
         if (!ConfigEditor.HasUnsavedChanges) ConfigEditor.Load();
-    }
-
-    [RelayCommand]
-    private void ShowSettingsV2Tab()
-    {
-        if (!CanEditConfig) return;
-        // Switching between the two editors preserves the shared draft.
-        if (!ConfigEditor.HasUnsavedChanges) ConfigEditor.Load();
-        _ = SettingsV2;
-        SwitchTo(AppSection.ConfigurationV2, "Cài đặt V2");
     }
 
     /// <summary>Chuyển sang tab Lịch sử (mục nhà phát triển).</summary>

@@ -6,9 +6,11 @@
 
 - **Bộ đếm:** địa chỉ riêng Total/Pass/Fail/Timeout, reset và Clear; fallback cấu hình khối cũ. Nguồn App/PLC đổi đồng thời với nhãn; số App là kết quả camera từ lúc khởi động, gồm cả lỗi/bỏ qua. Mặc định Fail gồm ReadFail + Timeout; tùy chọn chỉ rõ khi thanh ghi Fail đã gồm Timeout. Reset/Clear là lệnh thủ công có kiểm quyền sau khi đợi gate. [Chi tiết](../plc-counters.md).
 - **Checkee:** 60 lần gửi batch gần nhất cùng chi tiết CodeContent/PO/HTTP/thông điệp; snapshot SQLite qua restart, retry thành lần mới. ACK batch `status=true` xác nhận OK; phản hồi không xác định không được giả thành OK. Đã chặn resend xếp hàng gửi lặp mã vừa Sent và refresh kết quả trong chi tiết đang mở. [Chi tiết](../checkee-codecontent.md).
-- **Cài đặt V2:** Thêm → Cài đặt V2; QRBox là PLC, các thiết bị/dịch vụ có khối chọn, nhóm khác ở khu riêng. Dùng ConfigEditor thật và giữ trang cũ; hỗ trợ xác nhận, validation, lưu, hotapply, quyền, che mật khẩu và bản nháp chung. Sơ đồ tự cuộn tới node chọn trên màn hình nhỏ. [Hướng dẫn](../settings-v2.md).
+- **Cài đặt V2 — kết quả lịch sử:** Phần dưới đây ghi nhận phiên bản triển khai ngày 26/11/2026. Trang thử nghiệm và hướng dẫn đã được gỡ theo yêu cầu ngày 27/11/2026; tab **Cấu hình** tiếp tục dùng để chỉnh thông số ứng dụng.
 
-## Kiểm thử mới nhất
+## Kiểm thử được ghi nhận ngày 26/11/2026
+
+Bảng sau lưu kết quả của phiên bản lúc đó; `SettingsV2Tests` và các ảnh V2 là tư liệu lịch sử, không còn trang V2 hoặc suite kiểm thử trong ứng dụng hiện tại.
 
 Các suite chạy tuần tự với một build slot, cấu hình Release. Mỗi dòng dưới đây chỉ tính lần thành công mới nhất của suite đó.
 
@@ -26,7 +28,7 @@ Các suite chạy tuần tự với một build slot, cấu hình Release. Mỗi
 | LoginOverlayTests | 79 | 0 | Đăng nhập, lazy tab gồm V2, quyền và màn hình nhỏ |
 | **Tổng 10 suite** | **807** | **0** | Tất cả process exit0 |
 
-Lệnh chuẩn: `dotnet run --project tools/<Suite> -c Release -p:PublishAot=false -p:SkipPrinterRemoteHelper=true`. ApplicationUiTests nhận đường dẫn ảnh; SettingsV2Tests cũng nhận đường dẫn ảnh ở sau `--`.
+Lệnh chuẩn thời điểm báo cáo: `dotnet run --project tools/<Suite> -c Release -p:PublishAot=false -p:SkipPrinterRemoteHelper=true`. Suite SettingsV2Tests đã được gỡ cùng trang thử nghiệm; các kết quả của suite đó chỉ còn để tra cứu lịch sử.
 
 Build cuối: `dotnet build TanTienQR/TanTienQR.csproj -c Release -p:PublishAot=false`, **exit0, 0 warning, 0 error**; có build PrinterRemoteHost theo target mặc định. Đây là build Release JIT, chưa publish Native AOT.
 

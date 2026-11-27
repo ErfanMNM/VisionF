@@ -1471,7 +1471,7 @@ internal sealed partial class PlcSettingsViewModel : ViewModelBase
 
         ip = ip.TrimEnd('/');
 
-        var url = $"http://{ip}/monitor";
+        var url = $"http://{ip}/";
         return Uri.TryCreate(url, UriKind.Absolute, out var uri) ? uri : new Uri("about:blank");
     }
 

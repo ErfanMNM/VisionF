@@ -43,7 +43,7 @@ All executed data tests use unique temporary sandbox directories and explicit st
 
 Coordinator coverage includes unpublished reservation barriers, immutable snapshot, capacity one/near-full, retry after PO commit before outbox completion, restart/replay, existing Sent ACK, deleted synthetic PO code, prompt current/queued barrier faults, cancel/complete/switch with pending accepted mutation, final auto-completion, shutdown timeout/retry, repeated disposal and housekeeping failure while an accepted event is queued. Four concurrent producers execute 1,600 callback attempts across fault, retry and pressure recovery; all admitted outcomes are accounted for.
 
-The app was built in Debug and Release; additional affected ConfigTests, ConfigUiTests, PoServerTests and standalone demo PoConsoleTests builds succeeded. No publish operation was run. Avalonia AVLN3001 remains; a clean PO compilation can also report unused compatibility event HistoryConflict (CS0067).
+At the time this report was written, the app built in Debug and Release; additional affected ConfigTests, ConfigUiTests, PoServerTests and standalone demo PoConsoleTests builds succeeded. No publish operation was run. The two warnings noted at that time were corrected in the later cleanup: the unused global PO history event was removed, and the configuration-confirmation window gained a safe parameterless constructor.
 
 Latest warmed loopback measurement from `AsyncPersistenceTests`, using the real camera processing queue, real coordinator and a private PO SQLite write lock held **310.389 ms**:
 

@@ -62,9 +62,6 @@ public enum AppSection
     /// </summary>
     MultiConnect = 11,
 
-    /// <summary>Cài đặt V2: sơ đồ thiết bị và bảng thuộc tính dùng chung cấu hình.</summary>
-    ConfigurationV2 = 12,
-
     /// <summary>Thêm mã: nhập tay hoặc nhận COM, kèm 10 lần nhận gần nhất.</summary>
     ManualActivation = 13,
 }

@@ -348,13 +348,9 @@ await haltStore.EnsurePoDbAsync(haltOrder, new List<PoCode>
 await haltSvc.StartProductionAsync("TEST-ASYNC-PO-20261127-HALT-001");
 Check("Bat dau PO de test halt", haltSvc.IsProductionRunning);
 
-var conflicts = new List<string>();
-haltSvc.HistoryConflict += (_, s) => conflicts.AddRange(s);
-
 var independentPass = await AcceptAndPersist(haltSvc, haltStore, "/01/09506000134352/21/TRUNG01");
 Check("Code seen in another PO remains eligible", independentPass.Committed);
 Check("Global scan history does not halt production", !haltSvc.IsHalted);
-Check("No obsolete global-history conflict event", conflicts.Count == 0);
 Check("Another current PO code remains valid",
     haltSvc.ValidateCode("/01/09506000134352/21/OK01") == PoCodeValidation.Valid);
 Check("Current PO is not cancelled by global history",

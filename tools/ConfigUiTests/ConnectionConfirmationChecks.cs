@@ -109,6 +109,18 @@ internal static class ConnectionConfirmationChecks
 
             CheckResult("Bấm Hủy trả false", "CancelConfigurationButton", false);
             CheckResult("Bấm Lưu và áp dụng trả true", "ApplyConfigurationButton", true);
+            dialog = new ConnectionConfigurationConfirmWindow();
+            var defaultResult = dialog.ShowDialog<bool>(owner);
+            Pump(dialog);
+            var defaultMessage = dialog.FindControl<TextBlock>("OriginalMessageText")!;
+            Check("Constructor mặc định nạp giao diện, báo thiếu nội dung và khóa nút áp dụng",
+                defaultMessage.Text == "Không có thay đổi cấu hình để áp dụng."
+                && dialog.FindControl<Button>("CancelConfigurationButton")!.IsEnabled
+                && !dialog.FindControl<Button>("ApplyConfigurationButton")!.IsEnabled);
+            dialog.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, null);
+            Dispatcher.UIThread.RunJobs();
+            Check("Constructor mặc định vẫn cho phép hủy an toàn",
+                defaultResult.IsCompletedSuccessfully && !defaultResult.Result);
             dialog = new ConnectionConfigurationConfirmWindow(shortMessage);
             var closeResult = dialog.ShowDialog<bool>(owner);
             Pump(dialog);

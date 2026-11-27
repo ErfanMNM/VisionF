@@ -9,12 +9,18 @@ public sealed partial class ConnectionConfigurationConfirmWindow : Window
 {
     private const string Introduction = "Lưu và áp dụng các thay đổi sau?";
     private const string ConnectionNotice = "Kết nối thiết bị sẽ tạm ngắt để chuyển cấu hình. Ứng dụng và phiên đăng nhập vẫn được giữ; thiết bị sẽ tự kết nối lại. Chỉ xác nhận khi dây chuyền có thể tạm dừng nhận mã.";
+    private const string MissingMessage = "Không có thay đổi cấu hình để áp dụng.";
 
-    public ConnectionConfigurationConfirmWindow(string message)
+    public ConnectionConfigurationConfirmWindow() : this(MissingMessage, canApply: false) { }
+
+    public ConnectionConfigurationConfirmWindow(string message) : this(message, canApply: true) { }
+
+    private ConnectionConfigurationConfirmWindow(string message, bool canApply)
     {
         AvaloniaXamlLoader.Load(this);
         var cancel = this.FindControl<Button>("CancelConfigurationButton")!;
         var apply = this.FindControl<Button>("ApplyConfigurationButton")!;
+        apply.IsEnabled = canApply;
         cancel.Click += (_, _) => Close(false);
         apply.Click += (_, _) => Close(true);
 

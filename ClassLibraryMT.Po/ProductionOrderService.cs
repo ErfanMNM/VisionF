@@ -132,12 +132,6 @@ public sealed class ProductionOrderService
     /// <summary>Event phát khi PO đang chạy / trạng thái thay đổi.</summary>
     public event EventHandler? Changed;
 
-    /// <summary>
-    /// Event phát khi phát hiện mã đã từng xuất hiện trong lịch sử quét.
-    /// Tham số là danh sách serial bị trùng.
-    /// </summary>
-    public event EventHandler<IReadOnlyList<string>>? HistoryConflict;
-
     /// <summary>PO hiện tại đang chạy (null nếu chưa bắt đầu sản xuất).</summary>
     public ProductionOrder? CurrentOrder
     {
