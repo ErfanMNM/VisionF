@@ -13,6 +13,26 @@ export const testPassword = 'local-test-password';
 // Chỉ dùng secret/khóa được tạo lúc chạy, không nạp .dev.vars hoặc dữ liệu D1 thật.
 export async function createPortalFixture({ port = 0 } = {}) {
   const temporaryRoot = await mkdtemp(join(tmpdir(), 'visionf-license-tests-'));
+  const githubState = {
+    releases: [],
+    apiStatus: 200,
+    apiBody: null,
+    assets: new Map(),
+    requests: [],
+  };
+  const githubApiUrl = 'https://api.github.com/repos/ErfanMNM/VisionF/releases?per_page=100&page=1';
+  const outboundService = async (request) => {
+    githubState.requests.push({ url: request.url, method: request.method,
+      headers: Object.fromEntries(request.headers.entries()) });
+    if (request.url === githubApiUrl) {
+      return new Response(githubState.apiBody ?? JSON.stringify(githubState.releases), {
+        status: githubState.apiStatus, headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    const assetResponse = githubState.assets.get(request.url);
+    if (!assetResponse) return new Response('Not found', { status: 404 });
+    return assetResponse();
+  };
   let runtime;
   try {
     const workerPath = join(temporaryRoot, 'worker.mjs');
@@ -28,9 +48,10 @@ export async function createPortalFixture({ port = 0 } = {}) {
       compatibilityDate: '2026-11-11', compatibilityFlags: ['nodejs_compat_v2'],
       log: new Log(LogLevel.ERROR),
       d1Databases: { DB: 'local-test-license-db' },
-      r2Buckets: { UPDATE_BUCKET: 'local-test-update-bucket' },
+      outboundService,
       bindings: {
         APP_NAME: 'TanTienQR License Portal · Kiểm thử', DEFAULT_PRODUCT: 'TanTienQR',
+        UPDATE_METADATA_CACHE_TTL_SECONDS: '0',
         LICENSE_PRIVATE_KEY_PKCS8: privateKey.export({ type: 'pkcs8', format: 'der' }).toString('base64'),
         LICENSE_KEY_ID: keyId, ADMIN_USERNAME: testUser, ADMIN_PASSWORD_HASH: passwordHash,
         SESSION_SECRET: randomBytes(32).toString('hex'),
@@ -58,8 +79,19 @@ export async function createPortalFixture({ port = 0 } = {}) {
     }
     await db.prepare('DELETE FROM signing_keys').run();
     await db.prepare('INSERT INTO signing_keys (key_id, public_key) VALUES (?, ?)').bind(keyId, spki.toString('base64')).run();
-    const bucket = await runtime.getR2Bucket('UPDATE_BUCKET');
-    return { runtime, db, bucket, publicKey,
+    const github = {
+      setReleases(releases) { githubState.releases = releases; },
+      setApiResponse(status, body = '') { githubState.apiStatus = status; githubState.apiBody = body; },
+      resetApiResponse() { githubState.apiStatus = 200; githubState.apiBody = null; },
+      setAsset(url, body, { status = 200, headers = {} } = {}) {
+        githubState.assets.set(url, () => new Response(body, { status, headers }));
+      },
+      setAssetResponse(url, factory) { githubState.assets.set(url, factory); },
+      deleteAsset(url) { githubState.assets.delete(url); },
+      clearRequests() { githubState.requests.length = 0; },
+      get requests() { return [...githubState.requests]; },
+    };
+    return { runtime, db, github, publicKey,
       async dispose() {
         await runtime.dispose();
         await rm(temporaryRoot, { recursive: true, force: true });

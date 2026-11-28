@@ -7,6 +7,13 @@ $temp = Join-Path $tempParent ('tantien-release-test-' + [Guid]::NewGuid().ToStr
 $null = [IO.Directory]::CreateDirectory($temp)
 $key = [Security.Cryptography.RSA]::Create(3072)
 $passed = 0
+$global:UpdateReleaseTestSavedGh = Get-Command gh -CommandType Function -ErrorAction SilentlyContinue
+$global:UpdateReleaseTestSavedGit = Get-Command git -CommandType Function -ErrorAction SilentlyContinue
+$global:UpdateReleaseTestSavedLastExitCode = Get-Variable -Name LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue
+$global:UpdateReleaseTestCommit = ''
+$global:UpdateReleaseTestReleases = @()
+$global:UpdateReleaseTestNextId = 1
+$global:UpdateReleaseTestMutations = 0
 
 function Assert-That {
     param([bool]$Condition, [string]$Description)
@@ -93,67 +100,203 @@ try {
     Assert-Rejected { Assert-ReleaseVersion '65535.0.0' } 'Từ chối phiên bản không dùng được cho assembly Windows'
     Assert-Rejected { Test-ReleaseArtifacts -Directory (Join-Path $releaseDirectory 'win-x64') -Version '1.2.4' -Rid 'win-x64' -PublicKey $key } 'Từ chối gói khác phiên bản'
 
-    # Fake S3 cục bộ chỉ dùng trong bài kiểm tra; không có mạng hoặc credential thật.
-    $global:UpdateReleaseTestRemote = @{}
-    $global:UpdateReleaseTestFailKey = ''
-    $global:UpdateReleaseTestSavedAws = Get-Command aws -CommandType Function -ErrorAction SilentlyContinue
-    function global:aws {
-        $arguments = @($args)
-        $operation = $arguments[1]
-        $objectKey = [string]$arguments[[Array]::IndexOf($arguments, '--key') + 1]
-        if ($operation -eq 'get-object') {
-            if (-not $global:UpdateReleaseTestRemote.ContainsKey($objectKey)) {
-                $global:LASTEXITCODE = 1
-                Write-Output 'An error occurred (NoSuchKey) when calling the GetObject operation.'
-                return
-            }
-            $destination = [string]$arguments[[Array]::IndexOf($arguments, '--key') + 2]
-            [IO.File]::WriteAllBytes($destination, $global:UpdateReleaseTestRemote[$objectKey])
-            $global:LASTEXITCODE = 0
-            Write-Output (@{ ETag = '"' + (Get-FileHash -LiteralPath $destination -Algorithm MD5).Hash + '"' } | ConvertTo-Json -Compress)
-            return
-        }
-        if ($operation -ne 'put-object') { throw 'Fake S3 chỉ hỗ trợ get-object và put-object.' }
-        if ($objectKey -ceq $global:UpdateReleaseTestFailKey) {
-            $global:LASTEXITCODE = 1
-            Write-Output 'Simulated R2 write failure'
-            return
-        }
-        $source = [string]$arguments[[Array]::IndexOf($arguments, '--body') + 1]
-        $global:UpdateReleaseTestRemote[$objectKey] = [IO.File]::ReadAllBytes($source)
-        $global:LASTEXITCODE = 0
-        Write-Output '{}'
-    }
+    $global:UpdateReleaseTestCommit = 'a' * 40
     $publicKeyPath = Join-Path $temp 'public-key.spki'
     [IO.File]::WriteAllText($publicKeyPath, [Convert]::ToBase64String($key.ExportSubjectPublicKeyInfo()))
-    $r2 = Join-Path $PSScriptRoot 'r2-release.ps1'
-    $parameters = @{
-        Version = '1.2.3'; AccountId = '00000000000000000000000000000000'; Bucket = 'test-updates'
-        ReleaseDirectory = $releaseDirectory; PublicKeyPath = $publicKeyPath
+    $bootstrapHashes = [ordered]@{}
+    foreach ($rid in @('win-x64', 'linux-x64')) {
+        $bootstrapHashes[$rid] = Get-ReleaseHash (Join-Path $releaseDirectory "$rid/bootstrap.zip")
     }
-    $global:UpdateReleaseTestFailKey = 'releases/1.2.3/linux-x64/manifest.json'
-    Assert-Rejected { & $r2 -Action Upload @parameters } 'Upload dừng khi một trong hai nền tảng thất bại'
-    Assert-That (-not $global:UpdateReleaseTestRemote.ContainsKey('channels/pilot.json')) 'Không công bố pilot nếu chưa đủ hai gói'
-    $global:UpdateReleaseTestFailKey = ''
-    & $r2 -Action Upload @parameters
-    Assert-That ($global:UpdateReleaseTestRemote.ContainsKey('channels/pilot.json')) 'Upload tiếp tục an toàn và công bố pilot khi đủ cả hai gói'
-    Assert-That (-not $global:UpdateReleaseTestRemote.ContainsKey('channels/stable.json')) 'Upload không tự công bố stable'
-    Assert-Rejected { & $r2 -Action Promote @parameters } 'Promote yêu cầu xác nhận kiểm thử pilot'
-    & $r2 -Action Promote @parameters -PilotVerified
-    Assert-That ($global:UpdateReleaseTestRemote.ContainsKey('channels/stable.json')) 'Promote đúng các gói pilot sang stable'
-    & $r2 -Action Withdraw @parameters -Channel stable
-    Assert-That ([Text.Encoding]::UTF8.GetString($global:UpdateReleaseTestRemote['channels/stable.json']) -ceq '{}') 'Rút bản lỗi bằng con trỏ rỗng'
-    Assert-Rejected { & $r2 -Action Withdraw @parameters -Channel stable } 'Không rút nhầm phiên bản khi con trỏ đã đổi'
+    [IO.File]::WriteAllText((Join-Path $releaseDirectory 'public-key.spki'), [IO.File]::ReadAllText($publicKeyPath))
+    [IO.File]::WriteAllText((Join-Path $releaseDirectory 'release.json'), ([ordered]@{
+        version = '1.2.3'; tag = 'v1.2.3'; commit = $global:UpdateReleaseTestCommit
+        builtUtc = '2026-01-01T00:00:00.0000000Z'; bootstrapSha256 = $bootstrapHashes
+    } | ConvertTo-Json -Depth 4 -Compress))
+
+    # Fake gh and git functions exercise the real publishing script without network or remote mutation.
+    $global:UpdateReleaseTestReleases = @()
+    $global:UpdateReleaseTestNextId = 1
+    $global:UpdateReleaseTestMutations = 0
+    function global:git {
+        $arguments = @($args | ForEach-Object { [string]$_ })
+        $global:LASTEXITCODE = 0
+        if ($arguments.Count -lt 3 -or $arguments[0] -cne '-C') { throw 'Fake git chỉ hỗ trợ lệnh có -C.' }
+        switch ($arguments[2]) {
+            'rev-parse' {
+                if ($arguments -contains 'HEAD' -or $arguments -contains '--verify') {
+                    Write-Output $global:UpdateReleaseTestCommit
+                    return
+                }
+                throw 'Fake git không hỗ trợ rev-parse này.'
+            }
+            'status' { return }
+            'ls-remote' {
+                Write-Output ("{0}`trefs/tags/v1.2.3" -f $global:UpdateReleaseTestCommit)
+                return
+            }
+            default { throw "Fake git không hỗ trợ $($arguments[2])." }
+        }
+    }
+    function global:gh {
+        $arguments = @($args | ForEach-Object { [string]$_ })
+        $global:LASTEXITCODE = 0
+
+        if ($arguments.Count -ge 2 -and $arguments[0] -ceq 'repo' -and $arguments[1] -ceq 'view') {
+            Write-Output '{"nameWithOwner":"ErfanMNM/VisionF","isPrivate":false}'
+            return
+        }
+        if ($arguments.Count -ge 2 -and $arguments[0] -ceq 'api') {
+            $apiArgs = @($arguments[1..($arguments.Count - 1)])
+            if ($apiArgs[0] -ceq '-X') {
+                if ($apiArgs.Count -lt 3 -or $apiArgs[1] -cne 'PATCH') { throw 'Fake gh chỉ hỗ trợ PATCH.' }
+                $endpoint = $apiArgs[2]
+                if ($endpoint -notmatch '/releases/(\d+)$') { throw "Fake gh không nhận diện release endpoint: $endpoint" }
+                $release = @($global:UpdateReleaseTestReleases | Where-Object { $_.id -eq [int]$Matches[1] }) | Select-Object -First 1
+                if (-not $release) { $global:LASTEXITCODE = 1; Write-Output 'Not Found (HTTP 404)'; return }
+                for ($i = 3; $i -lt $apiArgs.Count; $i++) {
+                    if ($apiArgs[$i] -ceq '-F' -and $i + 1 -lt $apiArgs.Count) {
+                        $field = $apiArgs[++$i]
+                        if ($field -match '^draft=(true|false)$') { $release.draft = $Matches[1] -ceq 'true' }
+                        elseif ($field -match '^prerelease=(true|false)$') { $release.prerelease = $Matches[1] -ceq 'true' }
+                    }
+                }
+                $global:UpdateReleaseTestMutations++
+                Write-Output ($release | ConvertTo-Json -Depth 8 -Compress)
+                return
+            }
+
+            $endpoint = [string]$apiArgs[0]
+            if ($endpoint -match '/releases\?per_page=100$') {
+                Write-Output (ConvertTo-Json -InputObject @($global:UpdateReleaseTestReleases) -Depth 8 -Compress)
+                return
+            }
+            if ($endpoint -match '/releases/tags/(v[0-9.]+)$') {
+                $tag = $Matches[1]
+                $release = @($global:UpdateReleaseTestReleases | Where-Object { $_.tag_name -ceq $tag -and -not $_.draft }) | Select-Object -First 1
+                if (-not $release) { $global:LASTEXITCODE = 1; Write-Output 'Not Found (HTTP 404)'; return }
+                Write-Output ($release | ConvertTo-Json -Depth 8 -Compress)
+                return
+            }
+            throw "Fake gh không hỗ trợ API $endpoint."
+        }
+        if ($arguments.Count -ge 3 -and $arguments[0] -ceq 'release' -and $arguments[1] -ceq 'create') {
+            $tag = $arguments[2]
+            $existingRelease = @($global:UpdateReleaseTestReleases | Where-Object { $_.tag_name -ceq $tag }).Count -gt 0
+            if ($tag -cne 'v1.2.3' -or $existingRelease) {
+                throw "Fake gh không thể tạo release $tag."
+            }
+            $releaseId = $global:UpdateReleaseTestNextId
+            $global:UpdateReleaseTestNextId++
+            $global:UpdateReleaseTestReleases += [ordered]@{
+                id = $releaseId; tag_name = $tag; draft = $true
+                prerelease = $false; assets = @()
+            }
+            $global:UpdateReleaseTestMutations++
+            Write-Output "https://github.com/ErfanMNM/VisionF/releases/$tag"
+            return
+        }
+        if ($arguments.Count -ge 5 -and $arguments[0] -ceq 'release' -and $arguments[1] -ceq 'upload') {
+            $tag = $arguments[2]
+            $release = @($global:UpdateReleaseTestReleases | Where-Object { $_.tag_name -ceq $tag }) | Select-Object -First 1
+            if (-not $release -or -not $release.draft) { throw 'Fake gh chỉ cho upload vào draft release.' }
+            foreach ($assetPath in $arguments[5..($arguments.Count - 1)]) {
+                $item = Get-Item -LiteralPath $assetPath
+                $release.assets += [ordered]@{
+                    name = $item.Name; size = $item.Length
+                    digest = 'sha256:' + (Get-FileHash -LiteralPath $assetPath -Algorithm SHA256).Hash.ToLowerInvariant()
+                }
+            }
+            $global:UpdateReleaseTestMutations++
+            Write-Output 'uploaded'
+            return
+        }
+        throw "Fake gh không hỗ trợ lệnh: $($arguments -join ' ')"
+    }
+
+    function Add-TestRelease {
+        param([string]$Version, [bool]$Prerelease)
+        $releaseId = $global:UpdateReleaseTestNextId
+        $global:UpdateReleaseTestNextId++
+        $global:UpdateReleaseTestReleases += [ordered]@{
+            id = $releaseId; tag_name = "v$Version"; draft = $false
+            prerelease = $Prerelease; assets = @()
+        }
+    }
+
+    $githubReleaseScript = Join-Path $PSScriptRoot 'github-release.ps1'
+    $releaseParameters = @{ Version = '1.2.3'; ReleaseDirectory = $releaseDirectory; PublicKeyPath = $publicKeyPath }
+    Add-TestRelease -Version '1.2.4' -Prerelease $false
+    $mutationsBefore = $global:UpdateReleaseTestMutations
+    Assert-Rejected { & $githubReleaseScript -Action Upload @releaseParameters } 'Chặn pilot không mới hơn stable'
+    Assert-That ($global:UpdateReleaseTestMutations -eq $mutationsBefore) 'Từ chối pilot cũ không đổi GitHub state'
+
+    $global:UpdateReleaseTestReleases = @()
+    & $githubReleaseScript -Action Upload @releaseParameters
+    $pilot = @($global:UpdateReleaseTestReleases | Where-Object { $_.tag_name -ceq 'v1.2.3' }) | Select-Object -First 1
+    Assert-That ($pilot -and -not $pilot.draft -and $pilot.prerelease) 'Upload tạo draft, xác minh asset rồi công bố pilot'
+    Assert-That ($pilot.assets.Count -eq 8) 'Pilot mang đủ sáu asset nền tảng, metadata và khóa công khai'
+    Assert-That (@($pilot.assets.name | Where-Object { $_ -in @('manifest-win-x64.json', 'package-win-x64.zip', 'bootstrap-win-x64.zip', 'manifest-linux-x64.json', 'package-linux-x64.zip', 'bootstrap-linux-x64.zip', 'release.json', 'public-key.spki') }).Count -eq 8) 'Tên asset GitHub giữ đúng contract per-RID'
+
+    $mutationsBefore = $global:UpdateReleaseTestMutations
+    $packageAsset = @($pilot.assets | Where-Object { $_.name -ceq 'package-win-x64.zip' })[0]
+    $originalDigest = $packageAsset.digest
+    $packageAsset.digest = 'sha256:' + ('0' * 64)
+    Assert-Rejected { & $githubReleaseScript -Action Promote @releaseParameters } 'Từ chối promote khi SHA asset từ xa bị sửa'
+    Assert-That ($global:UpdateReleaseTestMutations -eq $mutationsBefore) 'Asset bị sửa không đổi trạng thái release'
+    $packageAsset.digest = $originalDigest
+
+    $missingAsset = @($pilot.assets | Where-Object { $_.name -ceq 'manifest-linux-x64.json' })[0]
+    $pilot.assets = @($pilot.assets | Where-Object { $_.name -cne 'manifest-linux-x64.json' })
+    Assert-Rejected { & $githubReleaseScript -Action Promote @releaseParameters } 'Từ chối promote khi thiếu asset platform'
+    Assert-That ($global:UpdateReleaseTestMutations -eq $mutationsBefore) 'Thiếu asset không đổi trạng thái release'
+    $pilot.assets += $missingAsset
+
+    Add-TestRelease -Version '1.2.4' -Prerelease $true
+    Assert-Rejected { & $githubReleaseScript -Action Promote @releaseParameters } 'Chỉ promote pilot mới nhất'
+    $global:UpdateReleaseTestReleases = @($global:UpdateReleaseTestReleases | Where-Object { $_.tag_name -cne 'v1.2.4' })
+    Add-TestRelease -Version '1.2.4' -Prerelease $false
+    $mutationsBefore = $global:UpdateReleaseTestMutations
+    Assert-Rejected { & $githubReleaseScript -Action Promote @releaseParameters } 'Chặn promote không mới hơn stable'
+    Assert-That ($global:UpdateReleaseTestMutations -eq $mutationsBefore) 'Promote phiên bản cũ không đổi GitHub state'
+    $global:UpdateReleaseTestReleases = @($global:UpdateReleaseTestReleases | Where-Object { $_.tag_name -cne 'v1.2.4' })
+    Add-TestRelease -Version '1.2.2' -Prerelease $false
+    & $githubReleaseScript -Action Promote @releaseParameters
+    $pilot = @($global:UpdateReleaseTestReleases | Where-Object { $_.tag_name -ceq 'v1.2.3' }) | Select-Object -First 1
+    Assert-That (-not $pilot.draft -and -not $pilot.prerelease) 'Promote pilot mới nhất sang stable'
+
+    $assetCountBeforeWithdraw = $pilot.assets.Count
+    & $githubReleaseScript -Action Withdraw -Version '1.2.3'
+    $pilot = @($global:UpdateReleaseTestReleases | Where-Object { $_.tag_name -ceq 'v1.2.3' }) | Select-Object -First 1
+    Assert-That ($pilot.draft -and $pilot.assets.Count -eq $assetCountBeforeWithdraw) 'Withdraw ẩn release và giữ asset để phục hồi'
+
+    $mutationsBefore = $global:UpdateReleaseTestMutations
+    $packagePath = Join-Path $releaseDirectory 'win-x64/package.zip'
+    $originalPackage = [IO.File]::ReadAllBytes($packagePath)
+    [IO.File]::AppendAllText($packagePath, 'tampered')
+    Assert-Rejected { & $githubReleaseScript -Action Upload @releaseParameters } 'Từ chối upload nếu package cục bộ bị sửa'
+    Assert-That ($global:UpdateReleaseTestMutations -eq $mutationsBefore) 'Package bị sửa không tạo mutation GitHub'
+    [IO.File]::WriteAllBytes($packagePath, $originalPackage)
+    $manifestPath = Join-Path $releaseDirectory 'linux-x64/manifest.json'
+    $heldManifest = Join-Path $temp 'held-manifest.json'
+    Move-Item -LiteralPath $manifestPath -Destination $heldManifest
+    Assert-Rejected { & $githubReleaseScript -Action Upload @releaseParameters } 'Từ chối upload khi thiếu manifest cục bộ'
+    Assert-That ($global:UpdateReleaseTestMutations -eq $mutationsBefore) 'Manifest thiếu không tạo mutation GitHub'
+    Move-Item -LiteralPath $heldManifest -Destination $manifestPath
+
     [IO.File]::AppendAllText((Join-Path $releaseDirectory 'win-x64/package.zip'), 'tampered')
     Assert-Rejected { Test-ReleaseArtifacts -Directory (Join-Path $releaseDirectory 'win-x64') -Version '1.2.3' -Rid 'win-x64' -PublicKey $key } 'Từ chối ZIP bị sửa sau khi ký'
     Write-Host "Đã đạt $passed kiểm tra release tooling."
 }
 finally {
-    if (Test-Path Function:global:aws) { Remove-Item Function:global:aws }
-    if (Get-Variable -Name UpdateReleaseTestSavedAws -Scope Global -ErrorAction SilentlyContinue) {
-        if ($global:UpdateReleaseTestSavedAws) { Set-Item Function:global:aws -Value $global:UpdateReleaseTestSavedAws.ScriptBlock }
-    }
-    Remove-Variable -Name UpdateReleaseTestRemote, UpdateReleaseTestFailKey, UpdateReleaseTestSavedAws -Scope Global -ErrorAction SilentlyContinue
+    if (Test-Path Function:global:gh) { Remove-Item Function:global:gh }
+    if (Test-Path Function:global:git) { Remove-Item Function:global:git }
+    if ($global:UpdateReleaseTestSavedGh) { Set-Item Function:global:gh -Value $global:UpdateReleaseTestSavedGh.ScriptBlock }
+    if ($global:UpdateReleaseTestSavedGit) { Set-Item Function:global:git -Value $global:UpdateReleaseTestSavedGit.ScriptBlock }
+    if ($global:UpdateReleaseTestSavedLastExitCode) { $global:LASTEXITCODE = $global:UpdateReleaseTestSavedLastExitCode.Value }
+    else { Remove-Variable -Name LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue }
+    Remove-Variable -Name UpdateReleaseTestCommit, UpdateReleaseTestReleases, UpdateReleaseTestNextId,
+        UpdateReleaseTestMutations, UpdateReleaseTestSavedGh, UpdateReleaseTestSavedGit,
+        UpdateReleaseTestSavedLastExitCode -Scope Global -ErrorAction SilentlyContinue
     $key.Dispose()
     Remove-ReleaseTempDirectory -Directory $temp -Parent $tempParent -Prefix 'tantien-release-test-'
 }

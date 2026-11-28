@@ -1,6 +1,6 @@
 # TanTienQR — License Portal
 
-Web cấp license và phân phối bản cập nhật dùng Cloudflare Workers, D1 và R2. Chi phí phụ thuộc hạn mức và mức sử dụng của tài khoản.
+Web cấp license dùng Cloudflare Workers và D1; artifact cập nhật được lưu trên GitHub Releases của `ErfanMNM/VisionF`. Chi phí phụ thuộc hạn mức và mức sử dụng của tài khoản.
 
 Portal đang triển khai: https://tantien-license-portal.okeynhat.workers.dev
 
@@ -339,28 +339,27 @@ Không có bản ghi, đã xoá, hết hạn hoặc thu hồi đều trả HTTP 
 TanTienQR tự kiểm tra chữ ký và HWID trên máy; API này không chứng minh phần cứng từ xa.
 Lỗi kho hay gói chưa sẵn sàng trả HTTP 503, không ghi nội dung license vào log.
 
-Bucket `tantien-updates` là riêng tư, chỉ truy cập qua binding `UPDATE_BUCKET`.
-Không bật `r2.dev` hay gắn custom domain công khai cho bucket này.
-Trước lần triển khai có R2 đầu tiên:
+Worker đọc release từ repo cố định `ErfanMNM/VisionF` sau khi kiểm tra license trong D1. Request từ app không được chọn URL/repository và license không được gửi sang GitHub. Luồng này không cần bucket R2, binding `UPDATE_BUCKET` hoặc AWS CLI.
 
-```powershell
-npx wrangler whoami
-npx wrangler r2 bucket create tantien-updates
-npx wrangler d1 migrations apply tantien-license --remote
-npm run deploy
-```
+Tag có dạng `vX.Y.Z`. Trong tối đa 100 release được đọc từ GitHub, Worker chọn phiên bản số cao nhất cho kênh: `stable` lấy release đã công bố không phải prerelease, `pilot` lấy prerelease đã công bố; release nháp và tag sai định dạng bị bỏ qua. Không có release phù hợp thì check trả HTTP 204. Manifest hoặc package cần thiết bị thiếu, trùng tên, quá giới hạn hoặc có URL sai sẽ khiến yêu cầu thất bại an toàn.
 
-Giữ cấu trúc đối tượng:
+Mỗi release chuẩn mang các asset sau:
 
 ```text
-channels/pilot.json                  # {"version":"1.2.3"}
-channels/stable.json                 # {"version":"1.2.3"}
-releases/1.2.3/win-x64/manifest.json  # {"data":"<base64>","sig":"<base64>"}
-releases/1.2.3/win-x64/package.zip
-releases/1.2.3/linux-x64/manifest.json
-releases/1.2.3/linux-x64/package.zip
+manifest-win-x64.json
+package-win-x64.zip
+bootstrap-win-x64.zip
+manifest-linux-x64.json
+package-linux-x64.zip
+bootstrap-linux-x64.zip
+release.json
+public-key.spki
 ```
 
-Đẩy đầy đủ cả hai gói và manifest trước khi cập nhật con trỏ kênh. Không ghi đè nội dung của phiên bản đã công bố.
-Đặt con trỏ thành `{}` bằng conditional PUT để rút bản lỗi an toàn khi có người phát hành đồng thời; ZIP cũ dù còn trong R2 cũng bị API từ chối tải. Con trỏ chưa tồn tại cũng được coi là kênh chưa phát hành.
-Kiểm thử API cục bộ bằng `npm run check` và `npm test`; fixture dùng khóa sinh tạm, D1/R2 cục bộ và không truy cập dữ liệu thật.
+Manifest giữ nguyên envelope đã ký. Worker giới hạn manifest 256 KiB và package 256 MiB, chỉ tải URL thuộc repo đã chốt và redirect qua các origin GitHub cho phép. App/launcher tiếp tục xác minh chữ ký RSA, RID, kích thước và SHA-256 trước khi cài.
+
+Repo công khai nên asset trong GitHub Releases có thể tải trực tiếp công khai. D1 kiểm soát request cập nhật qua app; chữ ký manifest là điều kiện xác thực gói cài. Worker hiện không cần GitHub token. Metadata release có cache qua `UPDATE_METADATA_CACHE_TTL_SECONDS` trong `wrangler.jsonc` (mặc định 300 giây); kiểm tra license vẫn chạy ở mỗi request và phản hồi cho app vẫn có `no-store`. Việc rút release có thể mất đến 5 phút để được phản ánh. Nếu số lượt kiểm tra tăng cao, tăng TTL hoặc cân nhắc xác thực server-side để giảm nguy cơ chạm quota GitHub API.
+
+Dùng `deploy/update/github-release.ps1` từ thư mục gốc repo để upload pilot, promote sang stable hoặc withdraw. Upload xác minh artifact và tag/commit trước, tải vào draft rồi kiểm tra SHA-256/kích thước trên GitHub mới công bố pilot. Promote dùng đúng asset đã kiểm chứng; withdraw chuyển release về draft và giữ tag/asset. Không ghi đè asset đã công bố. Hướng dẫn build, phát hành, cài bootstrap và rollback nằm trong [docs/cloudflare-updates.md](../docs/cloudflare-updates.md).
+
+Kiểm thử API cục bộ bằng `npm run check` và `npm test`; fixture dùng khóa sinh tạm, D1 cục bộ và phản hồi GitHub giả lập, không truy cập GitHub hoặc dữ liệu thật. Bộ release tooling offline chạy bằng `pwsh -NoProfile -File deploy/update/test-release.ps1` từ thư mục gốc repo.

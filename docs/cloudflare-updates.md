@@ -1,121 +1,107 @@
-# Phát hành và phục hồi TanTienQR qua Cloudflare
+# Phát hành và phục hồi TanTienQR qua GitHub Releases
 
-Hệ thống phân phối các gói Native AOT `win-x64` và `linux-x64` qua Worker của cổng license, D1 và bucket R2 riêng tư. TanTienQR kiểm tra chữ ký license cùng mã máy tại chỗ; Worker đối chiếu đúng chứng thư đã cấp, hạn dùng và trạng thái thu hồi trong D1. License cấp bằng công cụ offline cần được cấp lại qua cổng để tải cập nhật. Đây là xác thực quyền của chứng thư tại server; file `.lic` vẫn có thể sao chép.
+TanTienQR kiểm tra license và mã máy tại chỗ; portal kiểm tra chứng thư đã cấp, hạn dùng và trạng thái thu hồi trong D1. Khi người dùng kiểm tra cập nhật, app vẫn gọi API HTTPS của portal. Worker kiểm tra license trước, sau đó đọc manifest và gói cài từ GitHub Releases của `ErfanMNM/VisionF`.
 
-Ngày 20/11/2026 đã tạo bucket riêng tư `tantien-updates`, áp dụng migration `0005_license_update_signature_index.sql` và deploy Worker tại [cổng TanTienQR](https://tantien-license-portal.okeynhat.workers.dev), phiên bản Worker `eab2ff0f-f145-408a-bfd3-df00492bf725`. Smoke test xác nhận health/trang portal HTTP 200 và yêu cầu cập nhật bằng license giả HTTP 403 với `no-store`. Chưa công bố gói hoặc con trỏ `pilot`/`stable`; khóa phát hành và bootstrap phải được chuẩn bị theo các bước bên dưới.
+GitHub là nơi lưu artifact phát hành; Cloudflare Worker và D1 vẫn cung cấp API cập nhật có kiểm soát license. Không cần bucket R2 hoặc AWS CLI cho artifact. Repo hiện công khai, vì vậy asset trong Releases cũng tải công khai trực tiếp được. Worker chỉ kiểm soát luồng tải trong app; chữ ký RSA đã nhúng trong app/launcher mới là điều kiện để cài gói. Không dùng GitHub tag hoặc release notes làm bằng chứng tin cậy thay cho chữ ký manifest.
 
-## Chuẩn bị hạ tầng và khóa ký
+Worker cache metadata GitHub mặc định 300 giây qua `UPDATE_METADATA_CACHE_TTL_SECONDS`; kiểm tra license D1 vẫn chạy ở mỗi request, còn phản hồi cho app vẫn `no-store`. Việc rút bản có thể mất tối đa 5 phút để có hiệu lực ở mọi cache. Tăng TTL nếu lượng kiểm tra cao; GitHub giới hạn request API ẩn danh, xem [quota REST API](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api).
 
-Chạy các lệnh trong tài liệu từ thư mục gốc repository với PowerShell 7.4 trở lên. Máy phát hành cần .NET 10 SDK, C++ Build Tools cho Windows Native AOT, Docker đang dùng Linux containers và AWS CLI v2 có `s3api put-object --if-match/--if-none-match`. Build Linux hiện dùng image .NET SDK Debian; cần thử trên bản Linux đích trước khi đưa lên `stable`.
+Các endpoint app đang dùng giữ nguyên `/api/updates/v1/check` và `/api/updates/v1/download`. App gửi license, RID, channel và phiên bản tải xuống cho Worker; không gửi license sang GitHub. Cấu hình mặc định vẫn lấy URL từ `LicensePortal:BaseUrl`, channel `stable`. Worker chỉ truy cập repo cố định `ErfanMNM/VisionF`; request app không thể chọn URL hoặc repository.
 
-1. Tạo bucket R2 cho cập nhật trong tài khoản Cloudflare, ví dụ `tantien-updates`. Giữ bucket riêng tư, tắt cả `r2.dev` và public custom domain. Gắn binding `UPDATE_BUCKET` của Worker với bucket đó theo cấu hình `license-portal/wrangler.jsonc`.
-2. Tạo R2 S3 API token giới hạn đúng bucket. Cấu hình một AWS profile riêng bằng `aws configure --profile tantien-release`, nhập access key/secret ở prompt của CLI và đặt region `auto`. Sau đó chọn `$env:AWS_PROFILE = 'tantien-release'`. Không đặt secret vào tham số lệnh, Git hoặc tài liệu. [Hướng dẫn AWS CLI của Cloudflare](https://developers.cloudflare.com/r2/examples/aws/aws-cli/)
-3. Giữ một khóa RSA dành riêng cho cập nhật, tối thiểu 3072 bit, dạng PEM, **ngoài repository**. Không dùng lại khóa cấp license. Build nhúng khóa công khai SPKI vào app và launcher bằng MSBuild property `UpdatePublicKey`; khóa riêng chỉ dùng trên máy phát hành. Sao lưu khóa ở nơi kiểm soát truy cập. V1 đổi khóa cần cài lại bootstrap trên các máy đang dùng khóa cũ.
-4. Đăng nhập Wrangler và kiểm tra `npx wrangler whoami` trong `license-portal` trước khi deploy Worker. Tạo bucket trước khi bật binding. Việc deploy và tạo tài nguyên Cloudflare là thao tác vận hành riêng; chạy test địa phương không công bố bản mới.
+## Kênh và tên asset
 
-Bucket có cấu trúc:
+Tag phát hành phải là `vX.Y.Z`, với mỗi phần số từ 0 đến 65534. Worker chọn phiên bản số cao nhất trong tối đa 100 release đã công bố cho kênh tương ứng:
+
+- `stable`: release không phải prerelease.
+- `pilot`: release prerelease.
+- Release nháp không được chọn. Khi rút bản, chuyển release về nháp để Worker bỏ qua; các asset được giữ lại.
+
+Mỗi release có các asset cố định cho hai nền tảng:
 
 ```text
-releases/1.2.3/win-x64/package.zip
-releases/1.2.3/win-x64/manifest.json
-releases/1.2.3/linux-x64/package.zip
-releases/1.2.3/linux-x64/manifest.json
-channels/pilot.json       # {"version":"1.2.3"}
-channels/stable.json      # {"version":"1.2.3"}, hoặc {} khi rút bản
+manifest-win-x64.json
+package-win-x64.zip
+bootstrap-win-x64.zip
+manifest-linux-x64.json
+package-linux-x64.zip
+bootstrap-linux-x64.zip
+release.json
+public-key.spki
 ```
 
-Worker dùng R2 binding để đọc và truyền gói; không gửi S3 credential về máy khách. Manifest có envelope `{data,sig}`, cả hai là base64 chuẩn. `data` là UTF-8 JSON chứa `version`, `rid`, `size`, `sha256`, `notes` và danh sách `files` với `path`, `sha256`, `size`, `executable`. Chữ ký RSA SHA-256 PKCS#1 v1.5 áp dụng lên chính byte `data`, không serialize lại để xác minh. [Tài liệu R2 Workers API](https://developers.cloudflare.com/r2/api/workers/workers-api-reference/)
+Ba asset nền tảng được đổi tên từ `manifest.json`, `package.zip` và `bootstrap.zip` trong output build. Manifest giữ nguyên envelope đã ký; app kiểm tra chữ ký, RID, kích thước, SHA-256 và danh sách file trước khi cài. Worker trả nguyên manifest, rồi stream gói đúng phiên bản/RID. Nếu release đổi sau bước kiểm tra, download cũ bị từ chối để app kiểm tra lại.
 
-## Build từ một Git tag sạch
+## Chuẩn bị khóa và build
 
-Commit toàn bộ thay đổi đã duyệt rồi tạo Git tag `vX.Y.Z` tại HEAD. Thư mục làm việc phải sạch. Mỗi thành phần phiên bản là số 0–65534; không dùng prerelease hoặc hậu tố build trong v1. Cập nhật DB/cấu hình phải tương thích với phiên bản trước để rollback chương trình giữ nguyên dữ liệu vẫn chạy được.
+Chạy các lệnh từ repo với PowerShell 7.4 trở lên. Máy build chuẩn cần .NET 10 SDK, C++ Build Tools cho Windows Native AOT và Docker dùng Linux containers để build cả Windows x64 và Linux x64. GitHub CLI `gh` phải cài và đăng nhập bằng tài khoản có quyền tạo Release trong repo. Vì repo công khai, Worker không cần GitHub token; không đặt token trong app hoặc cấu hình Worker.
 
-Ví dụ build phiên bản `1.2.3` với ghi chú lưu ngoài hoặc trong repository:
+Giữ khóa RSA phát hành riêng, tối thiểu 3072 bit, dạng PEM, ngoài repo. Không dùng khóa cấp license. Khóa riêng ký manifest; khóa công khai `public-key.spki` được nhúng vào app và launcher lúc build. Sao lưu khóa riêng an toàn; đổi khóa yêu cầu cài bootstrap mới trên máy khách hiện tại.
+
+Tạo tag tại source đã duyệt và build release sạch. Mỗi phiên bản phải tăng, không dùng lại tag hoặc ghi đè artifact:
 
 ```powershell
+git tag -a v1.2.3 -m "TanTienQR 1.2.3"
 pwsh -NoProfile -File deploy/update/build-release.ps1 `
   -Version 1.2.3 `
   -SigningKeyPath 'D:/TanTienReleaseKeys/update-private.pem' `
   -NotesPath 'D:/TanTienReleaseNotes/1.2.3.md'
 ```
 
-Script xuất snapshot từ đúng Git tag, build app và launcher của hai nền tảng vào thư mục tạm mới, ký và tự kiểm tra manifest. Mặc định kết quả nằm trong `publish/updates/1.2.3`. Nếu thư mục đích đã tồn tại, script dừng; lưu bộ kết quả hoàn chỉnh làm bản phát hành chuẩn, không ghi đè hoặc ký lại cùng một phiên bản.
+Build script lấy snapshot từ đúng tag, kiểm tra tag trùng HEAD và working tree sạch, build hai RID, ký manifest và tự kiểm tra chữ ký/SHA. Output chuẩn là `publish/updates/1.2.3`, gồm `win-x64` và `linux-x64`, khóa công khai và metadata release. Nếu thư mục output đã có, script dừng; không ghi đè gói cũ.
 
-Mỗi nền tảng có `package.zip`, `manifest.json` và `bootstrap.zip`. Gói cập nhật chỉ chứa chương trình chính và các thư viện native ở thư mục gốc. Bộ bootstrap thêm `TanTienLauncher(.exe)`. Cả hai loại đều loại bỏ cấu hình, license, database và symbols. `release.json` ghi commit cùng SHA-256 của bootstrap; `public-key.spki` chứa khóa công khai. Các thư mục runtime con bất ngờ làm script dừng để người phát hành kiểm tra quy tắc đóng gói.
+Mỗi gói update chỉ chứa app và thư viện native. Bootstrap lần đầu chứa launcher cùng helper máy in Windows. Cả hai không chứa license, cấu hình máy, database hoặc symbols. Giữ `release.json` và `public-key.spki` cạnh hai thư mục platform.
 
-Giới hạn v1: ZIP cập nhật 256 MiB, tổng tệp giải nén 512 MiB, tối đa 128 tệp, envelope manifest 64 KiB và ghi chú 8 KiB. Khi build lỗi, thư mục tạm được dọn; thư mục đầu ra chưa hoàn chỉnh được giữ để kiểm tra. Không phát hành bộ đầu ra đó.
+## Upload pilot, promote stable và rút bản
 
-## Công bố pilot và stable
-
-`Upload` tải hai gói lên R2, tải lại để kiểm tra chữ ký/kích thước/SHA-256 và đối chiếu chính xác với bộ kết quả địa phương trước khi đổi con trỏ `pilot`. Upload có thể chạy lại sau lỗi: các đối tượng trùng byte được giữ, khác byte làm script dừng. Put mới dùng điều kiện `If-None-Match: *` để tránh ghi đè cùng phiên bản. [Điều kiện ghi S3 của R2](https://developers.cloudflare.com/r2/api/s3/api/)
+Sau khi kiểm thử source, đẩy commit/tag đã duyệt lên `origin`. Script yêu cầu tag remote trỏ cùng commit HEAD, working tree sạch, repo đúng và public. Lệnh Upload xác minh lại chữ ký manifest và hash package, tạo release nháp, tải asset còn thiếu, so sánh SHA-256/kích thước với GitHub rồi mới công bố release dưới dạng prerelease cho kênh pilot:
 
 ```powershell
-$env:AWS_PROFILE = 'tantien-release'
-$releaseArgs = @{
-  Version = '1.2.3'
-  AccountId = '<32 ký tự hex của Cloudflare account>'
-  Bucket = 'tantien-updates'
-  ReleaseDirectory = 'publish/updates/1.2.3'
-  PublicKeyPath = 'publish/updates/1.2.3/public-key.spki'
-}
-& ./deploy/update/r2-release.ps1 -Action Upload @releaseArgs
+pwsh -NoProfile -File deploy/update/github-release.ps1 `
+  -Action Upload -Version 1.2.3 `
+  -ReleaseDirectory 'publish/updates/1.2.3'
 ```
 
-Chọn ít nhất một máy Windows và một máy Linux thí điểm. Đặt biến môi trường `TANTIEN_Updates__Channel=pilot` cho tiến trình của máy đó rồi mở lại qua launcher. Mặc định là `stable`. URL cập nhật dùng cấu hình `Updates:BaseUrl`, nếu thiếu sẽ dùng `LicensePortal:BaseUrl` hoặc URL cổng mặc định theo ứng dụng. Có thể đổi URL bằng `TANTIEN_Updates__BaseUrl=https://...`.
+`PublicKeyPath` mặc định là `public-key.spki` trong thư mục release. Có thể truyền `-NotesPath` nếu cần notes riêng. Script không ghi đè asset đã có: asset trùng tên nhưng sai hash làm thao tác dừng. Release nháp bị gián đoạn có thể chạy lại để upload phần còn thiếu; release đã công bố không được sửa asset, hãy build phiên bản mới.
 
-Sau khi ghi nhận kết quả thử đạt trên cả hai nền tảng:
+Thử cập nhật trên máy pilot Windows và Linux khi dây chuyền rảnh. Sau khi xác nhận cài thành công, dữ liệu/config/license giữ nguyên và rollback hoạt động, promote chính release đó sang stable:
 
 ```powershell
-& ./deploy/update/r2-release.ps1 -Action Promote @releaseArgs -PilotVerified
+pwsh -NoProfile -File deploy/update/github-release.ps1 `
+  -Action Promote -Version 1.2.3 `
+  -ReleaseDirectory 'publish/updates/1.2.3'
 ```
 
-`Promote` yêu cầu pilot đang trỏ đúng phiên bản và kiểm tra lại cả hai gói trên R2 khớp bộ địa phương. Script chỉ đổi con trỏ `stable`; không build hoặc ký lại. `-PilotVerified` là xác nhận của kỹ thuật viên, không thay thế thử nghiệm. Con trỏ được ghi với ETag hiện tại; nếu người khác vừa sửa kênh, lệnh dừng thay vì ghi đè thay đổi đó.
-
-## Cài bootstrap một lần và thử rollback
-
-Máy cũ chưa có updater phải được kỹ thuật viên đưa lên bản bootstrap một lần khi dây chuyền đã dừng. Sao lưu thư mục ứng dụng và dữ liệu trước bước chuyển đổi ban đầu. Giải nén `bootstrap.zip` đúng nền tảng vào thư mục tạm; đối chiếu SHA-256 với `release.json` lấy qua kênh nội bộ tin cậy. Thoát TanTienQR, sao chép các tệp chương trình vào đúng thư mục hiện tại, giữ nguyên `appsettings.json`, `license.lic`, `logs/` và các đường dẫn DB riêng. Đổi shortcut/menu/autostart để mở `TanTienLauncher.exe` hoặc `TanTienLauncher`.
-
-Trên Linux, đặt quyền thực thi cho cả `TanTienLauncher` và `TanTienQR` nếu công cụ giải nén chưa giữ mode ZIP. Tài khoản chạy ứng dụng cần quyền ghi thư mục cài đặt; dùng ổ đĩa cục bộ. V1 hỗ trợ desktop, chưa tích hợp supervisor/systemd/kiosk tự khởi động lại tiến trình. Khi dùng launcher phải tránh để một cơ chế khác đồng thời mở `TanTienQR` trực tiếp.
-
-Trong **Thông tin → Cập nhật**, quản trị viên chọn kiểm tra và cài khi dây chuyền rảnh. Gói chỉ được áp dụng sau khi xác minh xong, đã khóa bắt đầu lệnh/lượt quét mới, chờ các việc đang chạy và ghi DB xong, rồi dừng app. App vẫn hoạt động với bản hiện tại khi không truy cập được dịch vụ cập nhật.
-
-Launcher sao lưu binary và ghi journal trước khi thay tệp. Nếu bản mới không mở được giao diện và dữ liệu cục bộ trong 60 giây, launcher khôi phục binary trước đó. Nếu giao dịch bị ngắt hoặc mất điện khi thay tệp, lần mở launcher tiếp theo phục hồi giao dịch dang dở. Backup/journal nằm trong `.tantien-updates`; không xóa thư mục này khi giao dịch chưa kết thúc. Rollback không phục hồi dữ liệu cũ hoặc khôi phục ngược migration không tương thích.
-
-Trước `stable`, ghi nhận các kết quả sau trên Windows và Linux:
-
-- Tải/cài thành công, mở đúng phiên bản mới; cấu hình, license, người dùng, lịch sử quét và PO giữ nguyên.
-- License hết hạn, thu hồi hoặc chưa có trong D1 bị từ chối; mất mạng không ảnh hưởng bản đang chạy.
-- Sai chữ ký/SHA-256/nền tảng bị chặn trước cài; không được đóng app để áp dụng gói chưa xác minh.
-- Đang chạy PO hoặc xuất hiện lệnh mới đồng thời thì updater từ chối; quét đang xử lý được ghi xong trước bàn giao.
-- Bản mới cố ý không báo khởi động thành công trên **máy lab** được tự phục hồi sau 60 giây.
-- Ngắt launcher hoặc tắt VM giữa các bước thay binary trên **máy lab**, rồi mở launcher để kiểm tra phục hồi. Kiểm tra lỗi hết dung lượng, không có quyền ghi và tệp bị khóa cũng giữ hoặc trả về bản trước.
-
-Không mô phỏng mất điện hoặc phá gói trên máy đang vận hành sản xuất. Máy lab không có PLC cần cấu hình riêng `TANTIEN_Plc__Enabled=false`; không dùng cấu hình đó cho dây chuyền thật.
-
-## Rút bản lỗi và theo dõi
+Promote kiểm tra lại bộ asset đã ký và yêu cầu phiên bản mới hơn stable hiện tại, rồi chuyển prerelease thành release ổn định. Để rút bản lỗi khỏi cả hai kênh:
 
 ```powershell
-pwsh -NoProfile -File deploy/update/r2-release.ps1 `
-  -Action Withdraw -Version 1.2.3 `
-  -AccountId '<32 ký tự hex của Cloudflare account>' `
-  -Bucket tantien-updates -Channel stable
+pwsh -NoProfile -File deploy/update/github-release.ps1 -Action Withdraw -Version 1.2.3
 ```
 
-Lệnh chỉ rút nếu con trỏ vẫn là phiên bản đã chỉ định. Nó ghi con trỏ `{}` có điều kiện ETag, không xóa gói hay backup. Worker xem con trỏ rỗng là chưa có bản được công bố. Máy chưa tải xong sẽ không được cấp gói từ kênh đó; tải lại yêu cầu kiểm tra license và phiên bản được phép. Máy đã cài thành công cần nhận bản sửa có số cao hơn. Việc rút kênh không phải lệnh ép hạ phiên bản từ xa.
+Withdraw chuyển release thành draft, giữ tag và asset để kiểm tra hoặc khôi phục. Release bị rút sẽ không được chọn cho các lần kiểm tra mới; thiết bị đã cài bản đó cần một bản sửa với số phiên bản cao hơn.
 
-Theo dõi log cập nhật tại máy và Workers Observability để phát hiện lỗi quyền tải, gói thiếu và lỗi R2/D1. Không ghi request body, file `.lic`, chữ ký license hoặc credential vào log. Chỉ đưa một bản lên stable sau khi xác nhận pilot và kết quả rollback; thay đổi mã nguồn trong repository chưa đồng nghĩa với đã deploy Worker hoặc phát hành cho khách.
+## Cài bootstrap lần đầu và rollback
 
-Kiểm tra tooling địa phương bằng `pwsh -NoProfile -File deploy/update/test-release.ps1`. Bài kiểm tra tạo khóa tạm, dữ liệu giả và fake S3 tại máy; không truy cập Cloudflare, không dùng khóa thật. Bài này xác nhận đóng gói/ký và thứ tự công bố, không thay thế bài cài/rollback thực trên hai hệ điều hành.
+Máy chưa có launcher phải được cài bootstrap khi dây chuyền dừng. Sao lưu thư mục app và dữ liệu trước. Tải `bootstrap-win-x64.zip` hoặc `bootstrap-linux-x64.zip` từ đúng GitHub Release; đối chiếu SHA-256 với `release.json` lấy qua kênh tin cậy. Giải nén vào thư mục cài đặt có quyền ghi, giữ `appsettings.json`, `license.lic`, log và database của máy, rồi đổi shortcut/autostart để mở `TanTienLauncher.exe` hoặc `TanTienLauncher`.
 
-Các kiểm tra mã nguồn liên quan:
+Trên Linux cần giữ quyền thực thi của launcher và app. Tài khoản chạy phải có quyền ghi thư mục cài đặt; dùng ổ đĩa cục bộ. V1 hỗ trợ desktop, chưa tích hợp supervisor/systemd/kiosk tự khởi động lại.
+
+Trong **Thông tin → Cập nhật**, quản trị viên kiểm tra và cài lúc dây chuyền rảnh. App khóa intake, chờ lượt đang xử lý và persistence hoàn tất, sau đó mới thay binary. Launcher sao lưu file và ghi journal trước khi thay; nếu bản mới không xác nhận khởi động thành công trong 60 giây, launcher phục hồi binary cũ. Nếu giao dịch bị ngắt, lần chạy launcher kế tiếp khôi phục giao dịch dang dở. Thư mục `.tantien-updates` chứa journal/backup; không xóa khi giao dịch còn hoạt động.
+
+Trước khi promote stable, thử trên máy lab: mất mạng, license hết hạn/thu hồi, manifest hoặc ZIP sai chữ ký/hash, sai RID, asset thiếu, update bị rút giữa hai request, app khởi động lỗi, tệp khóa hoặc không đủ quyền ghi. Không mô phỏng mất điện hoặc phá gói trên máy sản xuất. Rollback binary không khôi phục dữ liệu cũ và không đảo migration không tương thích.
+
+## Kiểm tra local
+
+Các kiểm tra Worker và release không gọi GitHub thật khi chạy bộ test:
 
 ```powershell
+cd license-portal
+npm run check
+npm test
+cd ..
+pwsh -NoProfile -File deploy/update/test-release.ps1
 dotnet run --project tools/UpdateTests -c Release
 dotnet run --project tools/UpdateSafetyTests -c Release
 dotnet run --project tools/UpdateSendTests -c Release
-dotnet run --project tools/PoFlowTests -c Release
-dotnet run --project tools/PoServerTests -c Release
-dotnet run --project tools/ConfigUiTests -c Release
 ```
 
-Trong `license-portal`, chạy `npm run check` và `npm test` để kiểm tra API với Worker, D1 và R2 cục bộ.
+Test local không thay thế cài thử trên máy Windows/Linux, kiểm tra license thật qua Worker đã deploy hoặc thử rollback trên máy lab. Chỉ công bố release khi manifest và asset của cả hai nền tảng đã được xác minh.
