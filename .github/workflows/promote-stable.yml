@@ -1,0 +1,86 @@
+name: Đưa TanTienQR lên stable
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Phiên bản X.Y.Z đã chạy đạt trên pilot Windows và Linux
+        required: true
+        type: string
+      pilot_verified:
+        description: Xác nhận cả Windows và Linux pilot đã chạy đạt
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: visionf-release-channel
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    if: ${ inputs.pilot_verified }
+    runs-on: ubuntu-latest
+    environment: tantien-updates-stable
+    env:
+      RELEASE_VERSION: ${ inputs.version }
+      CLOUDFLARE_ACCOUNT_ID: ${ vars.CLOUDFLARE_ACCOUNT_ID }
+      AWS_ACCESS_KEY_ID: ${ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }
+      AWS_SECRET_ACCESS_KEY: ${ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }
+      AWS_DEFAULT_REGION: auto
+      AWS_EC2_METADATA_DISABLED: "true"
+      GH_TOKEN: ${ github.token }
+    steps:
+      - name: Kiểm tra tag và lấy script đã phát hành
+        uses: actions/checkout@v4
+        with:
+          ref: v${ inputs.version }
+          fetch-depth: 0
+
+      - name: Tải assets đúng phiên bản
+        shell: pwsh
+        run: |
+          if ($env:RELEASE_VERSION -cnotmatch '^(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})$') {
+            throw 'Phiên bản phải có dạng X.Y.Z.'
+          }
+          if (-not $env:CLOUDFLARE_ACCOUNT_ID -or -not $env:AWS_ACCESS_KEY_ID -or -not $env:AWS_SECRET_ACCESS_KEY) {
+            throw 'Thiếu Cloudflare account ID hoặc R2 credentials ở environment tantien-updates-stable.'
+          }
+          gh release download "v$env:RELEASE_VERSION" --repo $env:GITHUB_REPOSITORY --dir "$env:RUNNER_TEMP/tantien-release-assets"
+          if ($LASTEXITCODE -ne 0) { throw 'Không tải được GitHub Release version đã chọn.' }
+
+      - name: Kiểm chứng pilot và promote R2 stable
+        shell: pwsh
+        run: |
+          $version = $env:RELEASE_VERSION
+          $tag = "v$version"
+          $releaseRoot = Join-Path $env:RUNNER_TEMP 'tantien-release-assets'
+          $releaseMetadataPath = Join-Path $releaseRoot "TanTienQR-$version-release.json"
+          $publicKeyPath = Join-Path $releaseRoot "TanTienQR-$version-public-key.spki"
+          $expectedCommit = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0) { throw 'Không xác minh được commit của tag.' }
+          $metadata = Get-Content -LiteralPath $releaseMetadataPath -Raw | ConvertFrom-Json
+          if ($metadata.tag -cne $tag -or $metadata.commit -cne $expectedCommit) {
+            throw 'Metadata của GitHub Release không khớp với source tag được chọn.'
+          }
+          $releaseDirectory = Join-Path $releaseRoot 'verified'
+          foreach ($rid in @('win-x64', 'linux-x64')) {
+            $ridDirectory = Join-Path $releaseDirectory $rid
+            New-Item -ItemType Directory -Path $ridDirectory -Force | Out-Null
+            foreach ($asset in @('package.zip', 'manifest.json')) {
+              $sourceName = "TanTienQR-$version-$rid-$($asset -replace '\.','-')"
+              if ($asset -eq 'package.zip') { $sourceName = "TanTienQR-$version-$rid-package.zip" }
+              else { $sourceName = "TanTienQR-$version-$rid-manifest.json" }
+              $sourcePath = Join-Path $releaseRoot $sourceName
+              if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) { throw "Thiếu pilot asset $sourceName." }
+              Copy-Item -LiteralPath $sourcePath -Destination (Join-Path $ridDirectory $asset)
+            }
+          }
+          $accountId = $env:CLOUDFLARE_ACCOUNT_ID
+          $r2Args = @('-Action','Promote','-Version',$version,'-AccountId',$accountId,'-Bucket','tantien-updates',
+            '-ReleaseDirectory',$releaseDirectory,'-PublicKeyPath',$publicKeyPath,'-Channel','stable','-PilotVerified')
+          pwsh -NoProfile -File deploy/update/r2-release.ps1 @r2Args
+          if ($LASTEXITCODE -ne 0) { throw "Promote Cloudflare stable thất bại: $LASTEXITCODE" }

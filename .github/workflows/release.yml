@@ -1,0 +1,167 @@
+name: Phát hành TanTienQR
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: visionf-release-channel
+  cancel-in-progress: false
+
+jobs:
+  build-and-pilot:
+    runs-on: windows-latest
+    environment: tantien-release
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${ vars.CLOUDFLARE_ACCOUNT_ID }
+      CLOUDFLARE_R2_ACCESS_KEY_ID: ${ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }
+      CLOUDFLARE_R2_SECRET_ACCESS_KEY: ${ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }
+      TANTIEN_UPDATE_SIGNING_KEY_PEM_B64: ${ secrets.TANTIEN_UPDATE_SIGNING_KEY_PEM_B64 }
+      AWS_DEFAULT_REGION: auto
+      AWS_EC2_METADATA_DISABLED: "true"
+    steps:
+      - name: Lấy đúng commit của tag
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Thiết lập .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Cài Inno Setup compiler
+        shell: pwsh
+        run: |
+          choco install innosetup --yes --no-progress
+          $compiler = Get-ChildItem -LiteralPath @('C:\Program Files (x86)', 'C:\Program Files') -Directory -Filter 'Inno Setup *' -ErrorAction SilentlyContinue |
+            ForEach-Object { Join-Path $_.FullName 'ISCC.exe' } |
+            Where-Object { Test-Path -LiteralPath $_ } |
+            Select-Object -First 1
+          if (-not $compiler) { throw 'Không tìm thấy ISCC.exe sau khi cài Inno Setup.' }
+          "INNO_SETUP_COMPILER=$compiler" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Kiểm tra tag và ký release tạm ngoài repo
+        id: version
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          if ($tag -cnotmatch '^v(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})\.(0|[1-9][0-9]{0,4})$') {
+            throw 'Tag phát hành phải có dạng vX.Y.Z.'
+          }
+          $version = $tag.Substring(1)
+          Import-Module "$env:GITHUB_WORKSPACE/deploy/update/UpdateRelease.psm1" -Force -DisableNameChecking
+          Assert-ReleaseVersion $version
+          if (-not $env:CLOUDFLARE_ACCOUNT_ID -or
+              -not $env:CLOUDFLARE_R2_ACCESS_KEY_ID -or
+              -not $env:CLOUDFLARE_R2_SECRET_ACCESS_KEY -or
+              -not $env:TANTIEN_UPDATE_SIGNING_KEY_PEM_B64) {
+            throw 'Thiếu Cloudflare account ID, R2 credentials hoặc signing-key secret của GitHub Actions.'
+          }
+          $keyPath = Join-Path $env:RUNNER_TEMP "tantien-update-$env:GITHUB_RUN_ID.pem"
+          $keyBytes = [Convert]::FromBase64String($env:TANTIEN_UPDATE_SIGNING_KEY_PEM_B64)
+          [IO.File]::WriteAllBytes($keyPath, $keyBytes)
+          $rsa = [Security.Cryptography.RSA]::Create()
+          try {
+            $rsa.ImportFromPem([IO.File]::ReadAllText($keyPath))
+            if ($rsa.KeySize -lt 3072) { throw 'Update signing key phải là RSA tối thiểu 3072 bit.' }
+          }
+          finally { $rsa.Dispose() }
+          "release_version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "release_key_path=$keyPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Build package ký số Windows và Linux
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${ steps.version.outputs.release_version }
+          RELEASE_KEY_PATH: ${ steps.version.outputs.release_key_path }
+        run: |
+          $notes = Join-Path $env:RUNNER_TEMP "release-notes-$env:GITHUB_RUN_ID.md"
+          [IO.File]::WriteAllText($notes, "Bản phát hành $env:RELEASE_VERSION", [Text.UTF8Encoding]::new($false))
+          pwsh -NoProfile -File deploy/update/build-release.ps1 -Version $env:RELEASE_VERSION -SigningKeyPath $env:RELEASE_KEY_PATH -NotesPath $notes
+          if ($LASTEXITCODE -ne 0) { throw "Build package thất bại: $LASTEXITCODE" }
+
+      - name: Đóng gói bộ cài Windows 11
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${ steps.version.outputs.release_version }
+        run: |
+          $releaseDirectory = Join-Path $env:GITHUB_WORKSPACE "publish/updates/$env:RELEASE_VERSION"
+          pwsh -NoProfile -File deploy/install/build-installer.ps1 -ReleaseDirectory $releaseDirectory -InnoCompilerPath $env:INNO_SETUP_COMPILER
+          if ($LASTEXITCODE -ne 0) { throw "Build installer thất bại: $LASTEXITCODE" }
+
+      - name: Upload và xác minh pilot trên Cloudflare R2
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${ steps.version.outputs.release_version }
+          CLOUDFLARE_ACCOUNT_ID: ${ vars.CLOUDFLARE_ACCOUNT_ID }
+          AWS_ACCESS_KEY_ID: ${ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }
+          AWS_SECRET_ACCESS_KEY: ${ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }
+          AWS_DEFAULT_REGION: auto
+        run: |
+          $releaseDirectory = Join-Path $env:GITHUB_WORKSPACE "publish/updates/$env:RELEASE_VERSION"
+          pwsh -NoProfile -File deploy/update/r2-release.ps1 -Action Upload -Version $env:RELEASE_VERSION -AccountId $env:CLOUDFLARE_ACCOUNT_ID -Bucket tantien-updates -ReleaseDirectory $releaseDirectory -PublicKeyPath (Join-Path $releaseDirectory 'public-key.spki')
+          if ($LASTEXITCODE -ne 0) { throw "Upload Cloudflare pilot thất bại: $LASTEXITCODE" }
+
+      - name: Chuẩn bị assets và SHA256SUMS cho GitHub
+        id: assets
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${ steps.version.outputs.release_version }
+        run: |
+          $version = $env:RELEASE_VERSION
+          $releaseDirectory = Join-Path $env:GITHUB_WORKSPACE "publish/updates/$version"
+          $windows = Join-Path $releaseDirectory 'win-x64'
+          $linux = Join-Path $releaseDirectory 'linux-x64'
+          $installer = Join-Path $releaseDirectory "installer/TanTienQR-$version-win-x64-setup.exe"
+          if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) { throw 'Thiếu bộ cài Windows đã biên dịch.' }
+          $assets = Join-Path $releaseDirectory 'github-assets'
+          New-Item -ItemType Directory -Path $assets | Out-Null
+          $copies = @(
+            @{ source = $installer; name = "TanTienQR-$version-win-x64-setup.exe" },
+            @{ source = (Join-Path $windows 'bootstrap.zip'); name = "TanTienQR-$version-win-x64-bootstrap.zip" },
+            @{ source = (Join-Path $windows 'package.zip'); name = "TanTienQR-$version-win-x64-package.zip" },
+            @{ source = (Join-Path $windows 'manifest.json'); name = "TanTienQR-$version-win-x64-manifest.json" },
+            @{ source = (Join-Path $linux 'bootstrap.zip'); name = "TanTienQR-$version-linux-x64-bootstrap.zip" },
+            @{ source = (Join-Path $linux 'package.zip'); name = "TanTienQR-$version-linux-x64-package.zip" },
+            @{ source = (Join-Path $linux 'manifest.json'); name = "TanTienQR-$version-linux-x64-manifest.json" },
+            @{ source = (Join-Path $releaseDirectory 'release.json'); name = "TanTienQR-$version-release.json" },
+            @{ source = (Join-Path $releaseDirectory 'public-key.spki'); name = "TanTienQR-$version-public-key.spki" }
+          )
+          $paths = [Collections.Generic.List[string]]::new()
+          foreach ($copy in $copies) {
+            if (-not (Test-Path -LiteralPath $copy.source -PathType Leaf)) { throw "Thiếu release asset: $($copy.name)" }
+            $destination = Join-Path $assets $copy.name
+            Copy-Item -LiteralPath $copy.source -Destination $destination
+            $paths.Add($destination)
+          }
+          $checksums = foreach ($file in Get-ChildItem -LiteralPath $assets -File | Sort-Object Name) {
+            "$( (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant() )  $($file.Name)"
+          }
+          $checksumsPath = Join-Path $assets 'SHA256SUMS.txt'
+          [IO.File]::WriteAllLines($checksumsPath, [string[]]$checksums, [Text.UTF8Encoding]::new($false))
+          $paths.Add($checksumsPath)
+          "asset_directory=$assets" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Tạo GitHub Release kèm bộ cài
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${ steps.version.outputs.release_version }
+          ASSET_DIRECTORY: ${ steps.assets.outputs.asset_directory }
+          GH_TOKEN: ${ github.token }
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $assets = @(Get-ChildItem -LiteralPath $env:ASSET_DIRECTORY -File | Sort-Object Name | ForEach-Object FullName)
+          gh release create $tag @assets --repo $env:GITHUB_REPOSITORY --verify-tag --title "TanTienQR $env:RELEASE_VERSION" --generate-notes
+          if ($LASTEXITCODE -ne 0) { throw "Tạo GitHub Release thất bại: $LASTEXITCODE" }
+
+      - name: Xóa file khóa tạm
+        if: always()
+        shell: pwsh
+        run: |
+          $keyPath = Join-Path $env:RUNNER_TEMP "tantien-update-$env:GITHUB_RUN_ID.pem"
+          if (Test-Path -LiteralPath $keyPath) { Remove-Item -LiteralPath $keyPath -Force }

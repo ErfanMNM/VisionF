@@ -7,6 +7,6 @@
     <IsAotCompatible>false</IsAotCompatible>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../ClassLibraryMT.Scans/ClassLibraryMT.Scans.csproj" />
+    <ProjectReference Include="../../src/ClassLibraryMT.Scans/ClassLibraryMT.Scans.csproj" />
   </ItemGroup>
 </Project>

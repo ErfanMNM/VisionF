@@ -6,6 +6,6 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\ClassLibraryMT.Print\ClassLibraryMT.Print.csproj" />
+    <ProjectReference Include="..\..\src\ClassLibraryMT.Print\ClassLibraryMT.Print.csproj" />
   </ItemGroup>
 </Project>

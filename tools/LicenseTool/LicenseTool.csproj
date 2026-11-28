@@ -19,7 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\ClassLibraryMT\ClassLibraryMT.csproj" />
+    <ProjectReference Include="..\..\src\ClassLibraryMT\ClassLibraryMT.csproj" />
   </ItemGroup>
 
   <!-- Copy private.key sang thu muc chay de tool tu dong nap key.

@@ -16,7 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\ClassLibraryMT.MultiConnect\ClassLibraryMT.MultiConnect.csproj" />
+    <ProjectReference Include="..\..\src\ClassLibraryMT.MultiConnect\ClassLibraryMT.MultiConnect.csproj" />
   </ItemGroup>
 
   <ItemGroup>

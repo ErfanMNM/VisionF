@@ -1,15 +1,15 @@
 <Solution>
-  <Project Path="ClassLibraryMT.Auth/ClassLibraryMT.Auth.csproj" />
-  <Project Path="ClassLibraryMT.Logging/ClassLibraryMT.Logging.csproj" />
-  <Project Path="ClassLibraryMT.MesSimulator/ClassLibraryMT.MesSimulator.csproj" />
-  <Project Path="ClassLibraryMT.MultiConnect/ClassLibraryMT.MultiConnect.csproj" />
-  <Project Path="ClassLibraryMT.Plc/ClassLibraryMT.Plc.csproj" />
-  <Project Path="ClassLibraryMT.Po/ClassLibraryMT.Po.csproj" />
-  <Project Path="ClassLibraryMT.PoServer/ClassLibraryMT.PoServer.csproj" />
-  <Project Path="ClassLibraryMT.Print/ClassLibraryMT.Print.csproj" />
-  <Project Path="ClassLibraryMT.Scans/ClassLibraryMT.Scans.csproj" />
-  <Project Path="ClassLibraryMT.Updates/ClassLibraryMT.Updates.csproj" />
-  <Project Path="ClassLibraryMT/ClassLibraryMT.csproj" />
+  <Project Path="src/ClassLibraryMT.Auth/ClassLibraryMT.Auth.csproj" />
+  <Project Path="src/ClassLibraryMT.Logging/ClassLibraryMT.Logging.csproj" />
+  <Project Path="src/ClassLibraryMT.MesSimulator/ClassLibraryMT.MesSimulator.csproj" />
+  <Project Path="src/ClassLibraryMT.MultiConnect/ClassLibraryMT.MultiConnect.csproj" />
+  <Project Path="src/ClassLibraryMT.Plc/ClassLibraryMT.Plc.csproj" />
+  <Project Path="src/ClassLibraryMT.Po/ClassLibraryMT.Po.csproj" />
+  <Project Path="src/ClassLibraryMT.PoServer/ClassLibraryMT.PoServer.csproj" />
+  <Project Path="src/ClassLibraryMT.Print/ClassLibraryMT.Print.csproj" />
+  <Project Path="src/ClassLibraryMT.Scans/ClassLibraryMT.Scans.csproj" />
+  <Project Path="src/ClassLibraryMT.Updates/ClassLibraryMT.Updates.csproj" />
+  <Project Path="src/ClassLibraryMT/ClassLibraryMT.csproj" />
   <Project Path="TanTienQR/TanTienQR.csproj" />
   <Project Path="tools/AccountsIconTests/AccountsIconTests.csproj" />
   <Project Path="tools/ApplicationUiTests/ApplicationUiTests.csproj" />

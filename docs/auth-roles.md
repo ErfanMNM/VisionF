@@ -9,8 +9,8 @@ Tài liệu mô tả tính năng xác thực của ứng dụng **TanTienQR**, d
 
 | Thành phần | Vị trí | Vai trò |
 |---|---|---|
-| Lib xác thực | `ClassLibraryMT.Auth/` | Băm mật khẩu, lưu trữ tài khoản, quản lý phiên, ma trận quyền |
-| Lib ghi log | `ClassLibraryMT.Logging/` | Ghi tên người dùng đang đăng nhập vào nhật ký thao tác |
+| Lib xác thực | `src/ClassLibraryMT.Auth/` | Băm mật khẩu, lưu trữ tài khoản, quản lý phiên, ma trận quyền |
+| Lib ghi log | `src/ClassLibraryMT.Logging/` | Ghi tên người dùng đang đăng nhập vào nhật ký thao tác |
 | Màn hình đăng nhập | `TanTienQR/Views/LoginWindow.axaml` | Cổng vào bắt buộc của ứng dụng |
 | Tab quản lý tài khoản | `TanTienQR/Views/AccountsView.axaml` | CRUD tài khoản (chỉ Quản trị / Lập trình viên) |
 
@@ -33,7 +33,7 @@ thêm/bỏ vai trò không làm hỏng dữ liệu cũ:
 
 ### Ma trận quyền cố định
 
-Ma trận nằm trong code (`ClassLibraryMT.Auth/RolePermissions.cs`) — **không cấu
+Ma trận nằm trong code (`src/ClassLibraryMT.Auth/RolePermissions.cs`) — **không cấu
 hình được** — để mọi app dùng chung lib đều có cùng hành vi bảo mật.
 
 | Quyền | Worker | Operator | Administrator | Developer |

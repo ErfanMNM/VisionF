@@ -16,7 +16,7 @@ Tại sao tách 2 loại? Log kỹ thuật có **mức độ ưu tiên thấp** 
 ## 1. Cài đặt
 
 ```xml
-<ProjectReference Include="..\ClassLibraryMT.Logging\ClassLibraryMT.Logging.csproj" />
+<ProjectReference Include="..\src\ClassLibraryMT.Logging\ClassLibraryMT.Logging.csproj" />
 ```
 
 Yêu cầu: .NET 10, `IsAotCompatible=true` (không dùng reflection lúc runtime).

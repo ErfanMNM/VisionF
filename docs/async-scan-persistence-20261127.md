@@ -66,26 +66,26 @@ No real PO A001 or production data was read, copied, used, modified or deleted. 
 The following list is generated from the final local diff (including new source/test files).
 
 <!-- changed-files -->
-- `ClassLibraryMT.Po/IPoClient.cs`
-- `ClassLibraryMT.Po/PoActivationPolicy.cs`
-- `ClassLibraryMT.Po/PoClient.cs`
-- `ClassLibraryMT.Po/PoCodeCache.cs`
-- `ClassLibraryMT.Po/PoContracts.cs`
-- `ClassLibraryMT.Po/PoJsonContext.cs`
-- `ClassLibraryMT.Po/PoOptions.cs`
-- `ClassLibraryMT.Po/PoScanMutation.cs`
-- `ClassLibraryMT.Po/PoServiceCollectionExtensions.cs`
-- `ClassLibraryMT.Po/PoStore.cs`
-- `ClassLibraryMT.Po/ProductionOrderService.cs`
-- `ClassLibraryMT.Scans/AssemblyInfo.cs`
-- `ClassLibraryMT.Scans/IScanPersistenceStore.cs`
-- `ClassLibraryMT.Scans/ScanPersistenceIdentity.cs`
-- `ClassLibraryMT.Scans/ScanPersistenceStore.cs`
-- `ClassLibraryMT.Scans/ScanRecordEntity.cs`
-- `ClassLibraryMT.Scans/ScanSendStatusStore.History.cs`
-- `ClassLibraryMT.Scans/ScanSendStatusStore.cs`
-- `ClassLibraryMT.Scans/ScanServiceCollectionExtensions.cs`
-- `ClassLibraryMT.Scans/ScanStore.cs`
+- `src/ClassLibraryMT.Po/IPoClient.cs`
+- `src/ClassLibraryMT.Po/PoActivationPolicy.cs`
+- `src/ClassLibraryMT.Po/PoClient.cs`
+- `src/ClassLibraryMT.Po/PoCodeCache.cs`
+- `src/ClassLibraryMT.Po/PoContracts.cs`
+- `src/ClassLibraryMT.Po/PoJsonContext.cs`
+- `src/ClassLibraryMT.Po/PoOptions.cs`
+- `src/ClassLibraryMT.Po/PoScanMutation.cs`
+- `src/ClassLibraryMT.Po/PoServiceCollectionExtensions.cs`
+- `src/ClassLibraryMT.Po/PoStore.cs`
+- `src/ClassLibraryMT.Po/ProductionOrderService.cs`
+- `src/ClassLibraryMT.Scans/AssemblyInfo.cs`
+- `src/ClassLibraryMT.Scans/IScanPersistenceStore.cs`
+- `src/ClassLibraryMT.Scans/ScanPersistenceIdentity.cs`
+- `src/ClassLibraryMT.Scans/ScanPersistenceStore.cs`
+- `src/ClassLibraryMT.Scans/ScanRecordEntity.cs`
+- `src/ClassLibraryMT.Scans/ScanSendStatusStore.History.cs`
+- `src/ClassLibraryMT.Scans/ScanSendStatusStore.cs`
+- `src/ClassLibraryMT.Scans/ScanServiceCollectionExtensions.cs`
+- `src/ClassLibraryMT.Scans/ScanStore.cs`
 - `TanTienQR/App.axaml.cs`
 - `TanTienQR/AssemblyInfo.cs`
 - `TanTienQR/Services/AppConfigModels.cs`

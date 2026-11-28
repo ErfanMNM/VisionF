@@ -9,3 +9,11 @@ Quy trình PO hiện dùng file một cột `CodeContent`, đối chiếu toàn 
 Kết quả tích hợp và giới hạn kiểm thử: [CodeContent validation](docs/codecontent-validation.md).
 
 Thêm mã bằng COM, nhập tay, PDA/POST và monitor gửi Checkee theo PO: [hướng dẫn vận hành](docs/manual-activation.md).
+
+## Cấu trúc repository
+
+- Thư viện nghiệp vụ và tích hợp dùng chung nằm trong src/.
+- Ứng dụng desktop TanTienQR nằm trong TanTienQR/; launcher và test/harness độc lập nằm trong tools/.
+- Cloudflare Worker nằm trong license-portal/; script phát hành nằm trong deploy/; hướng dẫn và hợp đồng nằm trong docs/.
+
+Chi tiết project graph, thư mục cục bộ cần giữ và hướng dẫn build sau khi sắp xếp: [cấu trúc dự án](docs/project-layout.md).

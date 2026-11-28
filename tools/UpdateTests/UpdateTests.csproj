@@ -7,7 +7,7 @@
     <IsAotCompatible>false</IsAotCompatible>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../ClassLibraryMT.Updates/ClassLibraryMT.Updates.csproj" />
+    <ProjectReference Include="../../src/ClassLibraryMT.Updates/ClassLibraryMT.Updates.csproj" />
     <ProjectReference Include="../TanTienLauncher/TanTienLauncher.csproj" />
   </ItemGroup>
 </Project>

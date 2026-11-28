@@ -7,6 +7,6 @@
     <IsAotCompatible>false</IsAotCompatible>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../ClassLibraryMT.MesSimulator/ClassLibraryMT.MesSimulator.csproj" />
+    <ProjectReference Include="../../src/ClassLibraryMT.MesSimulator/ClassLibraryMT.MesSimulator.csproj" />
   </ItemGroup>
 </Project>

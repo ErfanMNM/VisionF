@@ -52,8 +52,8 @@ Project độc lập (`net10.0`, `IsAotCompatible=true`), dùng chung cho app kh
 Project reference:
 
 ```xml
-<ProjectReference Include="..\ClassLibraryMT\ClassLibraryMT.csproj" />
-<ProjectReference Include="..\ClassLibraryMT.Logging\ClassLibraryMT.Logging.csproj" />
+<ProjectReference Include="..\src\ClassLibraryMT\ClassLibraryMT.csproj" />
+<ProjectReference Include="..\src\ClassLibraryMT.Logging\ClassLibraryMT.Logging.csproj" />
 ```
 
 ---

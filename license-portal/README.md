@@ -114,7 +114,7 @@ ADMIN_USERNAME=admin ADMIN_PASSWORD=matkhaucuaban DEFAULT_PRODUCT=TanTienQR node
 
 ## 4. Đưa public key vào app
 
-Mở `ClassLibraryMT/Licensing/LicenseKeys.cs`, thêm public key mới vào danh sách `All`:
+Mở `src/ClassLibraryMT/Licensing/LicenseKeys.cs`, thêm public key mới vào danh sách `All`:
 
 ```csharp
 public const string CurrentKeyId = "<KEY_ID>";
@@ -237,7 +237,7 @@ tra trạng thái để tránh cấp trùng nếu hai quản trị viên cùng x
 
 ## 8. File license `.lic`
 
-Đúng format **giống hệt** app `ClassLibraryMT/Licensing/`:
+Đúng format **giống hệt** app `src/ClassLibraryMT/Licensing/`:
 
 ```json
 { "v": 1, "data": "<base64 JSON payload>", "sig": "<base64 chữ ký RSA>" }

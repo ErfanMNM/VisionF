@@ -69,17 +69,17 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\ClassLibraryMT.Updates\ClassLibraryMT.Updates.csproj" />
-    <ProjectReference Include="..\ClassLibraryMT\ClassLibraryMT.csproj" />
-    <ProjectReference Include="..\ClassLibraryMT.Logging\ClassLibraryMT.Logging.csproj" />
-    <ProjectReference Include="..\ClassLibraryMT.Auth\ClassLibraryMT.Auth.csproj" />
-    <ProjectReference Include="..\ClassLibraryMT.Plc\ClassLibraryMT.Plc.csproj" />
-    <ProjectReference Include="..\ClassLibraryMT.Scans\ClassLibraryMT.Scans.csproj" />
-    <ProjectReference Include="..\ClassLibraryMT.Po\ClassLibraryMT.Po.csproj" />
-    <ProjectReference Include="..\ClassLibraryMT.Print\ClassLibraryMT.Print.csproj" />
-    <ProjectReference Include="..\ClassLibraryMT.PoServer\ClassLibraryMT.PoServer.csproj" />
-    <ProjectReference Include="..\ClassLibraryMT.MultiConnect\ClassLibraryMT.MultiConnect.csproj" />
-    <ProjectReference Include="..\ClassLibraryMT.Checkee\ClassLibraryMT.Checkee.csproj" />
+    <ProjectReference Include="..\src\ClassLibraryMT.Updates\ClassLibraryMT.Updates.csproj" />
+    <ProjectReference Include="..\src\ClassLibraryMT\ClassLibraryMT.csproj" />
+    <ProjectReference Include="..\src\ClassLibraryMT.Logging\ClassLibraryMT.Logging.csproj" />
+    <ProjectReference Include="..\src\ClassLibraryMT.Auth\ClassLibraryMT.Auth.csproj" />
+    <ProjectReference Include="..\src\ClassLibraryMT.Plc\ClassLibraryMT.Plc.csproj" />
+    <ProjectReference Include="..\src\ClassLibraryMT.Scans\ClassLibraryMT.Scans.csproj" />
+    <ProjectReference Include="..\src\ClassLibraryMT.Po\ClassLibraryMT.Po.csproj" />
+    <ProjectReference Include="..\src\ClassLibraryMT.Print\ClassLibraryMT.Print.csproj" />
+    <ProjectReference Include="..\src\ClassLibraryMT.PoServer\ClassLibraryMT.PoServer.csproj" />
+    <ProjectReference Include="..\src\ClassLibraryMT.MultiConnect\ClassLibraryMT.MultiConnect.csproj" />
+    <ProjectReference Include="..\src\ClassLibraryMT.Checkee\ClassLibraryMT.Checkee.csproj" />
   </ItemGroup>
 
   <!-- Helper COM chạy riêng bằng JIT; bản phát hành đóng gói single-file qua build-release.ps1. -->
